@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qingluo.link.service.mapper.UsageLogMapper">
+
+    <select id="selectSummaryByUserId" resultType="com.qingluo.link.core.dto.response.UsageSummaryDTO">
+        SELECT
+            COUNT(*) as totalCalls,
+            COALESCE(SUM(total_tokens), 0) as totalTokens,
+            COALESCE(SUM(prompt_tokens), 0) as promptTokens,
+            COALESCE(SUM(completion_tokens), 0) as completionTokens,
+            AVG(latency_ms) as averageLatencyMs
+        FROM llm_usage_log
+        WHERE user_id = #{userId}
+          AND created_at BETWEEN #{startDate} AND #{endDate}
+    </select>
+
+    <select id="selectDailyUsageByUserId" resultType="com.qingluo.link.core.dto.response.DailyUsageDTO">
+        SELECT
+            DATE(created_at) as date,
+            COUNT(*) as calls,
+            COALESCE(SUM(prompt_tokens), 0) as promptTokens,
+            COALESCE(SUM(completion_tokens), 0) as completionTokens,
+            COALESCE(SUM(total_tokens), 0) as totalTokens
+        FROM llm_usage_log
+        WHERE user_id = #{userId}
+          AND created_at BETWEEN #{startDate} AND #{endDate}
+        GROUP BY DATE(created_at)
+        ORDER BY date DESC
+    </select>
+
+    <select id="selectLogsByUserId" resultType="com.qingluo.link.core.dto.response.UsageLogDTO">
+        SELECT
+            l.id, l.config_id as configId, l.provider_type as providerType,
+            l.model_name as modelName, l.prompt_tokens as promptTokens,
+            l.completion_tokens as completionTokens, l.total_tokens as totalTokens,
+            l.latency_ms as latencyMs, l.status, l.created_at as createdAt,
+            c.config_name as configName
+        FROM llm_usage_log l
+        LEFT JOIN llm_user_config c ON l.config_id = c.id
+        WHERE l.user_id = #{userId}
+          AND l.created_at BETWEEN #{startDate} AND #{endDate}
+        ORDER BY l.created_at DESC
+    </select>
+
+</mapper>
