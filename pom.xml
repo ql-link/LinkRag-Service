@@ -13,6 +13,8 @@
         <module>link-service</module>
         <module>link-core</module>
         <module>link-model</module>
+        <module>link-api</module>
+        <module>link-mapper</module>
     </modules>
 
     <properties>

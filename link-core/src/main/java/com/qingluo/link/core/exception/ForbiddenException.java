@@ -1,9 +1,9 @@
 package com.qingluo.link.core.exception;
 
-import com.qingluo.link.core.enums.ErrorCode;
+import com.qingluo.link.model.enums.ErrorCode;
 
 /**
- * 权限不足异常 (403)
+ * 禁止访问异常
  */
 public class ForbiddenException extends BusinessException {
 
@@ -11,7 +11,11 @@ public class ForbiddenException extends BusinessException {
         super(errorCode);
     }
 
-    public ForbiddenException(ErrorCode errorCode, String detail) {
-        super(errorCode, detail);
+    public ForbiddenException(ErrorCode errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public static ForbiddenException unauthorizedAccess() {
+        return new ForbiddenException(ErrorCode.UNAUTHORIZED_ACCESS);
     }
 }

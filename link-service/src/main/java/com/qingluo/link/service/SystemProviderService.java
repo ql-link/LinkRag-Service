@@ -1,7 +1,6 @@
 package com.qingluo.link.service;
 
-import com.qingluo.link.model.entity.SystemProvider;
-
+import com.qingluo.link.model.dto.entity.SystemProvider;
 import java.util.List;
 
 /**
@@ -10,12 +9,12 @@ import java.util.List;
 public interface SystemProviderService {
 
     /**
-     * 获取所有启用的系统厂商列表
+     * 获取所有启用的厂商
      */
     List<SystemProvider> getActiveProviders();
 
     /**
-     * 获取所有厂商列表（包含禁用的）
+     * 根据 providerType 获取厂商
      */
-    List<SystemProvider> listAllProviders();
+    SystemProvider getByProviderType(String providerType);
 }

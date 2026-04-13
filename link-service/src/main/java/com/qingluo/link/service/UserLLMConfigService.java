@@ -1,9 +1,8 @@
 package com.qingluo.link.service;
 
-import com.qingluo.link.core.dto.request.CreateConfigRequest;
-import com.qingluo.link.core.dto.request.UpdateConfigRequest;
-import com.qingluo.link.core.dto.response.UserLLMConfigDTO;
-
+import com.qingluo.link.model.dto.request.CreateConfigRequest;
+import com.qingluo.link.model.dto.request.UpdateConfigRequest;
+import com.qingluo.link.model.dto.response.UserLLMConfigDTO;
 import java.util.List;
 
 /**
@@ -12,37 +11,27 @@ import java.util.List;
 public interface UserLLMConfigService {
 
     /**
-     * 获取用户的所有 LLM 配置
+     * 获取用户所有配置
      */
-    List<UserLLMConfigDTO> listUserConfigs(String userId);
+    List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, Boolean isActive);
 
     /**
-     * 获取用户的单个配置
+     * 创建配置
      */
-    UserLLMConfigDTO getUserConfig(String userId, String configId);
+    UserLLMConfigDTO createConfig(Long userId, CreateConfigRequest request);
 
     /**
-     * 获取用户的默认配置
+     * 更新配置
      */
-    UserLLMConfigDTO getDefaultConfig(String userId);
+    void updateConfig(Long userId, Long configId, UpdateConfigRequest request);
 
     /**
-     * 创建用户配置
+     * 删除配置
      */
-    UserLLMConfigDTO createUserConfig(String userId, CreateConfigRequest request);
+    void deleteConfig(Long userId, Long configId);
 
     /**
-     * 更新用户配置
+     * 获取用户默认配置
      */
-    UserLLMConfigDTO updateUserConfig(String userId, String configId, UpdateConfigRequest request);
-
-    /**
-     * 删除用户配置
-     */
-    void deleteUserConfig(String userId, String configId);
-
-    /**
-     * 设为默认配置
-     */
-    void setDefaultConfig(String userId, String configId);
+    UserLLMConfigDTO getDefaultConfig(Long userId);
 }

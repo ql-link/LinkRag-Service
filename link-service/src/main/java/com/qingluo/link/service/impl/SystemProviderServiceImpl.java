@@ -1,8 +1,10 @@
 package com.qingluo.link.service.impl;
 
-import com.qingluo.link.model.entity.SystemProvider;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.qingluo.link.core.exception.NotFoundException;
+import com.qingluo.link.mapper.SystemProviderMapper;
+import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.service.SystemProviderService;
-import com.qingluo.link.service.mapper.SystemProviderMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,15 +17,27 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SystemProviderServiceImpl implements SystemProviderService {
 
-    private final SystemProviderMapper providerMapper;
+    private final SystemProviderMapper systemProviderMapper;
 
     @Override
     public List<SystemProvider> getActiveProviders() {
-        return providerMapper.selectActiveProviders();
+        return systemProviderMapper.selectList(
+            new LambdaQueryWrapper<SystemProvider>()
+                .eq(SystemProvider::getIsActive, true)
+                .orderByDesc(SystemProvider::getPriority)
+        );
     }
 
     @Override
-    public List<SystemProvider> listAllProviders() {
-        return providerMapper.selectList(null);
+    public SystemProvider getByProviderType(String providerType) {
+        SystemProvider provider = systemProviderMapper.selectOne(
+            new LambdaQueryWrapper<SystemProvider>()
+                .eq(SystemProvider::getProviderType, providerType)
+        );
+
+        if (provider == null) {
+            throw NotFoundException.providerNotFound();
+        }
+        return provider;
     }
 }

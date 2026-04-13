@@ -1,9 +1,9 @@
 package com.qingluo.link.core.exception;
 
-import com.qingluo.link.core.enums.ErrorCode;
+import com.qingluo.link.model.enums.ErrorCode;
 
 /**
- * 资源不存在异常 (404)
+ * 资源不存在异常
  */
 public class NotFoundException extends BusinessException {
 
@@ -11,7 +11,19 @@ public class NotFoundException extends BusinessException {
         super(errorCode);
     }
 
-    public NotFoundException(ErrorCode errorCode, String detail) {
-        super(errorCode, detail);
+    public NotFoundException(ErrorCode errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public static NotFoundException providerNotFound() {
+        return new NotFoundException(ErrorCode.PROVIDER_NOT_FOUND);
+    }
+
+    public static NotFoundException userConfigNotFound() {
+        return new NotFoundException(ErrorCode.USER_CONFIG_NOT_FOUND);
+    }
+
+    public static NotFoundException conversationNotFound() {
+        return new NotFoundException(ErrorCode.CONVERSATION_NOT_FOUND);
     }
 }

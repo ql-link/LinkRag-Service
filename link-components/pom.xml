@@ -10,6 +10,12 @@
     </parent>
 
     <artifactId>link-components</artifactId>
+    <packaging>pom</packaging>
+    <modules>
+        <module>toLink-components-mq</module>
+        <module>toLink-components-oss</module>
+        <module>toLink-components-redis</module>
+    </modules>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

@@ -1,9 +1,9 @@
 package com.qingluo.link.core.exception;
 
-import com.qingluo.link.core.enums.ErrorCode;
+import com.qingluo.link.model.enums.ErrorCode;
 
 /**
- * 认证异常 (401)
+ * 认证异常
  */
 public class AuthException extends BusinessException {
 
@@ -11,7 +11,19 @@ public class AuthException extends BusinessException {
         super(errorCode);
     }
 
-    public AuthException(ErrorCode errorCode, String detail) {
-        super(errorCode, detail);
+    public AuthException(ErrorCode errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public static AuthException userNotFound() {
+        return new AuthException(ErrorCode.USER_NOT_FOUND);
+    }
+
+    public static AuthException invalidPassword() {
+        return new AuthException(ErrorCode.INVALID_PASSWORD);
+    }
+
+    public static AuthException accountDisabled() {
+        return new AuthException(ErrorCode.AUTH_DISABLED);
     }
 }

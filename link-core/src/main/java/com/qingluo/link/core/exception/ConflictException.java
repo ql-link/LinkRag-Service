@@ -1,9 +1,9 @@
 package com.qingluo.link.core.exception;
 
-import com.qingluo.link.core.enums.ErrorCode;
+import com.qingluo.link.model.enums.ErrorCode;
 
 /**
- * 资源冲突异常 (409)
+ * 冲突异常
  */
 public class ConflictException extends BusinessException {
 
@@ -11,7 +11,11 @@ public class ConflictException extends BusinessException {
         super(errorCode);
     }
 
-    public ConflictException(ErrorCode errorCode, String detail) {
-        super(errorCode, detail);
+    public ConflictException(ErrorCode errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public static ConflictException duplicateUserConfig() {
+        return new ConflictException(ErrorCode.DUPLICATE_USER_CONFIG);
     }
 }

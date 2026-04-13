@@ -1,15 +1,25 @@
 package com.qingluo.link.core.exception;
 
-/**
- * 系统异常 (500) - 服务端内部错误
- */
-public class SystemException extends RuntimeException {
+import com.qingluo.link.model.enums.ErrorCode;
 
-    public SystemException(String message) {
-        super(message);
+/**
+ * 系统异常
+ */
+public class SystemException extends BusinessException {
+
+    public SystemException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public SystemException(String message, Throwable cause) {
-        super(message, cause);
+    public SystemException(ErrorCode errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public static SystemException unknownError() {
+        return new SystemException(ErrorCode.UNKNOWN_ERROR);
+    }
+
+    public static SystemException unknownError(String message) {
+        return new SystemException(ErrorCode.UNKNOWN_ERROR, message);
     }
 }

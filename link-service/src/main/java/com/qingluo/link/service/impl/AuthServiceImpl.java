@@ -1,28 +1,21 @@
 package com.qingluo.link.service.impl;
 
-import cn.dev33.satoken.stp.StpUtil;
-import com.qingluo.link.core.dto.request.LoginRequest;
-import com.qingluo.link.core.dto.request.RegisterRequest;
-import com.qingluo.link.core.dto.response.AuthResult;
-import com.qingluo.link.core.enums.ErrorCode;
+import com.qingluo.link.model.dto.request.LoginRequest;
+import com.qingluo.link.model.dto.request.RegisterRequest;
+import com.qingluo.link.model.dto.response.AuthResult;
 import com.qingluo.link.core.exception.AuthException;
-import com.qingluo.link.core.exception.BusinessException;
-import com.qingluo.link.model.entity.SysUser;
+import com.qingluo.link.mapper.SysUserMapper;
+import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.service.AuthService;
-import com.qingluo.link.service.mapper.SysUserMapper;
+import cn.dev33.satoken.stp.StpUtil;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 /**
  * 认证服务实现
  */
 @Service
-@Slf4j
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
@@ -31,59 +24,67 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResult login(LoginRequest request) {
-        // 1. 查询用户
-        SysUser user = sysUserMapper.selectByUsername(request.getUsername());
+        SysUser user = sysUserMapper.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, request.getUsername())
+        );
+
         if (user == null) {
-            throw new AuthException(ErrorCode.USER_NOT_FOUND, "用户不存在");
+            throw AuthException.userNotFound();
         }
 
-        // 2. 校验密码
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new AuthException(ErrorCode.INVALID_PASSWORD, "密码错误");
+            throw AuthException.invalidPassword();
         }
 
-        // 3. 校验状态
         if (user.getStatus() != 1) {
-            throw new AuthException(ErrorCode.AUTH_DISABLED, "账号已被禁用");
+            throw AuthException.accountDisabled();
         }
 
-        // 4. sa-token 登录
+        // 登录
         StpUtil.login(user.getId());
 
-        // 5. 更新最后登录时间
-        sysUserMapper.updateLastLoginTime(user.getId(), LocalDateTime.now());
-
-        return AuthResult.builder()
-            .accessToken(StpUtil.getTokenValue())
-            .tokenType("Bearer")
-            .expiresIn(604800)
-            .userId(user.getId())
-            .build();
+        return new AuthResult(
+            StpUtil.getTokenValue(),
+            "Bearer",
+            StpUtil.getTokenTimeout(),
+            user.getId()
+        );
     }
 
     @Override
-    public void register(RegisterRequest request) {
-        // 1. 检查用户名是否存在
-        SysUser existingUser = sysUserMapper.selectByUsername(request.getUsername());
-        if (existingUser != null) {
-            throw new BusinessException(ErrorCode.USER_NOT_FOUND, "用户名已存在");
+    public AuthResult register(RegisterRequest request) {
+        // 检查用户名是否存在
+        SysUser existUser = sysUserMapper.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, request.getUsername())
+        );
+
+        if (existUser != null) {
+            throw new com.qingluo.link.core.exception.ConflictException(
+                com.qingluo.link.model.enums.ErrorCode.DUPLICATE_USER_CONFIG,
+                "用户名已存在"
+            );
         }
 
-        // 2. 创建用户
-        SysUser user = SysUser.builder()
-            .id(UUID.randomUUID().toString())
-            .username(request.getUsername())
-            .passwordHash(passwordEncoder.encode(request.getPassword()))
-            .nickname(request.getNickname())
-            .email(request.getEmail())
-            .role("USER")
-            .status(1)
-            .createdAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
-            .build();
+        SysUser user = new SysUser();
+        user.setUsername(request.getUsername());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setNickname(request.getNickname());
+        user.setEmail(request.getEmail());
+        user.setRole("USER");
+        user.setStatus(1);
 
         sysUserMapper.insert(user);
-        log.info("用户注册成功: {}", user.getUsername());
+
+        StpUtil.login(user.getId());
+
+        return new AuthResult(
+            StpUtil.getTokenValue(),
+            "Bearer",
+            StpUtil.getTokenTimeout(),
+            user.getId()
+        );
     }
 
     @Override

@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.qingluo.link.components.redis.RedisAutoConfiguration
