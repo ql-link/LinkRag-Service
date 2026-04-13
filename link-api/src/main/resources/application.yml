@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: tolink-service
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:tolink_rag_db}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    username: ${REDIS_USERNAME:}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DB:0}
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: 1000ms
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: isDeleted
+
+sa-token:
+  token-name: satoken
+  timeout: 604800
+  token-style: uuid
+  is-concurrent: true
+  is-share: false
+  token-mode: uuid
+
+llm:
+  api-key:
+    secret: ${LLM_SECRET:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.qingluo.link: debug
+
+
+############## 线程池配置 ##############
+thread-pool:
+  # 核心线程数 --》 cpu核数*2 + 1
+  core-pool-size: 5
+  # 最大线程数
+  max-pool-size: 10
+  # 队列大小
+  queue-capacity: 50
+  # 存活时间
+  keep-alive-seconds: 60
+  # 线程名称前缀
+  thread-name-prefix: custom-thread-
+

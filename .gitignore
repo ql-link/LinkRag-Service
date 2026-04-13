@@ -1,0 +1,18 @@
+llm_module_java_api_design.md
+/.idea/
+/.vscode/
+/.claude/
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# 本地配置文件（保留 application-example.yml 作为模板）
+**/application-local.yml
+**/application-local.yaml
+**/application-dev.yml
+**/application-dev.yaml
