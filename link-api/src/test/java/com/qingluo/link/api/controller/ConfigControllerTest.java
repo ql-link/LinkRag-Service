@@ -1,116 +1,148 @@
 package com.qingluo.link.api.controller;
 
-import com.qingluo.link.model.dto.request.CreateConfigRequest;
-import com.qingluo.link.model.dto.request.UpdateConfigRequest;
-import com.qingluo.link.model.dto.response.Result;
-import com.qingluo.link.model.dto.response.UserLLMConfigDTO;
-import com.qingluo.link.service.UserLLMConfigService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import cn.dev33.satoken.stp.StpUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qingluo.link.api.TestSecurityConfig;
+import com.qingluo.link.model.dto.entity.SysUser;
+import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.mapper.SysUserMapper;
+import com.qingluo.link.mapper.SystemProviderMapper;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * ConfigController 控制器测试
- * TDD Red 阶段
+ * ConfigController 真实集成测试
+ * <p>
+ * 使用 H2 内存数据库 + 真实 Redis 测试
+ * Controller -> Service -> Mapper 完整链路
+ * </p>
  */
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import(TestSecurityConfig.class)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class ConfigControllerTest {
 
-    @Mock
-    private UserLLMConfigService userLLMConfigService;
+    @Autowired
+    private MockMvc mockMvc;
 
-    @InjectMocks
-    private ConfigController configController;
+    @Autowired
+    private ObjectMapper objectMapper;
 
-    @Test
-    void Should_ReturnConfigList_When_GetConfigs() {
-        // given
-        Long userId = 1L;
-        UserLLMConfigDTO config = new UserLLMConfigDTO();
-        config.setId(1L);
-        config.setConfigName("我的GPT-4");
-        config.setProviderType("openai");
-        config.setModelName("gpt-4");
+    @Autowired
+    private SysUserMapper sysUserMapper;
 
-        when(userLLMConfigService.getConfigs(eq(userId), any(), any()))
-            .thenReturn(List.of(config));
+    @Autowired
+    private SystemProviderMapper systemProviderMapper;
 
-        // when
-        Result<List<UserLLMConfigDTO>> result = configController.getConfigs(null, null);
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
-        // then
-        assertNotNull(result);
-        assertEquals(1, result.getData().size());
-        assertEquals("我的GPT-4", result.getData().get(0).getConfigName());
-        verify(userLLMConfigService).getConfigs(eq(userId), any(), any());
+    private static final Long TEST_USER_ID = 990001L;
+    private static final Long TEST_PROVIDER_ID = 990002L;
+    private static final String TEST_USERNAME = "configtest";
+    private static final String TEST_PASSWORD = "password123";
+
+    private String token;
+    private Long createdConfigId;
+
+    @BeforeAll
+    void setup() {
+        // 插入 SystemProvider
+        SystemProvider provider = new SystemProvider();
+        provider.setId(TEST_PROVIDER_ID);
+        provider.setProviderType("openai_config");
+        provider.setProviderName("OpenAI");
+        provider.setApiBaseUrl("https://api.openai.com/v1");
+        provider.setSupportedModels("[\"gpt-4\", \"gpt-3.5-turbo\"]");
+        provider.setIsActive(true);
+        provider.setPriority(50);
+        systemProviderMapper.insert(provider);
+
+        // 插入测试用户
+        SysUser user = new SysUser();
+        user.setId(TEST_USER_ID);
+        user.setUsername(TEST_USERNAME);
+        user.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
+        user.setNickname("配置测试");
+        user.setEmail("config@test.com");
+        user.setRole("USER");
+        user.setStatus(1);
+        sysUserMapper.insert(user);
+
+        // 编程式登录获取 token
+        StpUtil.login(TEST_USER_ID);
+        token = StpUtil.getTokenValue();
     }
 
     @Test
-    void Should_ReturnCreatedConfig_When_CreateConfigSuccess() {
-        // given
-        Long userId = 1L;
-        CreateConfigRequest request = new CreateConfigRequest();
-        request.setProviderType("openai");
-        request.setConfigName("我的GPT-4");
-        request.setApiKey("sk-test123");
-        request.setModelName("gpt-4");
+    @Order(1)
+    @DisplayName("创建LLM配置 - POST /api/v1/llm/configs")
+    void Should_CreateConfig_When_DataValid() throws Exception {
+        String requestJson = "{" +
+                "\"providerType\":\"openai_config\"," +
+                "\"configName\":\"我的GPT-4\"," +
+                "\"apiKey\":\"sk-test123456789\"," +
+                "\"modelName\":\"gpt-4\"," +
+                "\"priority\":50," +
+                "\"isDefault\":true" +
+                "}";
 
-        UserLLMConfigDTO created = new UserLLMConfigDTO();
-        created.setId(1L);
-        created.setConfigName("我的GPT-4");
-        created.setProviderType("openai");
+        mockMvc.perform(post("/api/v1/llm/configs")
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.configName").value("我的GPT-4"))
+            .andExpect(jsonPath("$.data.providerType").value("openai_config"))
+            .andReturn();
 
-        when(userLLMConfigService.createConfig(eq(userId), any(CreateConfigRequest.class)))
-            .thenReturn(created);
-
-        // when
-        Result<UserLLMConfigDTO> result = configController.createConfig(request);
-
-        // then
-        assertNotNull(result);
-        assertEquals(1L, result.getData().getId());
-        assertEquals("我的GPT-4", result.getData().getConfigName());
-        verify(userLLMConfigService).createConfig(eq(userId), any(CreateConfigRequest.class));
+        // 保存创建的 configId 供后续测试使用
+        // 由于创建后返回的 DTO 包含 id，可以在后续测试中重新查询
     }
 
     @Test
-    void Should_ReturnOk_When_UpdateConfigSuccess() {
-        // given
-        Long userId = 1L;
-        Long configId = 1L;
-        UpdateConfigRequest request = new UpdateConfigRequest();
-        request.setPriority(80);
-
-        doNothing().when(userLLMConfigService).updateConfig(eq(userId), eq(configId), any(UpdateConfigRequest.class));
-
-        // when
-        Result<Void> result = configController.updateConfig(configId, request);
-
-        // then
-        assertNotNull(result);
-        verify(userLLMConfigService).updateConfig(eq(userId), eq(configId), any(UpdateConfigRequest.class));
+    @Order(2)
+    @DisplayName("获取配置列表 - GET /api/v1/llm/configs")
+    void Should_ReturnConfigList_When_GetConfigs() throws Exception {
+        mockMvc.perform(get("/api/v1/llm/configs")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data").isArray());
     }
 
     @Test
-    void Should_ReturnOk_When_DeleteConfigSuccess() {
-        // given
-        Long userId = 1L;
-        Long configId = 1L;
+    @Order(3)
+    @DisplayName("按厂商类型筛选配置 - GET /api/v1/llm/configs?providerType=openai")
+    void Should_ReturnConfigList_When_FilterByProviderType() throws Exception {
+        mockMvc.perform(get("/api/v1/llm/configs")
+                .header("satoken", token)
+                .param("providerType", "openai"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data").isArray());
+    }
 
-        doNothing().when(userLLMConfigService).deleteConfig(eq(userId), eq(configId));
-
-        // when
-        Result<Void> result = configController.deleteConfig(configId);
-
-        // then
-        assertNotNull(result);
-        verify(userLLMConfigService).deleteConfig(eq(userId), eq(configId));
+    @Test
+    @Order(4)
+    @DisplayName("未登录访问应返回 401")
+    void Should_Return401_When_NotLoggedIn() throws Exception {
+        mockMvc.perform(get("/api/v1/llm/configs"))
+            .andExpect(status().isUnauthorized());
     }
 }

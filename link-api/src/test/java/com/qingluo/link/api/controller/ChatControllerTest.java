@@ -48,7 +48,7 @@ class ChatControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    private static final Long TEST_USER_ID = 99999L;
+    private static final Long TEST_USER_ID = 99991L;
     private static final String TEST_USERNAME = "chattest";
     private static final String TEST_PASSWORD = "password123";
 
