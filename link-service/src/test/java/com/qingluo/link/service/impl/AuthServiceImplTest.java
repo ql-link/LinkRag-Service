@@ -2,6 +2,7 @@ package com.qingluo.link.service.impl;
 
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
+import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.cache.UserCacheService;
@@ -59,6 +60,23 @@ class AuthServiceImplTest {
         assertThat(result.getRole()).isEqualTo("ADMIN");
         verify(sysUserMapper).selectById(2L);
         verify(userCacheService).put(eq(2L), any(UserProfileDTO.class));
+    }
+
+    // ---- updateProfile ----
+
+    @Test
+    @DisplayName("Should_UpdateFieldsAndEvictCache_When_UserExists")
+    void Should_UpdateFieldsAndEvictCache_When_UserExists() {
+        SysUser user = buildUser(1L, "alice", UserRole.USER);
+        given(sysUserMapper.selectById(1L)).willReturn(user);
+
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setNickname("newNick");
+        request.setEmail("new@test.com");
+        authService.updateProfile(1L, request);
+
+        verify(sysUserMapper).updateById(any(SysUser.class));
+        verify(userCacheService).evict(1L);
     }
 
     // ---- helpers ----

@@ -8,6 +8,7 @@ import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.LoginRequest;
 import com.qingluo.link.model.dto.request.RegisterRequest;
+import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.AuthResult;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.ErrorCode;
@@ -95,6 +96,30 @@ public class AuthServiceImpl implements AuthService {
         UserProfileDTO dto = toDTO(user);
         userCacheService.put(userId, dto);
         return dto;
+    }
+
+    @Override
+    public void updateProfile(Long userId, UpdateProfileRequest request) {
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw AuthException.userNotFound();
+        }
+
+        if (request.getNickname() != null) {
+            user.setNickname(request.getNickname());
+        }
+        if (request.getEmail() != null) {
+            user.setEmail(request.getEmail());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone());
+        }
+        if (request.getAvatarUrl() != null) {
+            user.setAvatarUrl(request.getAvatarUrl());
+        }
+
+        sysUserMapper.updateById(user);
+        userCacheService.evict(userId);
     }
 
     private UserProfileDTO toDTO(SysUser user) {
