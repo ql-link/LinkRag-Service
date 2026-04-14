@@ -10,20 +10,11 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
-import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import redis.embedded.RedisServer;
-
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,46 +25,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * ChatController 真实集成测试
  * <p>
- * 使用 H2 内存数据库 + Embedded Redis 和真实 Spring 上下文测试
+ * 使用 H2 内存数据库 + 真实 Redis 测试
  * Controller -> Service -> Mapper 完整链路
  * </p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import({ChatControllerTest.TestRedisConfiguration.class, TestSecurityConfig.class})
+@Import(TestSecurityConfig.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ChatControllerTest {
-
-    @TestConfiguration
-    static class TestRedisConfiguration {
-        private RedisServer redisServer;
-
-        @PostConstruct
-        public void startRedis() {
-            try {
-                redisServer = new RedisServer(6379);
-                redisServer.start();
-            } catch (Exception e) {
-                // Redis 可能已在运行，忽略
-            }
-        }
-
-        @PreDestroy
-        public void stopRedis() {
-            if (redisServer != null && redisServer.isActive()) {
-                redisServer.stop();
-            }
-        }
-
-        @Bean
-        public RedisConnectionFactory redisConnectionFactory() {
-            RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
-            config.setHostName("localhost");
-            config.setPort(6379);
-            return new LettuceConnectionFactory(config);
-        }
-    }
 
     @Autowired
     private MockMvc mockMvc;

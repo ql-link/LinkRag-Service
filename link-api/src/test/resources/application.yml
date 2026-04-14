@@ -1,4 +1,7 @@
 spring:
+  main:
+    allow-bean-definition-overriding: true
+
   application:
     name: tolink-service-test
 
@@ -9,7 +12,7 @@ spring:
     driver-class-name: org.h2.Driver
 
   redis:
-    host: localhost
+    host: 127.0.0.1
     port: 6379
 
   h2:
