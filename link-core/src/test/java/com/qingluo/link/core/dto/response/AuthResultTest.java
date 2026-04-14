@@ -2,7 +2,7 @@ package com.qingluo.link.core.dto.response;
 
 import com.qingluo.link.model.dto.response.AuthResult;
 import org.junit.jupiter.api.Test;
-
+import static org.junit.jupiter.api.Assertions.*;
 /**
  * AuthResult 认证结果测试
  */

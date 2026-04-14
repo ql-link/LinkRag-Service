@@ -1,7 +1,9 @@
 package com.qingluo.link.api.controller;
 
-import cn.dev33.satoken.annotation.SaCheckLogin;
+import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.response.*;
+import com.qingluo.link.service.UsageQueryService;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,13 +14,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UsageController {
 
+    private final UsageQueryService usageQueryService;
+
     @GetMapping("/summary")
     @SaCheckLogin
     public Result<UsageSummaryDTO> getSummary(
             @RequestParam String startDate,
             @RequestParam String endDate) {
-        // TODO: 调用 UsageQueryService.getSummary()
-        return Result.success(new UsageSummaryDTO());
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(usageQueryService.getSummary(userId, startDate, endDate));
     }
 
     @GetMapping("/daily")
@@ -26,8 +30,8 @@ public class UsageController {
     public Result<List<DailyUsageDTO>> getDailyUsage(
             @RequestParam String startDate,
             @RequestParam String endDate) {
-        // TODO: 调用 UsageQueryService.getDailyUsage()
-        return Result.success(List.of());
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(usageQueryService.getDailyUsage(userId, startDate, endDate));
     }
 
     @GetMapping("/logs")
@@ -37,7 +41,7 @@ public class UsageController {
             @RequestParam String endDate,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        // TODO: 调用 UsageQueryService.getUsageLogs()
-        return Result.success(new PageResult<>(List.of(), 0, page, pageSize));
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(usageQueryService.getUsageLogs(userId, startDate, endDate, page, pageSize));
     }
 }

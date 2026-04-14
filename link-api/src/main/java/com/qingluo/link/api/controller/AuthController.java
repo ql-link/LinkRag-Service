@@ -4,6 +4,7 @@ import com.qingluo.link.model.dto.request.LoginRequest;
 import com.qingluo.link.model.dto.request.RegisterRequest;
 import com.qingluo.link.model.dto.response.AuthResult;
 import com.qingluo.link.model.dto.response.Result;
+import com.qingluo.link.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,21 +15,21 @@ import javax.validation.Valid;
 @RequiredArgsConstructor
 public class AuthController {
 
+    private final AuthService authService;
+
     @PostMapping("/login")
     public Result<AuthResult> login(@Valid @RequestBody LoginRequest request) {
-        // TODO: 调用 AuthService.login()
-        return Result.success(new AuthResult());
+        return Result.success(authService.login(request));
     }
 
     @PostMapping("/register")
     public Result<AuthResult> register(@Valid @RequestBody RegisterRequest request) {
-        // TODO: 调用 AuthService.register()
-        return Result.success(new AuthResult());
+        return Result.success(authService.register(request));
     }
 
     @PostMapping("/logout")
     public Result<Void> logout() {
-        // TODO: 调用 AuthService.logout()
+        authService.logout();
         return Result.ok(null);
     }
 }

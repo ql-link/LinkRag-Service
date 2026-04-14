@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl;
 import com.qingluo.link.model.dto.request.LoginRequest;
 import com.qingluo.link.model.dto.request.RegisterRequest;
 import com.qingluo.link.model.dto.response.AuthResult;
+import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
@@ -90,5 +91,28 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void logout() {
         StpUtil.logout();
+    }
+
+    @Override
+    public UserProfileDTO getProfile(Long userId) {
+        SysUser user = sysUserMapper.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getId, userId)
+        );
+
+        if (user == null) {
+            throw AuthException.userNotFound();
+        }
+
+        UserProfileDTO dto = new UserProfileDTO();
+        dto.setId(user.getId());
+        dto.setUsername(user.getUsername());
+        dto.setNickname(user.getNickname());
+        dto.setEmail(user.getEmail());
+        dto.setPhone(user.getPhone());
+        dto.setAvatarUrl(user.getAvatarUrl());
+        dto.setRole(user.getRole());
+        dto.setStatus(user.getStatus());
+        return dto;
     }
 }
