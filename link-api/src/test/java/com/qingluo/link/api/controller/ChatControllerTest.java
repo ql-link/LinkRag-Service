@@ -24,10 +24,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * ChatController 真实集成测试
- * <p>
- * 使用 H2 内存数据库 + 真实 Redis 测试
- * Controller -> Service -> Mapper 完整链路
- * </p>
+ *
+ * <h2>测试范围</h2>
+ * <ul>
+ *   <li>创建对话 {@code POST /api/v1/chat/conversations}</li>
+ *   <li>获取对话列表 {@code GET /api/v1/chat/conversations}</li>
+ *   <li>获取对话消息 {@code GET /api/v1/chat/conversations/{id}/messages}</li>
+ *   <li>删除对话 {@code DELETE /api/v1/chat/conversations/{id}}</li>
+ *   <li>未登录访问校验</li>
+ * </ul>
+ *
+ * <h2>测试链路</h2>
+ * <p>MockMvc → Controller → ChatService → ChatConversationMapper/ChatMessageMapper → H2 Database</p>
+ *
+ * <h2>测试数据</h2>
+ * <ul>
+ *   <li>测试用户 ID: {@code 99991L} - 直接插入 sys_user 表</li>
+ *   <li>测试对话 ID: 从创建响应中提取，用于后续查询/删除操作</li>
+ * </ul>
+ *
+ * @author Claude Code
+ * @since 2026-04-14
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -36,78 +53,179 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ChatControllerTest {
 
+    /**
+     * MockMvc - 模拟 HTTP 请求，无需启动真实服务器
+     */
     @Autowired
     private MockMvc mockMvc;
 
+    /**
+     * ObjectMapper - JSON 序列化/反序列化
+     */
     @Autowired
     private ObjectMapper objectMapper;
 
+    /**
+     * SysUserMapper - 直接操作数据库插入测试用户
+     */
     @Autowired
     private SysUserMapper sysUserMapper;
 
+    /**
+     * PasswordEncoder - BCrypt 密码加密
+     */
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    /**
+     * 测试用户 ID - 手动指定避免与其他测试冲突
+     */
     private static final Long TEST_USER_ID = 99991L;
+
+    /**
+     * 测试用户名
+     */
     private static final String TEST_USERNAME = "chattest";
+
+    /**
+     * 测试密码
+     */
     private static final String TEST_PASSWORD = "password123";
 
+    /**
+     * 登录后的访问令牌 (sa-token)
+     */
     private String token;
+
+    /**
+     * 创建的对话 ID - 用于后续测试（查询消息、删除）
+     * Instance 级别变量，因为需要在多个测试方法间共享
+     */
     private Long createdConversationId;
 
+    /**
+     * 测试前置准备：插入测试用户并登录
+     *
+     * <h3>初始化步骤：</h3>
+     * <ol>
+     *   <li>创建测试用户实体（SysUser）</li>
+     *   <li>使用 BCrypt 加密密码</li>
+     *   <li>通过 SysUserMapper 直接插入 H2 数据库</li>
+     *   <li>使用 StpUtil 编程式登录获取 token</li>
+     * </ol>
+     *
+     * <h3>为什么不用 HTTP 接口创建用户？</h3>
+     * <p>避免依赖 AuthController 的实现，让 ChatController 测试独立</p>
+     */
     @BeforeAll
     void setup() {
-        // 直接在数据库插入测试用户，不走 HTTP
+        // ===== 步骤 1: 创建测试用户 =====
         SysUser user = new SysUser();
         user.setId(TEST_USER_ID);
         user.setUsername(TEST_USERNAME);
+        // 使用 BCrypt 加密密码（生产环境存储的是加密后的 hash）
         user.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
         user.setNickname("聊天测试");
         user.setEmail("chat@test.com");
         user.setRole("USER");
         user.setStatus(1);
+
+        // 插入数据库（绕过 HTTP，直接操作 Mapper）
         sysUserMapper.insert(user);
 
-        // 编程式登录获取 token
+        // ===== 步骤 2: 编程式登录获取 token =====
+        // 使用 sa-token 的编程式 API，模拟已登录状态
         StpUtil.login(TEST_USER_ID);
         token = StpUtil.getTokenValue();
     }
 
+    /**
+     * 测试用例 1：创建对话成功
+     *
+     * <h3>测试步骤：</h3>
+     * <ol>
+     *   <li>构建创建对话请求（title: "测试对话"）</li>
+     *   <li>携带 sa-token header 发送 POST 请求</li>
+     *   <li>验证响应状态码、code、返回的对话标题</li>
+     *   <li>从响应中提取 createdConversationId 供后续测试使用</li>
+     * </ol>
+     *
+     * <h3>数据库操作：</h3>
+     * <ul>
+     *   <li>INSERT into chat_conversation 表</li>
+     * </ul>
+     */
     @Test
     @Order(1)
     @DisplayName("创建对话 - POST /api/v1/chat/conversations")
     void Should_CreateConversation_When_DataValid() throws Exception {
+        // 构建请求 JSON
         String requestJson = "{\"title\":\"测试对话\"}";
 
+        // 发送创建对话请求
         MvcResult result = mockMvc.perform(post("/api/v1/chat/conversations")
-                .header("satoken", token)
+                .header("satoken", token)                      // 携带认证 token
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
+            // 验证 HTTP 200
             .andExpect(status().isOk())
+            // 验证业务 code
             .andExpect(jsonPath("$.code").value(200))
+            // 验证返回的对话标题
             .andExpect(jsonPath("$.data.title").value("测试对话"))
             .andReturn();
 
+        // ===== 提取 createdConversationId 供后续测试使用 =====
         String response = result.getResponse().getContentAsString();
         JsonNode jsonNode = objectMapper.readTree(response);
         createdConversationId = jsonNode.get("data").get("id").asLong();
-        Assertions.assertNotNull(createdConversationId);
+
+        // 断言：确保 conversationId 不为空
+        Assertions.assertNotNull(createdConversationId,
+            "创建的对话 ID 不应该为空，用于后续测试");
     }
 
+    /**
+     * 测试用例 2：获取对话列表
+     *
+     * <h3>测试步骤：</h3>
+     * <ol>
+     *   <li>携带 sa-token 发送 GET 请求（分页参数）</li>
+     *   <li>验证响应包含分页数据</li>
+     *   <li>验证列表第一项是刚才创建的对话</li>
+     * </ol>
+     *
+     * <h3>依赖：</h3>
+     * <p>依赖测试用例 1（创建对话）已执行，数据已插入数据库</p>
+     */
     @Test
     @Order(2)
     @DisplayName("获取对话列表 - GET /api/v1/chat/conversations")
     void Should_ReturnConversationList_When_GetConversations() throws Exception {
         mockMvc.perform(get("/api/v1/chat/conversations")
                 .header("satoken", token)
-                .param("page", "1")
-                .param("pageSize", "20"))
+                .param("page", "1")     // 分页页码
+                .param("pageSize", "20")) // 每页数量
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
+            // 验证 data.items 是数组
             .andExpect(jsonPath("$.data.items").isArray())
+            // 验证列表第一项的标题（依赖 Order(1) 创建的数据）
             .andExpect(jsonPath("$.data.items[0].title").value("测试对话"));
     }
 
+    /**
+     * 测试用例 3：获取对话消息列表
+     *
+     * <h3>测试步骤：</h3>
+     * <ol>
+     *   <li>使用 createdConversationId 发送 GET 请求</li>
+     *   <li>验证响应包含消息列表（空数组，因为刚创建暂无消息）</li>
+     * </ol>
+     *
+     * <h3>依赖：</h3>
+     * <p>依赖测试用例 1 创建的 conversationId</p>
+     */
     @Test
     @Order(3)
     @DisplayName("获取对话消息 - GET /api/v1/chat/conversations/{id}/messages")
@@ -118,9 +236,27 @@ class ChatControllerTest {
                 .param("pageSize", "50"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
+            // 刚创建的对话暂无消息，返回空数组
             .andExpect(jsonPath("$.data.items").isArray());
     }
 
+    /**
+     * 测试用例 4：删除对话
+     *
+     * <h3>测试步骤：</h3>
+     * <ol>
+     *   <li>使用 createdConversationId 发送 DELETE 请求</li>
+     *   <li>验证删除成功（200）</li>
+     * </ol>
+     *
+     * <h3>数据库操作：</h3>
+     * <ul>
+     *   <li>UPDATE chat_conversation SET is_deleted = TRUE（逻辑删除）</li>
+     * </ul>
+     *
+     * <h3>依赖：</h3>
+     * <p>依赖测试用例 1 创建的 conversationId</p>
+     */
     @Test
     @Order(4)
     @DisplayName("删除对话 - DELETE /api/v1/chat/conversations/{id}")
@@ -131,10 +267,23 @@ class ChatControllerTest {
             .andExpect(jsonPath("$.code").value(200));
     }
 
+    /**
+     * 测试用例 5：未登录访问应返回 401
+     *
+     * <h3>测试步骤：</h3>
+     * <ol>
+     *   <li>不携带任何认证信息发送 GET 请求</li>
+     *   <li>验证返回 401 Unauthorized</li>
+     * </ol>
+     *
+     * <h3>验证点：</h3>
+     * <p>验证 sa-token 认证拦截器正常工作</p>
+     */
     @Test
     @Order(5)
     @DisplayName("未登录访问应返回 401")
     void Should_Return401_When_NotLoggedIn() throws Exception {
+        // 不携带 satoken header
         mockMvc.perform(get("/api/v1/chat/conversations"))
             .andExpect(status().isUnauthorized());
     }
