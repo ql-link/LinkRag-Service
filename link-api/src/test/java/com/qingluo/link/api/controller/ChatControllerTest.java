@@ -1,121 +1,180 @@
 package com.qingluo.link.api.controller;
 
-import com.qingluo.link.model.dto.request.CreateConversationRequest;
-import com.qingluo.link.model.dto.response.ConversationDTO;
-import com.qingluo.link.model.dto.response.MessageDTO;
-import com.qingluo.link.model.dto.response.PageResult;
-import com.qingluo.link.model.dto.response.Result;
-import com.qingluo.link.service.ChatService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import cn.dev33.satoken.stp.StpUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qingluo.link.api.TestSecurityConfig;
+import com.qingluo.link.model.dto.entity.SysUser;
+import com.qingluo.link.mapper.SysUserMapper;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import redis.embedded.RedisServer;
 
-import java.time.LocalDateTime;
-import java.util.List;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * ChatController 控制器测试
- * TDD Red 阶段
+ * ChatController 真实集成测试
+ * <p>
+ * 使用 H2 内存数据库 + Embedded Redis 和真实 Spring 上下文测试
+ * Controller -> Service -> Mapper 完整链路
+ * </p>
  */
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import({ChatControllerTest.TestRedisConfiguration.class, TestSecurityConfig.class})
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ChatControllerTest {
 
-    @Mock
-    private ChatService chatService;
+    @TestConfiguration
+    static class TestRedisConfiguration {
+        private RedisServer redisServer;
 
-    @InjectMocks
-    private ChatController chatController;
+        @PostConstruct
+        public void startRedis() {
+            try {
+                redisServer = new RedisServer(6379);
+                redisServer.start();
+            } catch (Exception e) {
+                // Redis 可能已在运行，忽略
+            }
+        }
 
-    @Test
-    void Should_ReturnConversation_When_CreateConversationSuccess() {
-        // given
-        Long userId = 1L;
-        CreateConversationRequest request = new CreateConversationRequest();
-        request.setTitle("新对话");
+        @PreDestroy
+        public void stopRedis() {
+            if (redisServer != null && redisServer.isActive()) {
+                redisServer.stop();
+            }
+        }
 
-        ConversationDTO created = new ConversationDTO();
-        created.setId(1L);
-        created.setTitle("新对话");
-        created.setCreatedAt(LocalDateTime.now());
+        @Bean
+        public RedisConnectionFactory redisConnectionFactory() {
+            RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
+            config.setHostName("localhost");
+            config.setPort(6379);
+            return new LettuceConnectionFactory(config);
+        }
+    }
 
-        when(chatService.createConversation(eq(userId), any(CreateConversationRequest.class)))
-            .thenReturn(created);
+    @Autowired
+    private MockMvc mockMvc;
 
-        // when
-        Result<ConversationDTO> result = chatController.createConversation(request);
+    @Autowired
+    private ObjectMapper objectMapper;
 
-        // then
-        assertNotNull(result);
-        assertEquals(1L, result.getData().getId());
-        assertEquals("新对话", result.getData().getTitle());
-        verify(chatService).createConversation(eq(userId), any(CreateConversationRequest.class));
+    @Autowired
+    private SysUserMapper sysUserMapper;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    private static final Long TEST_USER_ID = 99999L;
+    private static final String TEST_USERNAME = "chattest";
+    private static final String TEST_PASSWORD = "password123";
+
+    private String token;
+    private Long createdConversationId;
+
+    @BeforeAll
+    void setup() {
+        // 直接在数据库插入测试用户，不走 HTTP
+        SysUser user = new SysUser();
+        user.setId(TEST_USER_ID);
+        user.setUsername(TEST_USERNAME);
+        user.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
+        user.setNickname("聊天测试");
+        user.setEmail("chat@test.com");
+        user.setRole("USER");
+        user.setStatus(1);
+        sysUserMapper.insert(user);
+
+        // 编程式登录获取 token
+        StpUtil.login(TEST_USER_ID);
+        token = StpUtil.getTokenValue();
     }
 
     @Test
-    void Should_ReturnConversationList_When_GetConversations() {
-        // given
-        Long userId = 1L;
-        ConversationDTO conversation = new ConversationDTO();
-        conversation.setId(1L);
-        conversation.setTitle("对话1");
+    @Order(1)
+    @DisplayName("创建对话 - POST /api/v1/chat/conversations")
+    void Should_CreateConversation_When_DataValid() throws Exception {
+        String requestJson = "{\"title\":\"测试对话\"}";
 
-        PageResult<ConversationDTO> pageResult = new PageResult<>(List.of(conversation), 1, 1, 20);
+        MvcResult result = mockMvc.perform(post("/api/v1/chat/conversations")
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.title").value("测试对话"))
+            .andReturn();
 
-        when(chatService.getConversations(eq(userId), eq(1), eq(20)))
-            .thenReturn(pageResult);
-
-        // when
-        Result<PageResult<ConversationDTO>> result = chatController.getConversations(1, 20);
-
-        // then
-        assertNotNull(result);
-        assertEquals(1, result.getData().getItems().size());
-        verify(chatService).getConversations(eq(userId), eq(1), eq(20));
+        String response = result.getResponse().getContentAsString();
+        JsonNode jsonNode = objectMapper.readTree(response);
+        createdConversationId = jsonNode.get("data").get("id").asLong();
+        Assertions.assertNotNull(createdConversationId);
     }
 
     @Test
-    void Should_ReturnMessageList_When_GetMessages() {
-        // given
-        Long userId = 1L;
-        Long conversationId = 1L;
-        MessageDTO message = new MessageDTO();
-        message.setId(1L);
-        message.setRole("user");
-        message.setContent("你好");
-
-        PageResult<MessageDTO> pageResult = new PageResult<>(List.of(message), 1, 1, 50);
-
-        when(chatService.getMessages(eq(userId), eq(conversationId), eq(1), eq(50)))
-            .thenReturn(pageResult);
-
-        // when
-        Result<PageResult<MessageDTO>> result = chatController.getMessages(conversationId, 1, 50);
-
-        // then
-        assertNotNull(result);
-        assertEquals(1, result.getData().getItems().size());
-        assertEquals("你好", result.getData().getItems().get(0).getContent());
-        verify(chatService).getMessages(eq(userId), eq(conversationId), eq(1), eq(50));
+    @Order(2)
+    @DisplayName("获取对话列表 - GET /api/v1/chat/conversations")
+    void Should_ReturnConversationList_When_GetConversations() throws Exception {
+        mockMvc.perform(get("/api/v1/chat/conversations")
+                .header("satoken", token)
+                .param("page", "1")
+                .param("pageSize", "20"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.items").isArray())
+            .andExpect(jsonPath("$.data.items[0].title").value("测试对话"));
     }
 
     @Test
-    void Should_ReturnOk_When_DeleteConversationSuccess() {
-        // given
-        Long userId = 1L;
-        Long conversationId = 1L;
+    @Order(3)
+    @DisplayName("获取对话消息 - GET /api/v1/chat/conversations/{id}/messages")
+    void Should_ReturnMessages_When_ConversationExists() throws Exception {
+        mockMvc.perform(get("/api/v1/chat/conversations/" + createdConversationId + "/messages")
+                .header("satoken", token)
+                .param("page", "1")
+                .param("pageSize", "50"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.items").isArray());
+    }
 
-        doNothing().when(chatService).deleteConversation(eq(userId), eq(conversationId));
+    @Test
+    @Order(4)
+    @DisplayName("删除对话 - DELETE /api/v1/chat/conversations/{id}")
+    void Should_DeleteConversation_When_ConversationExists() throws Exception {
+        mockMvc.perform(delete("/api/v1/chat/conversations/" + createdConversationId)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
+    }
 
-        // when
-        Result<Void> result = chatController.deleteConversation(conversationId);
-
-        // then
-        assertNotNull(result);
-        verify(chatService).deleteConversation(eq(userId), eq(conversationId));
+    @Test
+    @Order(5)
+    @DisplayName("未登录访问应返回 401")
+    void Should_Return401_When_NotLoggedIn() throws Exception {
+        mockMvc.perform(get("/api/v1/chat/conversations"))
+            .andExpect(status().isUnauthorized());
     }
 }
