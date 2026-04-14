@@ -15,6 +15,14 @@ import java.util.List;
 
 
 // 用户 LLM 配置管理接口
+
+/**
+ * LLM配置控制器
+ * <p>提供用户 LLM 配置的创建、查询、修改、删除功能</p>
+ *
+ * @author qingluo
+ * @since 2024-01-01
+ */
 @RestController
 @RequestMapping("/api/v1/llm/configs")
 @RequiredArgsConstructor

@@ -10,6 +10,13 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 
+/**
+ * 认证控制器
+ * <p>提供用户登录、注册、登出等认证功能</p>
+ *
+ * @author qingluo
+ * @since 2024-01-01
+ */
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor

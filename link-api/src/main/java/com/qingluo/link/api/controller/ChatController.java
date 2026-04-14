@@ -13,6 +13,13 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 
+/**
+ * 对话控制器
+ * <p>提供会话创建、消息管理、对话删除等功能</p>
+ *
+ * @author qingluo
+ * @since 2024-01-01
+ */
 @RestController
 @RequestMapping("/api/v1/chat/conversations")
 @RequiredArgsConstructor

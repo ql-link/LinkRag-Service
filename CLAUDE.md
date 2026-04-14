@@ -53,6 +53,8 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - **响应格式**: 统一使用 `Result<T>` / `PageResult<T>`
 - **认证**: 所有需要登录的接口通过 sa-token 拦截，用户信息从 `AuthContext` 获取
 - **API Key 加密**: 存储前必须通过 `ApiKeyEncryptService` 加密，读取时解密
+- **API 文档**: 所有 DTO 必须添加 Swagger `@Schema` 注解，包含字段描述（description）和示例值（example）
+- **Controller 文档**: 所有 Controller 类必须添加 JavaDoc 注释，包含类功能描述、作者、版本信息
 
 ## 当前分支
 `user_and_llm_manage`（基于 master），已实现完整业务代码。

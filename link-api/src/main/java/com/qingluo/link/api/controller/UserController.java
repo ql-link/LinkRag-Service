@@ -10,6 +10,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 用户控制器
+ * <p>提供用户个人信息的查看与修改功能</p>
+ *
+ * @author qingluo
+ * @since 2024-01-01
+ */
 @RestController
 @RequestMapping("/api/v1/user")
 @RequiredArgsConstructor

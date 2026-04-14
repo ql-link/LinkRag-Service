@@ -16,7 +16,11 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * 管理员接口
+ * 管理员控制器
+ * <p>提供用户管理、厂商管理等管理员功能</p>
+ *
+ * @author qingluo
+ * @since 2024-01-01
  */
 @RestController
 @RequestMapping("/api/v1/admin")

@@ -9,6 +9,13 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 使用量查询控制器
+ * <p>提供 LLM 使用量的汇总、日报、调用日志查询功能</p>
+ *
+ * @author qingluo
+ * @since 2024-01-01
+ */
 @RestController
 @RequestMapping("/api/v1/llm/usage")
 @RequiredArgsConstructor
