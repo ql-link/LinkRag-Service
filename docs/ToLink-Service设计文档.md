@@ -1,7 +1,7 @@
 # ToLink Service 技术设计文档
 
 > 项目名称：ToLink Service
-> 更新时间：2026-04-12
+> 更新时间：2026-04-14
 > 状态：开发中
 > 描述：多 LLM 接入模块的 Java 管理端，负责用户交互和配置管理
 
@@ -123,6 +123,7 @@ Redis 用于两个主要场景：
 - 支持集群部署下的 Session 共享
 
 **场景二：业务数据缓存**
+- 用户信息缓存，TTL 7 天
 - 用户 LLM 配置缓存，TTL 7 天
 - 系统厂商信息缓存，TTL 30 天
 - 用户默认配置 ID 缓存，TTL 30 天
@@ -140,7 +141,7 @@ Redis 用于两个主要场景：
 | REDIS_PORT | 6379 | Redis 端口 |
 | REDIS_PASSWORD | - | Redis 密码（如有） |
 | REDIS_DB | 0 | Redis 数据库编号 |
-| LLM_API_KEY_SECRET | - | API Key 加密密钥（64位十六进制） |
+| LLM_SECRET | - | API Key 加密密钥（64位十六进制） |
 
 ---
 
@@ -191,11 +192,26 @@ LLM 配置中的 API Key 需要加密存储，原因：
 ```
 
 **密钥管理**：
-- 密钥通过环境变量 LLM_API_KEY_SECRET 注入
+- 密钥通过环境变量 LLM_SECRET 注入
 - Java 和 Python 两端使用相同密钥
 - 密钥变更需两端同时更新
 
-### 4.3 Token 安全
+### 4.3 RBAC 权限管理
+
+**角色：ADMIN / USER**
+
+系统内置两个角色，普通用户注册后自动分配 `USER` 角色，管理员由数据库初始化脚本预置。
+
+**sa-token 集成**：
+- 通过 `StpInterfaceImpl` 实现 `StpInterface` 接口，每次鉴权时从 Redis 缓存加载用户角色
+- 缓存未命中则查 MySQL 并回填缓存，TTL 24 小时
+- 使用 `@SaCheckRole("ADMIN")` 注解保护管理员接口
+
+**权限注解**：
+- `@SaCheckLogin`：验证登录状态
+- `@SaCheckRole("ADMIN")`：验证管理员角色
+
+### 4.4 Token 安全
 
 **认证策略：sa-token UUID 风格 Token**
 
@@ -433,13 +449,16 @@ link-service/src/main/java/com/qingluo/link/
 ```
 link-api/src/main/java/com/qingluo/link/
 │
-└── controller/                     # 控制层（HTTP 请求处理）
+├── stp/                            # sa-token RBAC 集成
+│   └── StpInterfaceImpl.java      # 角色权限加载实现
+└── controller/                    # 控制层（HTTP 请求处理）
     ├── AuthController.java         # 认证：登录/注册/登出
-    ├── UserController.java         # 用户：个人信息
-    ├── ConfigController.java       # LLM 配置：增删改查
-    ├── ChatController.java         # 对话：创建/列表/删除/消息
-    ├── UsageController.java        # 用量：汇总/日度/明细
-    └── GlobalExceptionHandler.java # 全局异常处理
+    ├── UserController.java         # 用户：个人信息、修改资料
+    ├── ConfigController.java        # LLM 配置：增删改查
+    ├── ChatController.java          # 对话：创建/列表/删除/消息
+    ├── UsageController.java         # 用量：汇总/日度/明细
+    ├── AdminController.java         # 管理员：用户管理、系统厂商管理
+    └── GlobalExceptionHandler.java  # 全局异常处理
 ```
 
 #### link-service 模块（Service 层）
@@ -448,15 +467,23 @@ link-service/src/main/java/com/qingluo/link/
 │
 └── service/                         # 服务接口与实现
     │
-    ├── service/                     # 服务接口（平级目录）
+    ├── cache/                       # 缓存服务
+    │   ├── UserCacheService.java    # 用户信息缓存
+    │   └── UserCacheServiceImpl.java
+    │
+    ├── service/                     # 服务接口
     │   ├── AuthService.java
+    │   ├── AdminUserService.java   # 管理员用户管理
+    │   ├── AdminProviderService.java # 管理员厂商管理
     │   ├── SystemProviderService.java
     │   ├── UserLLMConfigService.java
     │   ├── ChatService.java
     │   └── UsageQueryService.java
     │
-    └── impl/                        # 服务实现（平级目录）
+    └── impl/                        # 服务实现
         ├── AuthServiceImpl.java
+        ├── AdminUserServiceImpl.java
+        ├── AdminProviderServiceImpl.java
         ├── SystemProviderServiceImpl.java
         ├── UserLLMConfigServiceImpl.java
         ├── ChatServiceImpl.java
@@ -516,6 +543,11 @@ link-model/src/main/java/com/qingluo/link/model/
 │   ├── request/                         # 入参对象（带 Validation 注解）
 │   │   ├── LoginRequest.java
 │   │   ├── RegisterRequest.java
+│   │   ├── UpdateProfileRequest.java   # 修改个人资料
+│   │   ├── UpdateUserStatusRequest.java # 管理员修改用户状态
+│   │   ├── UpdateUserRoleRequest.java   # 管理员修改用户角色
+│   │   ├── CreateProviderRequest.java   # 管理员创建厂商
+│   │   ├── UpdateProviderRequest.java   # 管理员更新厂商
 │   │   ├── CreateConfigRequest.java
 │   │   ├── UpdateConfigRequest.java
 │   │   ├── CreateConversationRequest.java
@@ -534,7 +566,8 @@ link-model/src/main/java/com/qingluo/link/model/
 │       └── UsageLogDTO.java             # 用量明细
 │
 └── enums/                               # 枚举类
-    └── ErrorCode.java                   # 错误码（含 code、message、httpStatus）
+    ├── ErrorCode.java                   # 错误码（含 code、message、httpStatus）
+    └── UserRole.java                    # 用户角色（ADMIN / USER）
 ```
 
 #### link-components 模块
@@ -703,7 +736,191 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-### 7.4 LLM 配置接口
+#### 7.3.2 修改个人资料
+
+**接口**：`PATCH /api/v1/user/profile`
+
+**功能描述**：修改当前登录用户的个人资料，变更后自动驱逐 Redis 缓存。
+
+**请求头**：`Authorization: Bearer {token}`
+
+**请求体**（所有字段均可选，仅传入需要修改的字段）：
+```json
+{
+  "nickname": "新昵称",
+  "email": "new@example.com",
+  "phone": "13800138000",
+  "avatarUrl": "https://example.com/avatar.png"
+}
+```
+
+**成功响应（200）**：`{"code": 200, "message": "success"}`
+
+**说明**：
+- `username`、`role`、`status` 不可修改
+- 变更后自动调用 `UserCacheService.evict()` 双删缓存
+
+### 7.4 管理员用户接口
+
+> 以下接口需 `Authorization: Bearer {token}`，且用户角色为 `ADMIN`，非管理员访问返回 403。
+
+#### 7.4.1 查询用户列表
+
+**接口**：`GET /api/v1/admin/users`
+
+**功能描述**：分页查询所有用户列表，按创建时间倒序。
+
+**请求头**：`Authorization: Bearer {token}`
+
+**查询参数**：
+- `page`（可选，默认 1）：页码
+- `size`（可选，默认 10）：每页条数
+
+**成功响应（200）**：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "username": "alice",
+        "nickname": "Alice",
+        "email": "alice@example.com",
+        "role": "USER",
+        "status": 1
+      }
+    ],
+    "total": 42,
+    "page": 1,
+    "pageSize": 10
+  }
+}
+```
+
+#### 7.4.2 修改用户状态
+
+**接口**：`PATCH /api/v1/admin/users/{id}/status`
+
+**功能描述**：启用或禁用指定用户。
+
+**请求体**：
+```json
+{
+  "status": 0
+}
+```
+- `1` = 启用，`0` = 禁用
+
+**成功响应（200）**：`{"code": 200, "message": "success"}`
+
+**说明**：禁用后该用户无法登录。
+
+#### 7.4.3 修改用户角色
+
+**接口**：`PATCH /api/v1/admin/users/{id}/role`
+
+**功能描述**：将普通用户提升为管理员，或降级为普通用户。
+
+**请求体**：
+```json
+{
+  "role": "ADMIN"
+}
+```
+- 有效值：`ADMIN`、`USER`
+
+**成功响应（200）**：`{"code": 200, "message": "success"}`
+
+### 7.5 管理员系统厂商接口
+
+> 以下接口需 `Authorization: Bearer {token}`，且用户角色为 `ADMIN`。
+
+#### 7.5.1 查询厂商列表
+
+**接口**：`GET /api/v1/admin/providers`
+
+**功能描述**：分页查询所有 LLM 厂商列表，按优先级倒序。
+
+**成功响应（200）**：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "id": 10001,
+        "providerType": "openai",
+        "providerName": "OpenAI",
+        "apiBaseUrl": "https://api.openai.com/v1",
+        "isActive": true,
+        "priority": 100
+      }
+    ],
+    "total": 4,
+    "page": 1,
+    "pageSize": 10
+  }
+}
+```
+
+#### 7.5.2 创建厂商
+
+**接口**：`POST /api/v1/admin/providers`
+
+**请求体**：
+```json
+{
+  "providerType": "openai",
+  "providerName": "OpenAI",
+  "apiBaseUrl": "https://api.openai.com/v1",
+  "supportedModels": "{\"gpt-4\":[\"CHAT\"]}",
+  "configSchema": "{\"temperature\":{\"type\":\"float\",\"default\":0.7}}",
+  "isActive": true,
+  "priority": 100
+}
+```
+
+**成功响应（201）**：`{"code": 201, "message": "success"}`
+
+**错误响应**：
+- 厂商类型已存在（409）：`{"code": 10009, "message": "厂商类型已存在"}`
+
+#### 7.5.3 更新厂商
+
+**接口**：`PATCH /api/v1/admin/providers/{id}`
+
+**功能描述**：部分更新厂商字段，变更后双删缓存。
+
+**请求体**（示例）：
+```json
+{
+  "providerName": "OpenAI Updated",
+  "priority": 80,
+  "isActive": false
+}
+```
+
+**成功响应（200）**：`{"code": 200, "message": "success"}`
+
+#### 7.5.4 删除厂商
+
+**接口**：`DELETE /api/v1/admin/providers/{id}`
+
+**成功响应（200）**：`{"code": 200, "message": "success"}`
+
+#### 7.5.5 启用/禁用厂商
+
+**接口**：`PATCH /api/v1/admin/providers/{id}/active?isActive=false`
+
+**查询参数**：
+- `isActive`：`true` 启用，`false` 禁用
+
+**成功响应（200）**：`{"code": 200, "message": "success"}`
+
+### 7.6 LLM 配置接口
 
 #### 7.4.1 获取用户 LLM 配置列表
 
@@ -828,9 +1045,9 @@ Authorization: Bearer {accessToken}
 
 **成功响应**：204 No Content
 
-### 7.5 对话接口
+### 7.7 对话接口
 
-#### 7.5.1 创建对话
+#### 7.7.1 创建对话
 
 **接口**：`POST /api/v1/chat/conversations`
 
@@ -865,7 +1082,7 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-#### 7.5.2 获取对话列表
+#### 7.7.2 获取对话列表
 
 **接口**：`GET /api/v1/chat/conversations`
 
@@ -901,7 +1118,7 @@ Authorization: Bearer {accessToken}
 
 **说明**：列表中不包含已删除的对话（软删除）。
 
-#### 7.5.3 获取对话历史消息
+#### 7.7.3 获取对话历史消息
 
 **接口**：`GET /api/v1/chat/conversations/{id}/messages`
 
@@ -948,7 +1165,7 @@ Authorization: Bearer {accessToken}
 - `tokenCount` 对于用户消息为 0
 - `modelName` 对于用户消息为 null
 
-#### 7.5.4 删除对话
+#### 7.7.4 删除对话
 
 **接口**：`DELETE /api/v1/chat/conversations/{id}`
 
@@ -958,9 +1175,9 @@ Authorization: Bearer {accessToken}
 
 **成功响应**：204 No Content
 
-### 7.6 用量统计接口
+### 7.8 用量统计接口
 
-#### 7.6.1 获取用量汇总
+#### 7.8.1 获取用量汇总
 
 **接口**：`GET /api/v1/llm/usage/summary`
 
@@ -987,7 +1204,7 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-#### 7.6.2 获取日度用量
+#### 7.8.2 获取日度用量
 
 **接口**：`GET /api/v1/llm/usage/daily`
 
@@ -1023,7 +1240,7 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-#### 7.6.3 获取用量明细
+#### 7.8.3 获取用量明细
 
 **接口**：`GET /api/v1/llm/usage/logs`
 
@@ -1136,6 +1353,7 @@ Authorization: Bearer {accessToken}
 
 | 数据类型 | Key 格式 | TTL | 说明 |
 |---------|---------|-----|------|
+| 用户信息 | `user:info:{userId}` | 7 天 | 用户完整信息，登录时写入 |
 | 用户 LLM 配置 | `llm:cfg:{configId}` | 7 天 | 配置详情缓存 |
 | 系统厂商信息 | `llm:pvd:{providerType}` | 30 天 | 厂商元数据缓存 |
 | 用户默认配置 ID | `llm:u_def:{userId}` | 30 天 | 快速获取用户默认配置 |
@@ -1200,6 +1418,22 @@ public class DoubleDeleteCacheService {
     }
 
     /**
+     * 驱逐用户信息缓存
+     */
+    public void evictUserInfoCache(String userId) {
+        String cacheKey = "user:info:" + userId;
+        deleteCacheWithRetry(cacheKey);
+        scheduleSecondDelete(cacheKey);
+    }
+
+    /**
+     * 驱逐用户角色缓存（已由 evictUserInfoCache 统一处理，保留以备扩展）
+     */
+    public void evictUserRoleCache(String userId) {
+        evictUserInfoCache(userId);
+    }
+
+    /**
      * 带重试的缓存删除（第一删）
      */
     public boolean deleteCacheWithRetry(String cacheKey) {
@@ -1257,10 +1491,13 @@ public class DoubleDeleteCacheService {
 
 | 场景 | 调用方法 |
 |------|---------|
+| 用户登录/注册 | `UserCacheService.put(userId, dto)` |
+| 修改个人资料 | `UserCacheService.evict(userId)` |
+| 修改用户状态/角色（管理员） | `UserCacheService.evict(userId)` |
 | 更新用户 LLM 配置 | `evictConfigCache(configId)` |
 | 删除用户 LLM 配置 | `evictConfigCache(configId)` |
 | 修改用户默认配置 | `evictDefaultConfigCache(userId)` |
-| 更新系统厂商信息 | `evictProviderCache(providerType)` |
+| 创建/更新/删除系统厂商 | `evictProviderCache(providerType)` |
 
 #### 9.3.3 参数说明
 
