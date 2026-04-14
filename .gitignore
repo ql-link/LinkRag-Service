@@ -16,3 +16,4 @@ release.properties
 **/application-local.yaml
 **/application-dev.yml
 **/application-dev.yaml
+/.mcp.json

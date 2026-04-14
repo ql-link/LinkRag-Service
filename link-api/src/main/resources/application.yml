@@ -40,7 +40,7 @@ sa-token:
 
 llm:
   api-key:
-    secret: ${LLM_SECRET:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+    secret: ${LLM_SECRET}
 
 server:
   port: 8080
