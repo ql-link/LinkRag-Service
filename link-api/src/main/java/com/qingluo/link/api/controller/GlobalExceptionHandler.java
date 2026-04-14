@@ -2,6 +2,8 @@ package com.qingluo.link.api.controller;
 
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.core.exception.BusinessException;
+import cn.dev33.satoken.exception.NotLoginException;
+import cn.dev33.satoken.exception.NotRoleException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,18 @@ public class GlobalExceptionHandler {
         log.error("业务异常: {}", e.getMessage());
         return ResponseEntity.status(e.getHttpStatus())
             .body(Result.error(e.getCode(), e.getMessage()));
+    }
+
+    @ExceptionHandler(NotLoginException.class)
+    public ResponseEntity<Result<Object>> handleNotLoginException(NotLoginException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(Result.error(401, "未登录或登录已过期"));
+    }
+
+    @ExceptionHandler(NotRoleException.class)
+    public ResponseEntity<Result<Object>> handleNotRoleException(NotRoleException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(Result.error(403, "权限不足"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

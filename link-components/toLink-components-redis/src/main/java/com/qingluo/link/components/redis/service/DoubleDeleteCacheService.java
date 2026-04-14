@@ -51,6 +51,24 @@ public class DoubleDeleteCacheService {
     }
 
     /**
+     * 驱逐用户信息缓存
+     */
+    public void evictUserInfoCache(String userId) {
+        String cacheKey = "user:info:" + userId;
+        firstDelete(cacheKey);
+        scheduleSecondDelete(cacheKey);
+    }
+
+    /**
+     * 驱逐用户角色缓存
+     */
+    public void evictUserRoleCache(String userId) {
+        String cacheKey = "user:role:" + userId;
+        firstDelete(cacheKey);
+        scheduleSecondDelete(cacheKey);
+    }
+
+    /**
      * 第一删（同步，带重试）
      */
     private void firstDelete(String cacheKey) {

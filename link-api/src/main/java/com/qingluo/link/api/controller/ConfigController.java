@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.util.List;
 
+
+// 用户 LLM 配置管理接口
 @RestController
 @RequestMapping("/api/v1/llm/configs")
 @RequiredArgsConstructor

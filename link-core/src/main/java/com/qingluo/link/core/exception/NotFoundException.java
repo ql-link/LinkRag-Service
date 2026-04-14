@@ -26,4 +26,8 @@ public class NotFoundException extends BusinessException {
     public static NotFoundException conversationNotFound() {
         return new NotFoundException(ErrorCode.CONVERSATION_NOT_FOUND);
     }
+
+    public static NotFoundException userNotFound() {
+        return new NotFoundException(ErrorCode.USER_NOT_FOUND);
+    }
 }
