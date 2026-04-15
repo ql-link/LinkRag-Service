@@ -55,6 +55,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - **API Key 加密**: 存储前必须通过 `ApiKeyEncryptService` 加密，读取时解密
 - **API 文档**: 所有 DTO 必须添加 Swagger `@Schema` 注解，包含字段描述（description）和示例值（example）
 - **Controller 文档**: 所有 Controller 类必须添加 JavaDoc 注释，包含类功能描述、作者、版本信息
+- **接口设计规范**: 参考 [api-design-standards skill](../.claude/skills/api-design-standards/SKILL.md)，包含 URL 规范、HTTP 方法、状态码、响应格式等
 
 ## 当前分支
 `user_and_llm_manage`（基于 master），已实现完整业务代码。

@@ -11,6 +11,9 @@ import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.service.AdminProviderService;
 import com.qingluo.link.service.AdminUserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/admin")
 @SaCheckRole("ADMIN")
 @RequiredArgsConstructor
+@Tag(name = "管理员接口", description = "用户管理、LLM厂商管理（需ADMIN角色）")
 public class AdminController {
 
     private final AdminUserService adminUserService;
@@ -34,31 +38,48 @@ public class AdminController {
     // ---- 用户管理 ----
 
     /**
-     * 分页查询用户列表
+     * 查询用户列表
+     *
+     * @param page 页码（默认1）
+     * @param size 每页条数（默认10）
+     * @return 用户列表（分页）
      */
     @GetMapping("/users")
+    @Operation(summary = "查询用户列表", description = "分页查询所有用户列表，按创建时间倒序")
     public Result<PageResult<UserProfileDTO>> listUsers(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size) {
         return Result.success(adminUserService.listUsers(page, size));
     }
 
     /**
-     * 修改用户状态（启用/禁用）
+     * 修改用户状态
+     *
+     * @param id      用户ID
+     * @param request 状态信息（status: 1=启用, 0=禁用）
+     * @return 无返回内容
      */
     @PatchMapping("/users/{id}/status")
-    public Result<Void> updateUserStatus(@PathVariable Long id,
-                                         @RequestBody @Validated UpdateUserStatusRequest request) {
+    @Operation(summary = "修改用户状态", description = "启用或禁用指定用户，禁用后该用户无法登录")
+    public Result<Void> updateUserStatus(
+            @Parameter(description = "用户ID") @PathVariable Long id,
+            @RequestBody @Validated UpdateUserStatusRequest request) {
         adminUserService.updateUserStatus(id, request);
         return Result.success(null);
     }
 
     /**
      * 修改用户角色
+     *
+     * @param id      用户ID
+     * @param request 角色信息（role: ADMIN或USER）
+     * @return 无返回内容
      */
     @PatchMapping("/users/{id}/role")
-    public Result<Void> updateUserRole(@PathVariable Long id,
-                                       @RequestBody @Validated UpdateUserRoleRequest request) {
+    @Operation(summary = "修改用户角色", description = "将普通用户提升为管理员，或降级为普通用户")
+    public Result<Void> updateUserRole(
+            @Parameter(description = "用户ID") @PathVariable Long id,
+            @RequestBody @Validated UpdateUserRoleRequest request) {
         adminUserService.updateUserRole(id, request);
         return Result.success(null);
     }
@@ -66,19 +87,28 @@ public class AdminController {
     // ---- 系统厂商管理 ----
 
     /**
-     * 分页查询厂商列表
+     * 查询厂商列表
+     *
+     * @param page 页码（默认1）
+     * @param size 每页条数（默认10）
+     * @return 厂商列表（分页，按优先级倒序）
      */
     @GetMapping("/providers")
+    @Operation(summary = "查询厂商列表", description = "分页查询所有LLM厂商列表，按优先级倒序")
     public Result<PageResult<SystemProvider>> listProviders(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size) {
         return Result.success(adminProviderService.listProviders(page, size));
     }
 
     /**
      * 创建厂商
+     *
+     * @param request 厂商信息
+     * @return 无返回内容
      */
     @PostMapping("/providers")
+    @Operation(summary = "创建厂商", description = "创建一个新的LLM系统厂商配置")
     public Result<Void> createProvider(@RequestBody @Validated CreateProviderRequest request) {
         adminProviderService.createProvider(request);
         return Result.success(null);
@@ -86,29 +116,45 @@ public class AdminController {
 
     /**
      * 更新厂商
+     *
+     * @param id      厂商ID
+     * @param request 更新内容
+     * @return 无返回内容
      */
     @PatchMapping("/providers/{id}")
-    public Result<Void> updateProvider(@PathVariable Long id,
-                                      @RequestBody @Validated UpdateProviderRequest request) {
+    @Operation(summary = "更新厂商", description = "部分更新厂商字段，变更后双删缓存")
+    public Result<Void> updateProvider(
+            @Parameter(description = "厂商ID") @PathVariable Long id,
+            @RequestBody @Validated UpdateProviderRequest request) {
         adminProviderService.updateProvider(id, request);
         return Result.success(null);
     }
 
     /**
      * 删除厂商
+     *
+     * @param id 厂商ID
+     * @return 无返回内容
      */
     @DeleteMapping("/providers/{id}")
-    public Result<Void> deleteProvider(@PathVariable Long id) {
+    @Operation(summary = "删除厂商", description = "删除指定的LLM厂商配置")
+    public Result<Void> deleteProvider(@Parameter(description = "厂商ID") @PathVariable Long id) {
         adminProviderService.deleteProvider(id);
         return Result.success(null);
     }
 
     /**
      * 启用/禁用厂商
+     *
+     * @param id       厂商ID
+     * @param isActive 是否启用（true启用，false禁用）
+     * @return 无返回内容
      */
     @PatchMapping("/providers/{id}/active")
-    public Result<Void> toggleProviderActive(@PathVariable Long id,
-                                            @RequestParam boolean isActive) {
+    @Operation(summary = "启用/禁用厂商", description = "启用或禁用指定的LLM厂商，禁用后用户不可见")
+    public Result<Void> toggleProviderActive(
+            @Parameter(description = "厂商ID") @PathVariable Long id,
+            @Parameter(description = "是否启用") @RequestParam boolean isActive) {
         adminProviderService.toggleActive(id, isActive);
         return Result.success(null);
     }

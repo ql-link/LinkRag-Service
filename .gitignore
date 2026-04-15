@@ -19,3 +19,5 @@ release.properties
 **/application-personal.yml
 **/application-personal.yaml
 /.mcp.json
+docs/ToLink-前端API文档.md
+.DS_Store
