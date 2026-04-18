@@ -1,0 +1,52 @@
+spring:
+  main:
+    allow-bean-definition-overriding: true
+
+  application:
+    name: tolink-service-test
+
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_UPPER=false
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  redis:
+    host: 127.0.0.1
+    port: 6379
+
+  h2:
+    console:
+      enabled: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: isDeleted
+
+sa-token:
+  token-name: satoken
+  timeout: 604800
+  token-style: uuid
+  is-concurrent: true
+  is-share: false
+  token-mode: uuid
+
+llm:
+  api-key:
+    secret: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+logging:
+  level:
+    com.qingluo.link: debug
+
+############## 线程池配置 ##############
+thread-pool:
+  core-pool-size: 5
+  max-pool-size: 10
+  queue-capacity: 50
+  keep-alive-seconds: 60
+  thread-name-prefix: custom-thread-

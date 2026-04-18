@@ -12,8 +12,9 @@
         <module>link-components</module>
         <module>link-service</module>
         <module>link-core</module>
-        <module>link-api</module>
         <module>link-model</module>
+        <module>link-api</module>
+        <module>link-mapper</module>
     </modules>
 
     <properties>
@@ -44,7 +45,6 @@
         <commons-pool2.version>2.11.1</commons-pool2.version>
         <fastjson.version>1.2.83</fastjson.version>
         <mybatis-plus-boot-starter.version>3.4.2</mybatis-plus-boot-starter.version>
-        <lombok.version>1.18.22</lombok.version>
 
         <sa-token-spring-boot-starter.version>1.39.0</sa-token-spring-boot-starter.version>
     </properties>
