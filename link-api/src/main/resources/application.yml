@@ -42,6 +42,20 @@ llm:
   api-key:
     secret: ${LLM_SECRET}
 
+tolink:
+  oss:
+    service-type: ${OSS_SERVICE_TYPE:local}
+    file-root-path: ${OSS_FILE_ROOT_PATH:${user.home}/.tolink/oss}
+    file-public-path: ${OSS_FILE_PUBLIC_PATH:${tolink.oss.file-root-path}/public}
+    file-private-path: ${OSS_FILE_PRIVATE_PATH:${tolink.oss.file-root-path}/private}
+    public-base-url: ${OSS_PUBLIC_BASE_URL:/api/v1/oss-files/public}
+    aliyun-oss:
+      endpoint: ${OSS_ALIYUN_ENDPOINT:}
+      public-bucket-name: ${OSS_ALIYUN_PUBLIC_BUCKET:}
+      private-bucket-name: ${OSS_ALIYUN_PRIVATE_BUCKET:}
+      access-key-id: ${OSS_ALIYUN_ACCESS_KEY_ID:}
+      access-key-secret: ${OSS_ALIYUN_ACCESS_KEY_SECRET:}
+
 server:
   port: 8080
 
@@ -62,4 +76,3 @@ thread-pool:
   keep-alive-seconds: 60
   # 线程名称前缀
   thread-name-prefix: custom-thread-
-

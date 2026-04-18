@@ -71,6 +71,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- OSS component -->
+        <dependency>
+            <groupId>com.qingluo</groupId>
+            <artifactId>toLink-components-oss</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Spring Boot Starter Data Redis -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
