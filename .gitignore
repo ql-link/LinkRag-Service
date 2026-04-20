@@ -5,6 +5,8 @@ llm_module_java_api_design.md
 
 # Maven
 target/
+logs/
+**/logs/
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
@@ -21,3 +23,4 @@ release.properties
 /.mcp.json
 docs/ToLink-前端API文档.md
 .DS_Store
+/.agents/
