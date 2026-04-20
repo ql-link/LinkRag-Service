@@ -30,7 +30,7 @@ class StpInterfaceImplTest {
     private UserCacheService userCacheService;
 
     @InjectMocks
-    private StpInterfaceImpl stpInterface;
+    private com.qingluo.link.service.config.StpInterfaceImpl stpInterface;
 
     @Test
     @DisplayName("Should_ReturnRoleFromCache_When_CacheHit")

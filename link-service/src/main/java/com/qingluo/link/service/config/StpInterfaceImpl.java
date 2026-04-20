@@ -1,4 +1,4 @@
-package com.qingluo.link.api.stp;
+package com.qingluo.link.service.config;
 
 import cn.dev33.satoken.stp.StpInterface;
 import com.qingluo.link.mapper.SysUserMapper;
