@@ -1,4 +1,4 @@
-package com.qingluo.link.api.controller;
+package com.qingluo.link.core.handler;
 
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.core.exception.BusinessException;
