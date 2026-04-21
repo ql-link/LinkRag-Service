@@ -1,6 +1,8 @@
 spring:
   application:
     name: tolink-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
 
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:tolink_rag_db}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
@@ -22,13 +24,26 @@ spring:
         min-idle: 0
         max-wait: 1000ms
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:36.213.180.176:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_PLAINTEXT}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:PLAIN}
+      sasl.jaas.config: org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_USERNAME:root}" password="${KAFKA_PASSWORD:ql354210}";
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
   global-config:
     db-config:
       id-type: auto
-      logic-delete-field: isDeleted
 
 sa-token:
   token-name: satoken
@@ -42,19 +57,44 @@ llm:
   api-key:
     secret: ${LLM_SECRET}
 
+qingluopay:
+  mq:
+    vender: ${TOLINK_MQ_VENDOR:kafka}
+    scan-base-packages:
+      - com.qingluo
+    kafka-auto-create-topics: ${KAFKA_AUTO_CREATE_TOPICS:true}
+    kafka-topic-partitions: ${KAFKA_TOPIC_PARTITIONS:1}
+    kafka-topic-replicas: ${KAFKA_TOPIC_REPLICAS:1}
+
 tolink:
   oss:
-    service-type: ${OSS_SERVICE_TYPE:local}
+    service-type: ${OSS_SERVICE_TYPE:minio}
     file-root-path: ${OSS_FILE_ROOT_PATH:${user.home}/.tolink/oss}
     file-public-path: ${OSS_FILE_PUBLIC_PATH:${tolink.oss.file-root-path}/public}
     file-private-path: ${OSS_FILE_PRIVATE_PATH:${tolink.oss.file-root-path}/private}
     public-base-url: ${OSS_PUBLIC_BASE_URL:/api/v1/oss-files/public}
+    minio:
+      endpoint: ${OSS_MINIO_ENDPOINT:}
+      public-bucket-name: ${OSS_MINIO_PUBLIC_BUCKET:}
+      private-bucket-name: ${OSS_MINIO_PRIVATE_BUCKET:}
+      access-key: ${OSS_MINIO_ACCESS_KEY:}
+      secret-key: ${OSS_MINIO_SECRET_KEY:}
     aliyun-oss:
       endpoint: ${OSS_ALIYUN_ENDPOINT:}
       public-bucket-name: ${OSS_ALIYUN_PUBLIC_BUCKET:}
       private-bucket-name: ${OSS_ALIYUN_PRIVATE_BUCKET:}
       access-key-id: ${OSS_ALIYUN_ACCESS_KEY_ID:}
       access-key-secret: ${OSS_ALIYUN_ACCESS_KEY_SECRET:}
+  knowledge-file:
+    max-size-bytes: ${KNOWLEDGE_FILE_MAX_SIZE_BYTES:20971520}
+    internal-base-url: ${KNOWLEDGE_FILE_INTERNAL_BASE_URL:http://tolink-service:8080}
+    service-token: ${KNOWLEDGE_FILE_SERVICE_TOKEN:}
+    allowed-suffixes:
+      - md
+      - markdown
+      - pdf
+      - docx
+      - txt
 
 server:
   port: 8080
