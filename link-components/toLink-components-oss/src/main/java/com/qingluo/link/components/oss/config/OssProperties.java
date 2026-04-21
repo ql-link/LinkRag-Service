@@ -37,9 +37,10 @@ public class OssProperties {
     /**
      * URL prefix used by local public uploads.
      */
-    private String publicBaseUrl = "/api/v1/oss-files/public";
+    private String publicBaseUrl;
 
     private final AliyunOss aliyunOss = new AliyunOss();
+    private final Minio minio = new Minio();
 
     public String getServiceType() {
         return serviceType;
@@ -91,6 +92,10 @@ public class OssProperties {
         return aliyunOss;
     }
 
+    public Minio getMinio() {
+        return minio;
+    }
+
     public static class AliyunOss {
 
         private String endpoint;
@@ -137,6 +142,55 @@ public class OssProperties {
 
         public void setAccessKeySecret(String accessKeySecret) {
             this.accessKeySecret = accessKeySecret;
+        }
+    }
+
+    public static class Minio {
+
+        private String endpoint;
+        private String publicBucketName;
+        private String privateBucketName;
+        private String accessKey;
+        private String secretKey;
+
+        public String getEndpoint() {
+            return endpoint;
+        }
+
+        public void setEndpoint(String endpoint) {
+            this.endpoint = endpoint;
+        }
+
+        public String getPublicBucketName() {
+            return publicBucketName;
+        }
+
+        public void setPublicBucketName(String publicBucketName) {
+            this.publicBucketName = publicBucketName;
+        }
+
+        public String getPrivateBucketName() {
+            return privateBucketName;
+        }
+
+        public void setPrivateBucketName(String privateBucketName) {
+            this.privateBucketName = privateBucketName;
+        }
+
+        public String getAccessKey() {
+            return accessKey;
+        }
+
+        public void setAccessKey(String accessKey) {
+            this.accessKey = accessKey;
+        }
+
+        public String getSecretKey() {
+            return secretKey;
+        }
+
+        public void setSecretKey(String secretKey) {
+            this.secretKey = secretKey;
         }
     }
 }

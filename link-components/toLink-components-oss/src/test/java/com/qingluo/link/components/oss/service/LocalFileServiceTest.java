@@ -59,4 +59,32 @@ class LocalFileServiceTest {
         assertThat(result).isTrue();
         assertThat(Files.readString(target)).isEqualTo("secret");
     }
+
+    @Test
+    void Should_ReturnLogicalBucketName_When_ResolvePrivateBucket() {
+        assertThat(localFileService.getBucketName(OssSavePlaceEnum.PRIVATE)).isEqualTo("local-private");
+    }
+
+    @Test
+    void Should_DeleteStoredPrivateFile_When_DeleteFile() throws Exception {
+        Path source = Path.of(ossProperties.getFilePrivatePath(), "cert/test.pem");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "secret");
+
+        boolean result = localFileService.deleteFile(OssSavePlaceEnum.PRIVATE, "cert/test.pem");
+
+        assertThat(result).isTrue();
+        assertThat(Files.exists(source)).isFalse();
+    }
+
+    @Test
+    void Should_Fail_Public_Upload_When_Public_Base_Url_Is_Not_Configured() {
+        ossProperties.setPublicBaseUrl(null);
+        localFileService = new LocalFileService(ossProperties);
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", "hello".getBytes());
+
+        String result = localFileService.upload2PreviewUrl(OssSavePlaceEnum.PUBLIC, file, "avatar/test.png");
+
+        assertThat(result).isNull();
+    }
 }

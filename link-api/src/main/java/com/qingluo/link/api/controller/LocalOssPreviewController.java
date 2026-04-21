@@ -1,4 +1,4 @@
-package com.qingluo.link.components.oss.controller;
+package com.qingluo.link.api.controller;
 
 import com.qingluo.link.components.oss.config.OssProperties;
 import java.io.IOException;
@@ -11,16 +11,12 @@ import javax.servlet.http.HttpServletRequest;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Public preview endpoint for local OSS files.
- */
 @RestController
 public class LocalOssPreviewController {
 
@@ -46,11 +42,11 @@ public class LocalOssPreviewController {
 
         MediaType mediaType = resolveMediaType(file);
         return ResponseEntity.ok()
-                .contentType(mediaType)
-                .contentLength(Files.size(file))
-                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.getFileName() + "\"")
-                .body(new InputStreamResource(Files.newInputStream(file)));
+            .contentType(mediaType)
+            .contentLength(Files.size(file))
+            .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic())
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + file.getFileName() + "\"")
+            .body(new InputStreamResource(Files.newInputStream(file)));
     }
 
     private String extractObjectKey(HttpServletRequest request) {

@@ -25,6 +25,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class LocalFileService implements IOssService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalFileService.class);
+    private static final String LOCAL_PUBLIC_BUCKET = "local-public";
+    private static final String LOCAL_PRIVATE_BUCKET = "local-private";
 
     private final OssProperties ossProperties;
 
@@ -44,7 +46,7 @@ public class LocalFileService implements IOssService {
                 return saveDirAndFileName;
             }
             return normalizePublicBaseUrl() + "/" + saveDirAndFileName;
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Upload local OSS file failed, place={}, objectKey={}", ossSavePlaceEnum, saveDirAndFileName, e);
             return null;
         }
@@ -65,6 +67,24 @@ public class LocalFileService implements IOssService {
         }
     }
 
+    @Override
+    public boolean deleteFile(OssSavePlaceEnum ossSavePlaceEnum, String objectKey) {
+        try {
+            Path target = resolveStoragePath(ossSavePlaceEnum, objectKey);
+            Files.deleteIfExists(target);
+            Files.deleteIfExists(Path.of(target.toString() + ".notexists"));
+            return true;
+        } catch (IOException e) {
+            log.error("Delete local OSS file failed, place={}, objectKey={}", ossSavePlaceEnum, objectKey, e);
+            return false;
+        }
+    }
+
+    @Override
+    public String getBucketName(OssSavePlaceEnum ossSavePlaceEnum) {
+        return OssSavePlaceEnum.PUBLIC == ossSavePlaceEnum ? LOCAL_PUBLIC_BUCKET : LOCAL_PRIVATE_BUCKET;
+    }
+
     private Path resolveStoragePath(OssSavePlaceEnum place, String objectKey) throws IOException {
         if (!StringUtils.hasText(objectKey)) {
             throw new IOException("Object key is blank");
@@ -83,7 +103,7 @@ public class LocalFileService implements IOssService {
     private String normalizePublicBaseUrl() {
         String baseUrl = ossProperties.getPublicBaseUrl();
         if (!StringUtils.hasText(baseUrl)) {
-            return "/api/v1/oss-files/public";
+            throw new IllegalStateException("Public base URL is not configured");
         }
         while (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);

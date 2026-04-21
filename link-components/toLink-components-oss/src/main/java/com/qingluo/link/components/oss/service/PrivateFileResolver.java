@@ -46,6 +46,15 @@ public class PrivateFileResolver {
         return target.toFile();
     }
 
+    public void evictPrivateFile(String objectKey) {
+        Path target = resolvePrivatePath(objectKey);
+        try {
+            Files.deleteIfExists(target);
+            Files.deleteIfExists(Path.of(target.toString() + ".notexists"));
+        } catch (IOException ignored) {
+        }
+    }
+
     private Path resolvePrivatePath(String objectKey) {
         if (!StringUtils.hasText(objectKey)) {
             throw new IllegalArgumentException("Object key is blank");
