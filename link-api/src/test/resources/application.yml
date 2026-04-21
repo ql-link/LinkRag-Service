@@ -25,7 +25,6 @@ mybatis-plus:
   global-config:
     db-config:
       id-type: auto
-      logic-delete-field: isDeleted
 
 sa-token:
   token-name: satoken

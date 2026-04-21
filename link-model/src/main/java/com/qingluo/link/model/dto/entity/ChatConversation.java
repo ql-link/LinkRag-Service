@@ -1,6 +1,9 @@
 package com.qingluo.link.model.dto.entity;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import java.time.LocalDateTime;
@@ -23,6 +26,10 @@ public class ChatConversation {
     private Long userId;
 
     @Schema(description = "上次使用的配置ID")
+    @TableField("dataset_id")
+    private Long datasetId;
+
+    @Schema(description = "上次使用的配置ID")
     @TableField("last_config_id")
     private Long lastConfigId;
 
@@ -36,11 +43,6 @@ public class ChatConversation {
     @Schema(description = "是否置顶", example = "false")
     @TableField("is_pinned")
     private Boolean isPinned = false;
-
-    @Schema(description = "是否删除")
-    @TableLogic
-    @TableField("is_deleted")
-    private Boolean isDeleted = false;
 
     @Schema(description = "创建时间")
     @TableField("created_at")
