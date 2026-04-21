@@ -74,6 +74,9 @@ class AdminControllerTest {
     @Autowired
     private SystemProviderMapper systemProviderMapper;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     /**
      * PasswordEncoder - BCrypt 密码加密
      */
@@ -113,6 +116,8 @@ class AdminControllerTest {
      */
     @BeforeAll
     void setup() {
+        jdbcTemplate.update("DELETE FROM knowledge_file_config");
+
         // ===== 步骤 1: 插入管理员用户 =====
         SysUser admin = new SysUser();
         admin.setId(ADMIN_USER_ID);
@@ -259,6 +264,44 @@ class AdminControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.data.items").isArray());
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("管理员获取知识文件配置 - GET /api/v1/admin/knowledge-file-config")
+    void Should_ReturnKnowledgeFileConfig_When_AdminQueriesCurrentConfig() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/knowledge-file-config")
+                .header("satoken", adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.maxSizeBytes").exists())
+            .andExpect(jsonPath("$.data.allowedSuffixes").isArray());
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("管理员修改知识文件配置 - PATCH /api/v1/admin/knowledge-file-config")
+    void Should_UpdateKnowledgeFileConfig_When_AdminPatchesConfig() throws Exception {
+        String requestJson = """
+            {
+              "maxSizeBytes": 1024,
+              "allowedSuffixes": ["pdf", "txt", "pdf"]
+            }
+            """;
+
+        mockMvc.perform(patch("/api/v1/admin/knowledge-file-config")
+                .header("satoken", adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
+
+        mockMvc.perform(get("/api/v1/admin/knowledge-file-config")
+                .header("satoken", adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.maxSizeBytes").value(1024))
+            .andExpect(jsonPath("$.data.allowedSuffixes[0]").value("pdf"))
+            .andExpect(jsonPath("$.data.allowedSuffixes[1]").value("txt"));
     }
 
     // ========================================================================

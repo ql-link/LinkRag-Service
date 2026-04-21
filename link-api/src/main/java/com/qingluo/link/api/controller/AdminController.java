@@ -1,14 +1,18 @@
 package com.qingluo.link.api.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
+import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
+import com.qingluo.link.model.dto.request.UpdateKnowledgeFileConfigRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateUserRoleRequest;
 import com.qingluo.link.model.dto.request.UpdateUserStatusRequest;
+import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
+import com.qingluo.link.service.AdminKnowledgeFileConfigService;
 import com.qingluo.link.service.AdminProviderService;
 import com.qingluo.link.service.AdminUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,6 +38,7 @@ public class AdminController {
 
     private final AdminUserService adminUserService;
     private final AdminProviderService adminProviderService;
+    private final AdminKnowledgeFileConfigService adminKnowledgeFileConfigService;
 
     // ---- 用户管理 ----
 
@@ -99,6 +104,19 @@ public class AdminController {
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size) {
         return Result.success(adminProviderService.listProviders(page, size));
+    }
+
+    @GetMapping("/knowledge-file-config")
+    @Operation(summary = "查询知识文件上传配置", description = "查询当前生效的知识文件上传大小限制和格式白名单")
+    public Result<KnowledgeFileConfigDTO> getKnowledgeFileConfig() {
+        return Result.success(adminKnowledgeFileConfigService.getCurrentConfig());
+    }
+
+    @PatchMapping("/knowledge-file-config")
+    @Operation(summary = "修改知识文件上传配置", description = "修改当前生效的知识文件上传大小限制和格式白名单")
+    public Result<Void> updateKnowledgeFileConfig(@RequestBody @Validated UpdateKnowledgeFileConfigRequest request) {
+        adminKnowledgeFileConfigService.updateConfig(AuthContext.getLoginUserIdOrThrow(), request);
+        return Result.success(null);
     }
 
     /**
