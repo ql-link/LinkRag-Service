@@ -1,6 +1,6 @@
 package com.qingluo.link.service;
 
-import com.qingluo.link.service.mq.KnowledgeParseResultMQ;
+import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
 
 public interface KnowledgeParseResultService {
 

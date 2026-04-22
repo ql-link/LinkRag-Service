@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * OSS 应用服务实现，负责按业务规则校验并上传文件。
+ */
 @Service
 public class OssApplicationServiceImpl implements OssApplicationService {
 
@@ -20,6 +23,9 @@ public class OssApplicationServiceImpl implements OssApplicationService {
     private final OssUploadRuleRegistry ruleRegistry;
     private final OssObjectKeyGenerator objectKeyGenerator;
 
+    /**
+     * 注入 OSS 上传所需的核心依赖。
+     */
     public OssApplicationServiceImpl(
         IOssService ossService,
         OssUploadRuleRegistry ruleRegistry,
@@ -31,6 +37,9 @@ public class OssApplicationServiceImpl implements OssApplicationService {
     }
 
     @Override
+    /**
+     * 按业务规则校验并上传文件到 OSS。
+     */
     public String upload(String bizType, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw badRequest("请选择要上传的文件");
@@ -58,6 +67,9 @@ public class OssApplicationServiceImpl implements OssApplicationService {
         return uploadResult;
     }
 
+    /**
+     * 校验当前文件后缀是否满足上传规则。
+     */
     private boolean isAllowedSuffix(OssUploadRule rule, String suffix) {
         if (rule.allowedFileSuffixes().contains(OssUploadRuleRegistry.ALL_SUFFIX_FLAG)) {
             return true;
@@ -65,6 +77,9 @@ public class OssApplicationServiceImpl implements OssApplicationService {
         return StringUtils.hasText(suffix) && rule.allowedFileSuffixes().contains(suffix);
     }
 
+    /**
+     * 从文件名中提取小写后缀。
+     */
     private String getFileSuffix(String fileName) {
         if (!StringUtils.hasText(fileName)) {
             return "";
@@ -76,6 +91,9 @@ public class OssApplicationServiceImpl implements OssApplicationService {
         return fileName.substring(lastDotIndex + 1).toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 构造统一的 OSS 业务异常。
+     */
     private BusinessException badRequest(String message) {
         return new BusinessException(OSS_ERROR_CODE, message, 400);
     }

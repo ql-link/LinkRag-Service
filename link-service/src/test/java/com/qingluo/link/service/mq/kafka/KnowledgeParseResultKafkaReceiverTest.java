@@ -2,7 +2,8 @@ package com.qingluo.link.service.mq.kafka;
 
 import static org.mockito.Mockito.verify;
 
-import com.qingluo.link.service.mq.KnowledgeParseResultMQ;
+import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
+import com.qingluo.link.service.mq.KnowledgeParseResultKafkaReceiver;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

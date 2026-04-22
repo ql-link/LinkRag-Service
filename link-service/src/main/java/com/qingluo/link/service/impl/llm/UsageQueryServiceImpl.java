@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.github.pagehelper.PageHelper;
@@ -30,6 +30,9 @@ public class UsageQueryServiceImpl implements UsageQueryService {
     private final UsageLogMapper usageLogMapper;
 
     @Override
+    /**
+     * 汇总指定时间范围内的调用统计数据。
+     */
     public UsageSummaryDTO getSummary(Long userId, String startDate, String endDate) {
         LocalDateTime start = LocalDate.parse(startDate, DateTimeFormatter.ISO_DATE).atStartOfDay();
         LocalDateTime end = LocalDate.parse(endDate, DateTimeFormatter.ISO_DATE).atTime(23, 59, 59);
@@ -58,6 +61,9 @@ public class UsageQueryServiceImpl implements UsageQueryService {
     }
 
     @Override
+    /**
+     * 按天聚合指定时间范围内的调用数据。
+     */
     public List<DailyUsageDTO> getDailyUsage(Long userId, String startDate, String endDate) {
         LocalDateTime start = LocalDate.parse(startDate, DateTimeFormatter.ISO_DATE).atStartOfDay();
         LocalDateTime end = LocalDate.parse(endDate, DateTimeFormatter.ISO_DATE).atTime(23, 59, 59);
@@ -89,6 +95,9 @@ public class UsageQueryServiceImpl implements UsageQueryService {
     }
 
     @Override
+    /**
+     * 分页查询指定时间范围内的调用日志。
+     */
     public PageResult<UsageLogDTO> getUsageLogs(Long userId, String startDate, String endDate, int page, int pageSize) {
         LocalDateTime start = LocalDate.parse(startDate, DateTimeFormatter.ISO_DATE).atStartOfDay();
         LocalDateTime end = LocalDate.parse(endDate, DateTimeFormatter.ISO_DATE).atTime(23, 59, 59);
@@ -108,6 +117,9 @@ public class UsageQueryServiceImpl implements UsageQueryService {
         return new PageResult<>(dtos, pageInfo.getTotal(), page, pageSize);
     }
 
+    /**
+     * 将用量日志实体转换为 DTO。
+     */
     private UsageLogDTO toDTO(UsageLog log) {
         UsageLogDTO dto = new UsageLogDTO();
         dto.setId(log.getId());

@@ -3,7 +3,7 @@ package com.qingluo.link.api.mq;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.qingluo.link.api.TestSecurityConfig;
-import com.qingluo.link.service.mq.kafka.KnowledgeParseResultKafkaReceiver;
+import com.qingluo.link.service.mq.KnowledgeParseResultKafkaReceiver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

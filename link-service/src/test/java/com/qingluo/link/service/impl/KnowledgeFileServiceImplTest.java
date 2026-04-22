@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -19,6 +18,8 @@ import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
 import com.qingluo.link.service.config.KnowledgeFileProperties;
 import java.lang.reflect.Constructor;
+
+import com.qingluo.link.service.impl.know.KnowledgeFileServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,7 +59,7 @@ class KnowledgeFileServiceImplTest {
     @Test
     @DisplayName("Should_CreateParseTaskMq_When_NoArgConstructor")
     void Should_CreateParseTaskMq_When_NoArgConstructor() throws Exception {
-        Class<?> mqClass = Class.forName("com.qingluo.link.service.impl.KnowledgeFileServiceImpl$KnowledgeParseTaskMQ");
+        Class<?> mqClass = Class.forName("com.qingluo.link.service.impl.know.KnowledgeFileServiceImpl$KnowledgeParseTaskMQ");
         Constructor<?> constructor = mqClass.getDeclaredConstructor();
         constructor.setAccessible(true);
 

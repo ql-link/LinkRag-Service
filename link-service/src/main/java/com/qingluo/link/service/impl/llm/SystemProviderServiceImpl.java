@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.NotFoundException;
@@ -20,6 +20,9 @@ public class SystemProviderServiceImpl implements SystemProviderService {
     private final SystemProviderMapper systemProviderMapper;
 
     @Override
+    /**
+     * 查询所有启用中的系统厂商配置。
+     */
     public List<SystemProvider> getActiveProviders() {
         return systemProviderMapper.selectList(
             new LambdaQueryWrapper<SystemProvider>()
@@ -29,6 +32,9 @@ public class SystemProviderServiceImpl implements SystemProviderService {
     }
 
     @Override
+    /**
+     * 按厂商类型查询系统厂商配置。
+     */
     public SystemProvider getByProviderType(String providerType) {
         SystemProvider provider = systemProviderMapper.selectOne(
             new LambdaQueryWrapper<SystemProvider>()

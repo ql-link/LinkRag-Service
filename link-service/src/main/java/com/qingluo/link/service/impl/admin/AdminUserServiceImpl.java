@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -18,6 +18,9 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 管理端用户服务实现，负责用户列表查询和角色状态维护。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminUserServiceImpl implements AdminUserService {
@@ -26,6 +29,9 @@ public class AdminUserServiceImpl implements AdminUserService {
     private final UserCacheService userCacheService;
 
     @Override
+    /**
+     * 分页查询用户列表并转换为管理端展示 DTO。
+     */
     public PageResult<UserProfileDTO> listUsers(int page, int size) {
         Page<SysUser> pageParam = new Page<>(page, size);
         Page<SysUser> result = sysUserMapper.selectPage(pageParam, new LambdaQueryWrapper<SysUser>()
@@ -39,6 +45,9 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    /**
+     * 更新用户状态并失效用户缓存。
+     */
     public void updateUserStatus(Long userId, UpdateUserStatusRequest request) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) {
@@ -50,6 +59,9 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    /**
+     * 更新用户角色并失效用户缓存。
+     */
     public void updateUserRole(Long userId, UpdateUserRoleRequest request) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) {
@@ -61,6 +73,9 @@ public class AdminUserServiceImpl implements AdminUserService {
         userCacheService.evict(userId);
     }
 
+    /**
+     * 将用户实体转换为用户资料 DTO。
+     */
     private UserProfileDTO toDTO(SysUser user) {
         UserProfileDTO dto = new UserProfileDTO();
         dto.setId(user.getId());

@@ -1,4 +1,4 @@
-package com.qingluo.link.service.mq;
+package com.qingluo.link.components.mq.model;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -11,7 +11,7 @@ import org.springframework.util.StringUtils;
 
 public class KnowledgeParseResultMQ implements AbstractMQ {
 
-    public static final String MQ_NAME = "tolink.rag.parse_result";
+    public static final String MQ_NAME = "tolink.rag.parse_task";
 
     private MsgPayload msgPayload;
 

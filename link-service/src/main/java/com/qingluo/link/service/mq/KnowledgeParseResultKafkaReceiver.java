@@ -1,8 +1,8 @@
-package com.qingluo.link.service.mq.kafka;
+package com.qingluo.link.service.mq;
 
 import com.qingluo.link.components.mq.MQMsgReceiver;
 import com.qingluo.link.components.mq.constant.MQVenderChoose;
-import com.qingluo.link.service.mq.KnowledgeParseResultMQ;
+import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;

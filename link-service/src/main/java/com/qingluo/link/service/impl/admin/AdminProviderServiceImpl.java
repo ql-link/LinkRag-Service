@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -16,6 +16,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/**
+ * 管理端厂商配置服务实现，负责厂商配置的增删改查与启停控制。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminProviderServiceImpl implements AdminProviderService {
@@ -24,6 +27,9 @@ public class AdminProviderServiceImpl implements AdminProviderService {
     private final DoubleDeleteCacheService doubleDeleteCacheService;
 
     @Override
+    /**
+     * 分页查询厂商配置，并按优先级倒序返回。
+     */
     public PageResult<SystemProvider> listProviders(int page, int size) {
         Page<SystemProvider> pageParam = new Page<>(page, size);
         Page<SystemProvider> result = systemProviderMapper.selectPage(pageParam,
@@ -33,6 +39,9 @@ public class AdminProviderServiceImpl implements AdminProviderService {
     }
 
     @Override
+    /**
+     * 创建新的系统厂商配置并清理相关缓存。
+     */
     public void createProvider(CreateProviderRequest request) {
         long count = systemProviderMapper.selectCount(
                 new LambdaQueryWrapper<SystemProvider>()
@@ -56,6 +65,9 @@ public class AdminProviderServiceImpl implements AdminProviderService {
     }
 
     @Override
+    /**
+     * 按需更新指定厂商配置。
+     */
     public void updateProvider(Long id, UpdateProviderRequest request) {
         SystemProvider provider = systemProviderMapper.selectById(id);
         if (provider == null) {
@@ -86,6 +98,9 @@ public class AdminProviderServiceImpl implements AdminProviderService {
     }
 
     @Override
+    /**
+     * 删除指定厂商配置并清理缓存。
+     */
     public void deleteProvider(Long id) {
         SystemProvider provider = systemProviderMapper.selectById(id);
         if (provider == null) {
@@ -97,6 +112,9 @@ public class AdminProviderServiceImpl implements AdminProviderService {
     }
 
     @Override
+    /**
+     * 切换厂商启用状态。
+     */
     public void toggleActive(Long id, boolean isActive) {
         SystemProvider provider = systemProviderMapper.selectById(id);
         if (provider == null) {

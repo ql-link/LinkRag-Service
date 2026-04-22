@@ -10,8 +10,10 @@ import static org.mockito.Mockito.verify;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
-import com.qingluo.link.service.mq.KnowledgeParseResultMQ;
+import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
 import java.time.LocalDateTime;
+
+import com.qingluo.link.service.impl.know.KnowledgeParseResultServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

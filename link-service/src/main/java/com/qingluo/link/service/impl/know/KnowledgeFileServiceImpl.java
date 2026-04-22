@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.know;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -36,6 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 知识文件服务实现，负责原文件上传、查询、删除和解析任务投递。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -60,6 +63,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
 
     @Override
     @Transactional(noRollbackFor = BusinessException.class)
+    /**
+     * 上传原始知识文件，并在需要时立即创建解析任务。
+     */
     public KnowledgeFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately) {
         assertOwnedDataset(userId, datasetId);
         validateFile(file);
@@ -122,6 +128,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     }
 
     @Override
+    /**
+     * 分页查询知识文件列表，并支持按状态筛选。
+     */
     public PageResult<KnowledgeFileDTO> list(Long userId, Long datasetId, String uploadStatus,
                                              String parseNoticeStatus, String parseStatus, int page, int pageSize) {
         assertOwnedDataset(userId, datasetId);
@@ -146,12 +155,18 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     }
 
     @Override
+    /**
+     * 查询知识文件详情。
+     */
     public KnowledgeFileDTO detail(Long userId, Long fileId) {
         return toDTO(getOwnedFile(userId, fileId));
     }
 
     @Override
     @Transactional
+    /**
+     * 为已上传成功的文件创建解析任务。
+     */
     public KnowledgeFileDTO createParseTask(Long userId, Long fileId) {
         KnowledgeOriginalFile record = getOwnedFile(userId, fileId);
         if (!Boolean.TRUE.equals(record.getIsUploadSuccess()) || !StringUtils.hasText(record.getObjectKey())) {
@@ -165,6 +180,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
 
     @Override
     @Transactional
+    /**
+     * 删除知识文件及其 OSS 对象。
+     */
     public void delete(Long userId, Long fileId) {
         KnowledgeOriginalFile record = getOwnedFile(userId, fileId);
         if (StringUtils.hasText(record.getObjectKey())) {
@@ -191,6 +209,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     }
 
     @Override
+    /**
+     * 按文件标识和解析任务标识打开原始文件。
+     */
     public KnowledgeFileDownloadResource openOriginalFile(Long fileId, String taskId) {
         KnowledgeOriginalFile record = knowledgeOriginalFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getId, fileId));
@@ -210,6 +231,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return new KnowledgeFileDownloadResource(file, record.getOriginalFilename(), record.getContentType());
     }
 
+    /**
+     * 投递解析任务并同步更新投递状态。
+     */
     private KnowledgeFileDTO createParseTask(KnowledgeOriginalFile record) {
         knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getId, record.getId())
@@ -239,6 +263,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return toDTO(record);
     }
 
+    /**
+     * 校验数据集是否归属于当前用户。
+     */
     private void assertOwnedDataset(Long userId, Long datasetId) {
         Dataset dataset = datasetMapper.selectOne(new LambdaQueryWrapper<Dataset>()
             .eq(Dataset::getId, datasetId)
@@ -248,6 +275,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         }
     }
 
+    /**
+     * 查询当前用户可访问的知识文件记录。
+     */
     private KnowledgeOriginalFile getOwnedFile(Long userId, Long fileId) {
         KnowledgeOriginalFile record = knowledgeOriginalFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getId, fileId)
@@ -258,6 +288,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return record;
     }
 
+    /**
+     * 校验上传文件是否存在、格式合法且大小符合限制。
+     */
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(400, "请选择要上传的文件", 400);
@@ -272,6 +305,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         }
     }
 
+    /**
+     * 提取并标准化文件后缀。
+     */
     private String extractSuffix(String filename) {
         if (!StringUtils.hasText(filename)) {
             throw new BusinessException(400, "请选择要上传的文件", 400);
@@ -283,6 +319,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return filename.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 校验同一数据集下是否已存在同名原文件。
+     */
     private void assertNoDuplicateOriginalFilename(Long userId, Long datasetId, String originalFilename) {
         Long count = knowledgeOriginalFileMapper.selectCount(new LambdaQueryWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getUserId, userId)
@@ -293,12 +332,18 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         }
     }
 
+    /**
+     * 按用户、数据集和日期生成对象存储路径。
+     */
     private String buildObjectKey(Long userId, Long datasetId, String originalFilename) {
         LocalDate now = LocalDate.now();
         return "%d/%d/%04d/%02d/%02d/%s".formatted(
             userId, datasetId, now.getYear(), now.getMonthValue(), now.getDayOfMonth(), originalFilename);
     }
 
+    /**
+     * 清洗浏览器上传的原始文件名，只保留安全文件名部分。
+     */
     private String normalizeOriginalFilename(String originalFilename) {
         if (!StringUtils.hasText(originalFilename)) {
             throw new BusinessException(400, "请选择要上传的文件", 400);
@@ -317,6 +362,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return normalized;
     }
 
+    /**
+     * 规范化内部下载地址的基础 URL。
+     */
     private String normalizeBaseUrl(String value) {
         if (!StringUtils.hasText(value)) {
             return "http://localhost:8080";
@@ -327,12 +375,18 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return value;
     }
 
+    /**
+     * 兼容不同前端枚举写法并转换为内部状态值。
+     */
     private String normalizeStatus(String status) {
         return status.toLowerCase(Locale.ROOT)
             .replace("upload_", "")
             .replace("parse_notice_", "");
     }
 
+    /**
+     * 将知识文件实体转换为接口返回 DTO。
+     */
     private KnowledgeFileDTO toDTO(KnowledgeOriginalFile record) {
         KnowledgeFileDTO dto = new KnowledgeFileDTO();
         dto.setId(record.getId());
@@ -352,6 +406,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return dto;
     }
 
+    /**
+     * 将内部上传状态转换为对外枚举。
+     */
     private String toUploadStatus(String status) {
         return switch (status) {
             case UPLOAD_SUCCESS -> "UPLOAD_SUCCESS";
@@ -360,6 +417,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         };
     }
 
+    /**
+     * 将内部通知状态转换为对外枚举。
+     */
     private String toParseNoticeStatus(String status) {
         return switch (status) {
             case "sent" -> "PARSE_NOTICE_SENT";
@@ -368,6 +428,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         };
     }
 
+    /**
+     * 将内部解析状态转换为对外枚举。
+     */
     private String toParseStatus(String status) {
         return switch (status) {
             case "pending" -> "PENDING";
@@ -384,24 +447,39 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
 
         private final KnowledgeOriginalFile record;
 
+        /**
+         * 为序列化场景保留的空构造方法。
+         */
         private KnowledgeParseTaskMQ() {
             this.record = new KnowledgeOriginalFile();
         }
 
+        /**
+         * 根据原文件记录构造解析任务消息。
+         */
         private KnowledgeParseTaskMQ(KnowledgeOriginalFile record) {
             this.record = record;
         }
 
+        /**
+         * 返回解析任务消息主题名称。
+         */
         @Override
         public String getMQName() {
             return MQ_NAME;
         }
 
+        /**
+         * 声明解析任务使用队列模型投递。
+         */
         @Override
         public MQSendType getMQType() {
             return MQSendType.QUEUE;
         }
 
+        /**
+         * 构造解析任务的消息体。
+         */
         @Override
         public String getMessage() {
             return """
@@ -413,6 +491,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
                     escape(record.getFileSuffix())).trim();
         }
 
+        /**
+         * 对消息内容做基础 JSON 转义。
+         */
         private String escape(String value) {
             return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
         }

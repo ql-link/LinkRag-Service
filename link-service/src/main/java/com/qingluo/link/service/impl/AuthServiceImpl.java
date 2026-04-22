@@ -31,6 +31,9 @@ public class AuthServiceImpl implements AuthService {
     private final UserCacheService userCacheService;
 
     @Override
+    /**
+     * 校验账号密码并创建登录态。
+     */
     public AuthResult login(LoginRequest request) {
         SysUser user = sysUserMapper.selectOne(
             new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername())
@@ -53,6 +56,9 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    /**
+     * 注册新用户并自动登录。
+     */
     public AuthResult register(RegisterRequest request) {
         SysUser existUser = sysUserMapper.selectOne(
             new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername())
@@ -77,11 +83,17 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    /**
+     * 注销当前登录态。
+     */
     public void logout() {
         StpUtil.logout();
     }
 
     @Override
+    /**
+     * 获取当前用户资料，优先走缓存。
+     */
     public UserProfileDTO getProfile(Long userId) {
         UserProfileDTO cached = userCacheService.get(userId);
         if (cached != null) {
@@ -99,6 +111,9 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    /**
+     * 更新用户资料并清理缓存。
+     */
     public void updateProfile(Long userId, UpdateProfileRequest request) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) {
@@ -122,6 +137,9 @@ public class AuthServiceImpl implements AuthService {
         userCacheService.evict(userId);
     }
 
+    /**
+     * 将用户实体转换为用户资料 DTO。
+     */
     private UserProfileDTO toDTO(SysUser user) {
         UserProfileDTO dto = new UserProfileDTO();
         dto.setId(user.getId());

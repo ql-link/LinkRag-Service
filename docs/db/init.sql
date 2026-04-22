@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '用户级 LLM 配置表';
 
 
--- 4. 对话表
+-- 4. 数据集表
 CREATE TABLE IF NOT EXISTS dataset (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '数据集唯一标识',
     user_id         BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',

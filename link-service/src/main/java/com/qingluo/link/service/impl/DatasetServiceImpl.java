@@ -26,6 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 数据集服务实现，负责数据集的创建、查询和级联删除。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -42,6 +45,9 @@ public class DatasetServiceImpl implements DatasetService {
 
     @Override
     @Transactional
+    /**
+     * 创建用户数据集。
+     */
     public DatasetDTO create(Long userId, CreateDatasetRequest request) {
         Dataset dataset = new Dataset();
         dataset.setUserId(userId);
@@ -57,6 +63,9 @@ public class DatasetServiceImpl implements DatasetService {
     }
 
     @Override
+    /**
+     * 分页查询当前用户的数据集列表。
+     */
     public PageResult<DatasetDTO> list(Long userId, int page, int pageSize) {
         PageHelper.startPage(page, pageSize);
         List<Dataset> datasets = datasetMapper.selectList(new LambdaQueryWrapper<Dataset>()
@@ -67,12 +76,18 @@ public class DatasetServiceImpl implements DatasetService {
     }
 
     @Override
+    /**
+     * 查询指定数据集详情。
+     */
     public DatasetDTO detail(Long userId, Long datasetId) {
         return toDTO(getOwnedDataset(userId, datasetId));
     }
 
     @Override
     @Transactional
+    /**
+     * 删除数据集及其关联文件、会话和消息记录。
+     */
     public void delete(Long userId, Long datasetId) {
         Dataset dataset = getOwnedDataset(userId, datasetId);
 
@@ -115,6 +130,9 @@ public class DatasetServiceImpl implements DatasetService {
         }
     }
 
+    /**
+     * 查询当前用户拥有的数据集，不存在则抛出异常。
+     */
     private Dataset getOwnedDataset(Long userId, Long datasetId) {
         Dataset dataset = datasetMapper.selectOne(new LambdaQueryWrapper<Dataset>()
             .eq(Dataset::getId, datasetId)
@@ -125,6 +143,9 @@ public class DatasetServiceImpl implements DatasetService {
         return dataset;
     }
 
+    /**
+     * 将数据集实体转换为 DTO。
+     */
     private DatasetDTO toDTO(Dataset dataset) {
         DatasetDTO dto = new DatasetDTO();
         dto.setId(dataset.getId());

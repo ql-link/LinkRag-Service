@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -31,6 +31,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     private final DoubleDeleteCacheService doubleDeleteCacheService;
 
     @Override
+    /**
+     * 按条件查询用户 LLM 配置列表。
+     */
     public List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, Boolean isActive) {
         LambdaQueryWrapper<UserLLMConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(UserLLMConfig::getUserId, userId);
@@ -49,6 +52,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     @Override
     @Transactional
+    /**
+     * 创建新的用户 LLM 配置。
+     */
     public UserLLMConfigDTO createConfig(Long userId, CreateConfigRequest request) {
         // 获取系统厂商信息
         var provider = systemProviderService.getByProviderType(request.getProviderType());
@@ -83,6 +89,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     @Override
     @Transactional
+    /**
+     * 更新指定用户的 LLM 配置。
+     */
     public void updateConfig(Long userId, Long configId, UpdateConfigRequest request) {
         UserLLMConfig config = getConfigOrThrow(userId, configId);
 
@@ -120,6 +129,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     @Override
     @Transactional
+    /**
+     * 删除指定用户的 LLM 配置。
+     */
     public void deleteConfig(Long userId, Long configId) {
         UserLLMConfig config = getConfigOrThrow(userId, configId);
         userLLMConfigMapper.deleteById(configId);
@@ -127,6 +139,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     }
 
     @Override
+    /**
+     * 获取当前用户的默认 LLM 配置。
+     */
     public UserLLMConfigDTO getDefaultConfig(Long userId) {
         UserLLMConfig config = userLLMConfigMapper.selectOne(
             new LambdaQueryWrapper<UserLLMConfig>()
@@ -142,6 +157,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         return toDTO(config);
     }
 
+    /**
+     * 查询当前用户的配置，不存在时抛出异常。
+     */
     private UserLLMConfig getConfigOrThrow(Long userId, Long configId) {
         UserLLMConfig config = userLLMConfigMapper.selectOne(
             new LambdaQueryWrapper<UserLLMConfig>()
@@ -155,6 +173,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         return config;
     }
 
+    /**
+     * 清理当前用户除指定配置外的默认标记。
+     */
     private void clearOtherDefault(Long userId, Long excludeConfigId) {
         userLLMConfigMapper.update(null,
             new LambdaUpdateWrapper<UserLLMConfig>()
@@ -164,6 +185,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         );
     }
 
+    /**
+     * 将用户 LLM 配置实体转换为 DTO，并对 API Key 做脱敏。
+     */
     private UserLLMConfigDTO toDTO(UserLLMConfig config) {
         UserLLMConfigDTO dto = new UserLLMConfigDTO();
         dto.setId(config.getId());

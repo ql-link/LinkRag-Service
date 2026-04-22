@@ -11,6 +11,7 @@ import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.cache.UserCacheService;
+import com.qingluo.link.service.impl.admin.AdminUserServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

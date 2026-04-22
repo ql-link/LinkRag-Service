@@ -36,6 +36,9 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @Transactional
+    /**
+     * 为指定数据集创建新的会话。
+     */
     public ConversationDTO createConversation(Long userId, CreateConversationRequest request) {
         assertOwnedDataset(userId, request.getDatasetId());
 
@@ -53,6 +56,9 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    /**
+     * 分页查询用户可见的会话列表。
+     */
     public PageResult<ConversationDTO> getConversations(Long userId, int page, int pageSize) {
         PageHelper.startPage(page, pageSize);
         List<ChatConversation> conversations = conversationMapper.selectList(
@@ -71,6 +77,9 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    /**
+     * 分页查询会话下的消息明细。
+     */
     public PageResult<MessageDTO> getMessages(Long userId, Long conversationId, int page, int pageSize) {
         // 验证对话归属
         ChatConversation conversation = conversationMapper.selectOne(
@@ -100,6 +109,9 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @Transactional
+    /**
+     * 逻辑删除用户会话。
+     */
     public void deleteConversation(Long userId, Long conversationId) {
         // 验证对话归属
         ChatConversation conversation = conversationMapper.selectOne(
@@ -118,6 +130,9 @@ public class ChatServiceImpl implements ChatService {
             .set(ChatConversation::getIsDeleted, true));
     }
 
+    /**
+     * 将会话实体转换为会话 DTO。
+     */
     private ConversationDTO toDTO(ChatConversation conversation) {
         ConversationDTO dto = new ConversationDTO();
         dto.setId(conversation.getId());
@@ -131,6 +146,9 @@ public class ChatServiceImpl implements ChatService {
         return dto;
     }
 
+    /**
+     * 将消息实体转换为消息 DTO。
+     */
     private MessageDTO toDTO(ChatMessage message) {
         MessageDTO dto = new MessageDTO();
         dto.setId(message.getId());
@@ -144,6 +162,9 @@ public class ChatServiceImpl implements ChatService {
         return dto;
     }
 
+    /**
+     * 校验数据集是否归属于当前用户。
+     */
     private void assertOwnedDataset(Long userId, Long datasetId) {
         Dataset dataset = datasetMapper.selectOne(new LambdaQueryWrapper<Dataset>()
             .eq(Dataset::getId, datasetId)

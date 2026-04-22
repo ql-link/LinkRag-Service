@@ -3,6 +3,7 @@ package com.qingluo.link.service;
 import com.qingluo.link.model.dto.response.KnowledgeFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import org.springframework.web.multipart.MultipartFile;
+import com.qingluo.link.service.KnowledgeFileDownloadResource;
 
 public interface KnowledgeFileService {
 

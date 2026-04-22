@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +18,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 管理端知识文件配置服务实现，负责读取和更新文件上传限制配置。
+ */
 @Service
 @RequiredArgsConstructor
 public class AdminKnowledgeFileConfigServiceImpl implements AdminKnowledgeFileConfigService {
@@ -30,6 +33,9 @@ public class AdminKnowledgeFileConfigServiceImpl implements AdminKnowledgeFileCo
     private final ObjectMapper objectMapper;
 
     @Override
+    /**
+     * 读取当前生效的知识库文件配置，数据库未配置时回退到应用默认值。
+     */
     public KnowledgeFileConfigDTO getCurrentConfig() {
         KnowledgeFileConfig config = knowledgeFileConfigMapper.selectOne(new LambdaQueryWrapper<KnowledgeFileConfig>()
             .orderByDesc(KnowledgeFileConfig::getId)
@@ -54,6 +60,9 @@ public class AdminKnowledgeFileConfigServiceImpl implements AdminKnowledgeFileCo
 
     @Override
     @Transactional
+    /**
+     * 校验并保存管理员提交的知识库文件配置。
+     */
     public void updateConfig(Long adminUserId, UpdateKnowledgeFileConfigRequest request) {
         if (request == null || request.getMaxSizeBytes() == null || request.getMaxSizeBytes() <= 0) {
             throw new BusinessException(ErrorCode.KNOWLEDGE_FILE_CONFIG_INVALID);
