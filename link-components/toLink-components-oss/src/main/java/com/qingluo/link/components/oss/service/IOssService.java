@@ -18,4 +18,14 @@ public interface IOssService {
      * Downloads a stored object into a local target path.
      */
     boolean downloadFile(OssSavePlaceEnum ossSavePlaceEnum, String source, String target);
+
+    /**
+     * Deletes a stored object immediately.
+     */
+    boolean deleteFile(OssSavePlaceEnum ossSavePlaceEnum, String objectKey);
+
+    /**
+     * Resolves the physical or logical bucket/container name for the given place.
+     */
+    String getBucketName(OssSavePlaceEnum ossSavePlaceEnum);
 }

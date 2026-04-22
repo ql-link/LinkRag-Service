@@ -44,7 +44,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 ## 数据库
 - Schema 定义: `docs/db/schema.sql`
 - 初始化数据: `docs/db/init.sql`
-- MyBatis-Plus 配置: 主键策略 `assign_id`（雪花算法），逻辑删除字段 `isDeleted`
+- MyBatis-Plus 配置: 主键策略 `auto`，当前业务表删除语义以物理删除为主
 - Mapper XML 位置: `link-mapper/src/main/resources/mapper/`（迁移中，原位于 link-service）
 
 ## 开发约定

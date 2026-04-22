@@ -1,4 +1,4 @@
-package com.qingluo.link.components.mq;
+package com.qingluo.link.components.mq.constant;
 
 /**
  * MQ delivery semantics supported by the component.

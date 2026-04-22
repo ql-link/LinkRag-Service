@@ -1,9 +1,9 @@
 package com.qingluo.link.components.mq.vender.rabbitmq;
 
 import com.qingluo.link.components.mq.AbstractMQ;
-import com.qingluo.link.components.mq.MQProperties;
+import com.qingluo.link.components.mq.constant.MQProperties;
 import com.qingluo.link.components.mq.MQSend;
-import com.qingluo.link.components.mq.MQSendType;
+import com.qingluo.link.components.mq.constant.MQSendType;
 import java.util.Objects;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.util.Assert;

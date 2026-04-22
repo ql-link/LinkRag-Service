@@ -1,10 +1,10 @@
 package com.qingluo.link.components.mq.vender.rabbitmq;
 
 import com.qingluo.link.components.mq.AbstractMQ;
-import com.qingluo.link.components.mq.MQProperties;
+import com.qingluo.link.components.mq.constant.MQProperties;
 import com.qingluo.link.components.mq.MQSend;
-import com.qingluo.link.components.mq.MQSendType;
-import com.qingluo.link.components.mq.MQVenderChoose;
+import com.qingluo.link.components.mq.constant.MQSendType;
+import com.qingluo.link.components.mq.constant.MQVenderChoose;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

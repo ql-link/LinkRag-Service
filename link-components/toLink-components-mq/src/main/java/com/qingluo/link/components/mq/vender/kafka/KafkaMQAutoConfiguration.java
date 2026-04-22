@@ -1,9 +1,9 @@
 package com.qingluo.link.components.mq.vender.kafka;
 
 import com.qingluo.link.components.mq.AbstractMQ;
-import com.qingluo.link.components.mq.MQProperties;
+import com.qingluo.link.components.mq.constant.MQProperties;
 import com.qingluo.link.components.mq.MQSend;
-import com.qingluo.link.components.mq.MQVenderChoose;
+import com.qingluo.link.components.mq.constant.MQVenderChoose;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.admin.NewTopic;

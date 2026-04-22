@@ -70,9 +70,24 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
 
 
 -- 4. 对话表
+CREATE TABLE IF NOT EXISTS dataset (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '数据集唯一标识',
+    user_id         BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',
+    name            VARCHAR(128)    NOT NULL COMMENT '数据集名称',
+    description     VARCHAR(512)    DEFAULT NULL COMMENT '数据集描述',
+    status          VARCHAR(16)     NOT NULL DEFAULT 'ACTIVE' COMMENT '数据集状态',
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_dataset_user_name (user_id, name),
+    INDEX idx_dataset_user_updated (user_id, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '数据集表';
+
+-- 5. 对话表
 CREATE TABLE IF NOT EXISTS chat_conversation (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '对话唯一标识',
     user_id         BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',
+    dataset_id      BIGINT UNSIGNED NOT NULL COMMENT '所属数据集 ID',
     last_config_id  BIGINT UNSIGNED COMMENT '最后使用的 LLM 配置 ID',
     last_model_name VARCHAR(128)    COMMENT '最后使用的模型名快照',
     title           VARCHAR(255)    COMMENT '对话标题',
@@ -81,10 +96,11 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    INDEX idx_user_active_list (user_id, is_deleted, is_pinned, updated_at)
+    INDEX idx_chat_conversation_user_active_list (user_id, is_deleted, is_pinned, updated_at),
+    INDEX idx_chat_conversation_dataset_updated (dataset_id, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话表';
 
--- 5. 对话消息表
+-- 6. 对话消息表
 CREATE TABLE IF NOT EXISTS chat_message (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '消息唯一标识',
     conversation_id     BIGINT UNSIGNED NOT NULL COMMENT '所属对话 ID',
@@ -98,7 +114,7 @@ CREATE TABLE IF NOT EXISTS chat_message (
     INDEX idx_conversation_created (conversation_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话消息表';
 
--- 6. LLM 调用用量日志表
+-- 7. LLM 调用用量日志表
 CREATE TABLE IF NOT EXISTS llm_usage_log (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '记录唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
@@ -120,10 +136,58 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     INDEX idx_conversation_id (conversation_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 调用用量日志表';
 
+-- 8. 知识文件原始文档上传记录表
+CREATE TABLE IF NOT EXISTS document_original_file (
+    id                         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '原始文档唯一标识',
+    dataset_id                 BIGINT UNSIGNED NOT NULL COMMENT '所属数据集ID，对应 dataset.id',
+    user_id                    BIGINT UNSIGNED NOT NULL COMMENT '上传用户ID',
+    original_filename          VARCHAR(255) NOT NULL COMMENT '用户上传时的原始文件名',
+    file_suffix                VARCHAR(32) NOT NULL COMMENT '标准化小写文件后缀',
+    file_size                  BIGINT UNSIGNED NOT NULL COMMENT '原始文件大小，单位字节',
+    content_type               VARCHAR(128) DEFAULT NULL COMMENT '上传请求中的 Content-Type',
+    bucket_name                VARCHAR(64) NOT NULL DEFAULT 'rag-raw' COMMENT '原文件私有存储桶',
+    object_key                 VARCHAR(512) DEFAULT NULL COMMENT '私有OSS对象Key',
+    file_url                   VARCHAR(1024) DEFAULT NULL COMMENT 'Python/RAG内部下载URL，不含服务间鉴权Token',
+    upload_status              VARCHAR(20) NOT NULL DEFAULT 'uploading' COMMENT '上传状态: uploading/success/failed',
+    is_upload_success          TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否上传成功',
+    parse_notice_status        VARCHAR(24) NOT NULL DEFAULT 'pending' COMMENT '解析任务MQ投递状态: pending/sent/failed',
+    parse_task_id              VARCHAR(36) NOT NULL COMMENT '解析任务业务唯一标识(UUID)',
+    parse_status               VARCHAR(16) NOT NULL DEFAULT 'not_started' COMMENT 'Python/RAG解析状态',
+    is_parse_success           TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否解析成功',
+    parsed_bucket_name         VARCHAR(64) DEFAULT NULL COMMENT '解析结果文件存储桶',
+    parsed_object_key          VARCHAR(512) DEFAULT NULL COMMENT '解析结果文件对象Key',
+    parsed_file_url            VARCHAR(1024) DEFAULT NULL COMMENT '解析结果文件访问或内部下载地址',
+    parsed_at                  DATETIME DEFAULT NULL COMMENT '解析成功时间',
+    parse_failure_reason       VARCHAR(512) DEFAULT NULL COMMENT '解析失败原因',
+    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '上传失败或解析任务MQ投递失败原因',
+    parse_notice_retry_count   INT NOT NULL DEFAULT 0 COMMENT '解析任务MQ投递重试次数',
+    last_parse_notice_at       DATETIME DEFAULT NULL COMMENT '最近一次解析任务MQ投递时间',
+    created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_parse_task_id (parse_task_id),
+    UNIQUE KEY uk_dataset_filename (dataset_id, original_filename),
+    INDEX idx_document_original_dataset_created (dataset_id, created_at),
+    INDEX idx_document_original_user_created (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '知识库原始文档上传记录表';
+
+-- 9. 知识文件上传配置表
+CREATE TABLE IF NOT EXISTS knowledge_file_config (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置记录ID',
+    max_size_bytes      BIGINT UNSIGNED NOT NULL COMMENT '单文件大小上限，单位字节',
+    allowed_suffixes    VARCHAR(1024) NOT NULL COMMENT '允许上传后缀白名单，JSON字符串',
+    updated_by          BIGINT UNSIGNED NOT NULL COMMENT '最后修改管理员ID',
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '知识文件上传配置表';
+
 -- 设置所有表的自增起始值为 10000 (MySQL 8.0 推荐显式指定方式)
 ALTER TABLE sys_user AUTO_INCREMENT = 10000;
 ALTER TABLE llm_system_provider AUTO_INCREMENT = 10000;
 ALTER TABLE llm_user_config AUTO_INCREMENT = 10000;
+ALTER TABLE dataset AUTO_INCREMENT = 10000;
 ALTER TABLE chat_conversation AUTO_INCREMENT = 10000;
 ALTER TABLE chat_message AUTO_INCREMENT = 10000;
 ALTER TABLE llm_usage_log AUTO_INCREMENT = 10000;
+ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
+ALTER TABLE knowledge_file_config AUTO_INCREMENT = 10000;

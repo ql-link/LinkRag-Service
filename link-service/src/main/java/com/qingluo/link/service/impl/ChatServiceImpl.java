@@ -4,16 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
+import com.qingluo.link.core.exception.BusinessException;
+import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.model.dto.request.CreateConversationRequest;
 import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.response.MessageDTO;
 import com.qingluo.link.model.dto.response.PageResult;
-import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
-import com.qingluo.link.mapper.UserLLMConfigMapper;
+import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
+import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,13 +32,16 @@ public class ChatServiceImpl implements ChatService {
 
     private final ChatConversationMapper conversationMapper;
     private final ChatMessageMapper messageMapper;
-    private final UserLLMConfigMapper userLLMConfigMapper;
+    private final DatasetMapper datasetMapper;
 
     @Override
     @Transactional
     public ConversationDTO createConversation(Long userId, CreateConversationRequest request) {
+        assertOwnedDataset(userId, request.getDatasetId());
+
         ChatConversation conversation = new ChatConversation();
         conversation.setUserId(userId);
+        conversation.setDatasetId(request.getDatasetId());
         conversation.setTitle(request.getTitle() != null ? request.getTitle() : "新对话");
         conversation.setLastConfigId(request.getLastConfigId());
         conversation.setIsPinned(false);
@@ -101,24 +106,23 @@ public class ChatServiceImpl implements ChatService {
             new LambdaQueryWrapper<ChatConversation>()
                 .eq(ChatConversation::getId, conversationId)
                 .eq(ChatConversation::getUserId, userId)
+                .eq(ChatConversation::getIsDeleted, false)
         );
 
         if (conversation == null) {
             throw NotFoundException.conversationNotFound();
         }
 
-        // 软删除
-        conversationMapper.update(null,
-            new LambdaUpdateWrapper<ChatConversation>()
-                .eq(ChatConversation::getId, conversationId)
-                .set(ChatConversation::getIsDeleted, true)
-        );
+        conversationMapper.update(null, new LambdaUpdateWrapper<ChatConversation>()
+            .eq(ChatConversation::getId, conversationId)
+            .set(ChatConversation::getIsDeleted, true));
     }
 
     private ConversationDTO toDTO(ChatConversation conversation) {
         ConversationDTO dto = new ConversationDTO();
         dto.setId(conversation.getId());
         dto.setTitle(conversation.getTitle());
+        dto.setDatasetId(conversation.getDatasetId());
         dto.setLastConfigId(conversation.getLastConfigId());
         dto.setLastModelName(conversation.getLastModelName());
         dto.setIsPinned(conversation.getIsPinned());
@@ -138,5 +142,14 @@ public class ChatServiceImpl implements ChatService {
         dto.setTokenCount(message.getTokenCount());
         dto.setCreatedAt(message.getCreatedAt());
         return dto;
+    }
+
+    private void assertOwnedDataset(Long userId, Long datasetId) {
+        Dataset dataset = datasetMapper.selectOne(new LambdaQueryWrapper<Dataset>()
+            .eq(Dataset::getId, datasetId)
+            .eq(Dataset::getUserId, userId));
+        if (dataset == null) {
+            throw new BusinessException(404, "数据集不存在或无权访问", 404);
+        }
     }
 }

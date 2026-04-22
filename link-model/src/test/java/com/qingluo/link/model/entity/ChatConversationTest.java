@@ -1,6 +1,9 @@
 package com.qingluo.link.model.entity;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +27,7 @@ class ChatConversationTest {
     void Should_HaveCorrectFields_When_EntityDefined() throws Exception {
         assertFieldExists("id");
         assertFieldExists("userId");
+        assertFieldExists("datasetId");
         assertFieldExists("lastConfigId");
         assertFieldExists("lastModelName");
         assertFieldExists("title");

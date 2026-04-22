@@ -1,6 +1,10 @@
 package com.qingluo.link.model.dto.entity;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import java.time.LocalDateTime;
@@ -21,6 +25,10 @@ public class ChatConversation {
     @Schema(description = "用户ID", example = "1")
     @TableField("user_id")
     private Long userId;
+
+    @Schema(description = "上次使用的配置ID")
+    @TableField("dataset_id")
+    private Long datasetId;
 
     @Schema(description = "上次使用的配置ID")
     @TableField("last_config_id")

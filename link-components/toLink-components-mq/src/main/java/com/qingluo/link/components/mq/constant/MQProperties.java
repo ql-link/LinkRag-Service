@@ -1,4 +1,4 @@
-package com.qingluo.link.components.mq;
+package com.qingluo.link.components.mq.constant;
 
 import java.util.ArrayList;
 import java.util.List;

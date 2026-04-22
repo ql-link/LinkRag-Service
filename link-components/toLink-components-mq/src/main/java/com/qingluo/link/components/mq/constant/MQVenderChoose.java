@@ -1,4 +1,4 @@
-package com.qingluo.link.components.mq;
+package com.qingluo.link.components.mq.constant;
 
 /**
  * MQ vendor selection constants. The misspelling "vender" is kept for
@@ -7,7 +7,6 @@ package com.qingluo.link.components.mq;
 public final class MQVenderChoose {
 
     public static final String YML_VENDER_KEY = "qingluopay.mq.vender";
-    public static final String YML_VENDOR_KEY = "qingluopay.mq.vendor";
     public static final String RABBIT_MQ = "rabbitMQ";
     public static final String KAFKA = "kafka";
 

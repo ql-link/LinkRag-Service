@@ -1,5 +1,7 @@
 package com.qingluo.link.components.mq;
 
+import com.qingluo.link.components.mq.constant.MQSendType;
+
 /**
  * Business-facing MQ message contract.
  */

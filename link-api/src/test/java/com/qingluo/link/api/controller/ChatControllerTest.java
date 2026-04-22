@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -77,6 +78,9 @@ class ChatControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     /**
      * 测试用户 ID - 手动指定避免与其他测试冲突
      */
@@ -91,11 +95,13 @@ class ChatControllerTest {
      * 测试密码
      */
     private static final String TEST_PASSWORD = "password123";
+    private static final String TEST_DATASET_NAME = "默认数据集";
 
     /**
      * 登录后的访问令牌 (sa-token)
      */
     private String token;
+    private Long datasetId;
 
     /**
      * 创建的对话 ID - 用于后续测试（查询消息、删除）
@@ -119,6 +125,11 @@ class ChatControllerTest {
      */
     @BeforeAll
     void setup() {
+        jdbcTemplate.update("DELETE FROM chat_message");
+        jdbcTemplate.update("DELETE FROM chat_conversation");
+        jdbcTemplate.update("DELETE FROM dataset");
+        jdbcTemplate.update("DELETE FROM sys_user");
+
         // ===== 步骤 1: 创建测试用户 =====
         SysUser user = new SysUser();
         user.setId(TEST_USER_ID);
@@ -137,6 +148,8 @@ class ChatControllerTest {
         // 使用 sa-token 的编程式 API，模拟已登录状态
         StpUtil.login(TEST_USER_ID);
         token = StpUtil.getTokenValue();
+
+        datasetId = ensureDatasetExists();
     }
 
     /**
@@ -160,7 +173,7 @@ class ChatControllerTest {
     @DisplayName("创建对话 - POST /api/v1/chat/conversations")
     void Should_CreateConversation_When_DataValid() throws Exception {
         // 构建请求 JSON
-        String requestJson = "{\"title\":\"测试对话\"}";
+        String requestJson = "{\"title\":\"测试对话\",\"datasetId\":" + datasetId + "}";
 
         // 发送创建对话请求
         MvcResult result = mockMvc.perform(post("/api/v1/chat/conversations")
@@ -173,6 +186,7 @@ class ChatControllerTest {
             .andExpect(jsonPath("$.code").value(200))
             // 验证返回的对话标题
             .andExpect(jsonPath("$.data.title").value("测试对话"))
+            .andExpect(jsonPath("$.data.datasetId").value(datasetId))
             .andReturn();
 
         // ===== 提取 createdConversationId 供后续测试使用 =====
@@ -202,6 +216,7 @@ class ChatControllerTest {
     @Order(2)
     @DisplayName("获取对话列表 - GET /api/v1/chat/conversations")
     void Should_ReturnConversationList_When_GetConversations() throws Exception {
+        Assertions.assertNotNull(datasetId);
         mockMvc.perform(get("/api/v1/chat/conversations")
                 .header("satoken", token)
                 .param("page", "1")     // 分页页码
@@ -211,7 +226,8 @@ class ChatControllerTest {
             // 验证 data.items 是数组
             .andExpect(jsonPath("$.data.items").isArray())
             // 验证列表第一项的标题（依赖 Order(1) 创建的数据）
-            .andExpect(jsonPath("$.data.items[0].title").value("测试对话"));
+            .andExpect(jsonPath("$.data.items[0].title").value("测试对话"))
+            .andExpect(jsonPath("$.data.items[0].datasetId").value(datasetId));
     }
 
     /**
@@ -251,7 +267,7 @@ class ChatControllerTest {
      *
      * <h3>数据库操作：</h3>
      * <ul>
-     *   <li>UPDATE chat_conversation SET is_deleted = TRUE（逻辑删除）</li>
+     *   <li>DELETE FROM chat_conversation（物理删除）</li>
      * </ul>
      *
      * <h3>依赖：</h3>
@@ -286,5 +302,19 @@ class ChatControllerTest {
         // 不携带 satoken header
         mockMvc.perform(get("/api/v1/chat/conversations"))
             .andExpect(status().isUnauthorized());
+    }
+
+    private Long ensureDatasetExists() {
+        String datasetName = TEST_DATASET_NAME + System.nanoTime();
+        jdbcTemplate.update("""
+                INSERT INTO dataset (user_id, name, description, status)
+                VALUES (?, ?, '测试数据集', 'ACTIVE')
+                """, TEST_USER_ID, datasetName);
+        return jdbcTemplate.queryForObject(
+            "SELECT id FROM dataset WHERE user_id = ? AND name = ?",
+            Long.class,
+            TEST_USER_ID,
+            datasetName
+        );
     }
 }
