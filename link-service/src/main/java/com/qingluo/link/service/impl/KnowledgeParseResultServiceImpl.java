@@ -2,7 +2,9 @@ package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.BusinessException;
+import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.model.dto.entity.KnowledgeParsedFile;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.service.KnowledgeParseResultService;
 import com.qingluo.link.service.mq.KnowledgeParseResultMQ;
@@ -22,6 +24,7 @@ public class KnowledgeParseResultServiceImpl implements KnowledgeParseResultServ
     private static final String PARSE_STATUS_FAILED = "failed";
 
     private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final KnowledgeParsedFileMapper knowledgeParsedFileMapper;
 
     @Override
     @Transactional
@@ -38,50 +41,99 @@ public class KnowledgeParseResultServiceImpl implements KnowledgeParseResultServ
                 payload.getTaskId(), record.getId(), payload.getDocumentId());
             throw new BusinessException(400, "解析结果消息中的文档标识不匹配", 400);
         }
-        if (PARSE_STATUS_SUCCESS.equals(record.getParseStatus())) {
+        KnowledgeParsedFile existingParsedFile = getParsedFile(record.getId());
+        if (existingParsedFile != null && PARSE_STATUS_SUCCESS.equals(existingParsedFile.getParseStatus())) {
             log.info("Ignore parse result because record already succeeded, taskId={}, documentId={}, currentStatus={}",
-                payload.getTaskId(), payload.getDocumentId(), record.getParseStatus());
+                payload.getTaskId(), payload.getDocumentId(), existingParsedFile.getParseStatus());
             return;
         }
 
         if (Boolean.TRUE.equals(payload.getSuccess())) {
-            handleSuccess(record, payload);
+            handleSuccess(record, payload, existingParsedFile);
             return;
         }
-        handleFailure(record, payload);
+        handleFailure(record, payload, existingParsedFile);
     }
 
-    private void handleSuccess(KnowledgeOriginalFile record, KnowledgeParseResultMQ.MsgPayload payload) {
-        record.setParseStatus(PARSE_STATUS_SUCCESS);
-        record.setIsParseSuccess(true);
-        record.setParsedBucketName(payload.getParsedBucketName());
-        record.setParsedObjectKey(payload.getParsedObjectKey());
-        record.setParsedFileUrl(payload.getParsedFileUrl());
-        record.setParsedAt(LocalDateTime.now());
-        record.setParseFailureReason(null);
-        updateRecord(record);
+    private void handleSuccess(KnowledgeOriginalFile record, KnowledgeParseResultMQ.MsgPayload payload,
+                               KnowledgeParsedFile parsedFile) {
+        saveOrUpdateParsedFile(record, payload, true, parsedFile);
         log.info("Handle parse result success, taskId={}, documentId={}, datasetId={}, parsedObjectKey={}",
             payload.getTaskId(), payload.getDocumentId(), record.getDatasetId(), payload.getParsedObjectKey());
     }
 
-    private void handleFailure(KnowledgeOriginalFile record, KnowledgeParseResultMQ.MsgPayload payload) {
-        record.setParseStatus(PARSE_STATUS_FAILED);
-        record.setIsParseSuccess(false);
-        record.setParsedBucketName(null);
-        record.setParsedObjectKey(null);
-        record.setParsedFileUrl(null);
-        record.setParsedAt(null);
-        record.setParseFailureReason(normalizeFailureReason(payload.getFailureReason()));
-        updateRecord(record);
+    private void handleFailure(KnowledgeOriginalFile record, KnowledgeParseResultMQ.MsgPayload payload,
+                               KnowledgeParsedFile parsedFile) {
+        saveOrUpdateParsedFile(record, payload, false, parsedFile);
         log.warn("Handle parse result failure, taskId={}, documentId={}, datasetId={}, failureReason={}",
-            payload.getTaskId(), payload.getDocumentId(), record.getDatasetId(), record.getParseFailureReason());
-    }
-
-    private void updateRecord(KnowledgeOriginalFile record) {
-        knowledgeOriginalFileMapper.updateById(record);
+            payload.getTaskId(), payload.getDocumentId(), record.getDatasetId(), normalizeFailureReason(payload.getFailureReason()));
     }
 
     private String normalizeFailureReason(String value) {
         return StringUtils.hasText(value) ? value : "文件解析失败";
+    }
+
+    private void saveOrUpdateParsedFile(KnowledgeOriginalFile record, KnowledgeParseResultMQ.MsgPayload payload,
+                                        boolean parseSuccess, KnowledgeParsedFile parsedFile) {
+        if (parsedFile == null) {
+            parsedFile = new KnowledgeParsedFile();
+            parsedFile.setDocumentOriginalFileId(record.getId());
+            parsedFile.setDatasetId(record.getDatasetId());
+            parsedFile.setUserId(record.getUserId());
+            parsedFile.setParseTaskId(record.getParseTaskId());
+            parsedFile.setOriginalFilename(record.getOriginalFilename());
+        }
+
+        parsedFile.setParseStatus(parseSuccess ? PARSE_STATUS_SUCCESS : PARSE_STATUS_FAILED);
+        parsedFile.setIsParseSuccess(parseSuccess);
+        parsedFile.setParseResult(payload.getStatus());
+        parsedFile.setLastResultAt(LocalDateTime.now());
+
+        if (parseSuccess) {
+            parsedFile.setParsedBucketName(payload.getParsedBucketName());
+            parsedFile.setParsedObjectKey(payload.getParsedObjectKey());
+            parsedFile.setParsedFileUrl(payload.getParsedFileUrl());
+            parsedFile.setParsedFilename(extractFilename(payload.getParsedObjectKey()));
+            parsedFile.setParsedStoragePath(buildStoragePath(payload.getParsedBucketName(), payload.getParsedObjectKey()));
+            parsedFile.setFailureReason(null);
+            parsedFile.setParsedAt(LocalDateTime.now());
+        } else {
+            parsedFile.setParsedBucketName(null);
+            parsedFile.setParsedObjectKey(null);
+            parsedFile.setParsedFileUrl(null);
+            parsedFile.setParsedFilename(null);
+            parsedFile.setParsedStoragePath(null);
+            parsedFile.setFailureReason(normalizeFailureReason(payload.getFailureReason()));
+            parsedFile.setParsedAt(null);
+        }
+
+        if (parsedFile.getId() == null) {
+            knowledgeParsedFileMapper.insert(parsedFile);
+            return;
+        }
+        knowledgeParsedFileMapper.updateById(parsedFile);
+    }
+
+    private KnowledgeParsedFile getParsedFile(Long originalFileId) {
+        return knowledgeParsedFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeParsedFile>()
+            .eq(KnowledgeParsedFile::getDocumentOriginalFileId, originalFileId));
+    }
+
+    private String extractFilename(String objectKey) {
+        if (!StringUtils.hasText(objectKey)) {
+            return null;
+        }
+        int separatorIndex = objectKey.lastIndexOf('/');
+        if (separatorIndex < 0) {
+            return objectKey;
+        }
+        return objectKey.substring(separatorIndex + 1);
+    }
+
+    private String buildStoragePath(String bucketName, String objectKey) {
+        if (!StringUtils.hasText(bucketName) || !StringUtils.hasText(objectKey)) {
+            return null;
+        }
+        return bucketName + "/" + objectKey;
     }
 }

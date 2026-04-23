@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '用户级 LLM 配置表';
 
 
--- 4. 对话表
+-- 4. 数据集表
 CREATE TABLE IF NOT EXISTS dataset (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '数据集唯一标识',
     user_id         BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',
@@ -151,13 +151,6 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     is_upload_success          TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否上传成功',
     parse_notice_status        VARCHAR(24) NOT NULL DEFAULT 'pending' COMMENT '解析任务MQ投递状态: pending/sent/failed',
     parse_task_id              VARCHAR(36) NOT NULL COMMENT '解析任务业务唯一标识(UUID)',
-    parse_status               VARCHAR(16) NOT NULL DEFAULT 'not_started' COMMENT 'Python/RAG解析状态',
-    is_parse_success           TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否解析成功',
-    parsed_bucket_name         VARCHAR(64) DEFAULT NULL COMMENT '解析结果文件存储桶',
-    parsed_object_key          VARCHAR(512) DEFAULT NULL COMMENT '解析结果文件对象Key',
-    parsed_file_url            VARCHAR(1024) DEFAULT NULL COMMENT '解析结果文件访问或内部下载地址',
-    parsed_at                  DATETIME DEFAULT NULL COMMENT '解析成功时间',
-    parse_failure_reason       VARCHAR(512) DEFAULT NULL COMMENT '解析失败原因',
     failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '上传失败或解析任务MQ投递失败原因',
     parse_notice_retry_count   INT NOT NULL DEFAULT 0 COMMENT '解析任务MQ投递重试次数',
     last_parse_notice_at       DATETIME DEFAULT NULL COMMENT '最近一次解析任务MQ投递时间',
@@ -170,7 +163,35 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     INDEX idx_document_original_user_created (user_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '知识库原始文档上传记录表';
 
--- 9. 知识文件上传配置表
+-- 9. 知识文件解析结果表
+CREATE TABLE IF NOT EXISTS document_parsed_file (
+    id                         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '解析结果记录主键',
+    document_original_file_id  BIGINT UNSIGNED NOT NULL COMMENT '原文件主键，对应 document_original_file.id',
+    dataset_id                 BIGINT UNSIGNED NOT NULL COMMENT '所属数据集ID',
+    user_id                    BIGINT UNSIGNED NOT NULL COMMENT '所属用户ID',
+    parse_task_id              VARCHAR(36) NOT NULL COMMENT '解析任务业务唯一标识(UUID)',
+    original_filename          VARCHAR(255) NOT NULL COMMENT '原文件名快照',
+    parse_status               VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT '解析状态: pending/success/failed',
+    is_parse_success           TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否解析成功',
+    parsed_filename            VARCHAR(255) DEFAULT NULL COMMENT '解析后md文件名',
+    parsed_bucket_name         VARCHAR(64) DEFAULT NULL COMMENT '解析结果文件桶名',
+    parsed_object_key          VARCHAR(512) DEFAULT NULL COMMENT '解析结果文件对象Key',
+    parsed_file_url            VARCHAR(1024) DEFAULT NULL COMMENT '解析结果文件访问或内部下载地址',
+    parsed_storage_path        VARCHAR(1024) DEFAULT NULL COMMENT '解析结果统一存储路径',
+    parse_result               TEXT DEFAULT NULL COMMENT 'Python返回的解析结果描述',
+    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT 'Python返回的解析失败原因',
+    parsed_at                  DATETIME DEFAULT NULL COMMENT '解析成功时间',
+    last_result_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近一次收到解析结果时间',
+    created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_document_parsed_original_file (document_original_file_id),
+    UNIQUE KEY uk_document_parsed_task_id (parse_task_id),
+    INDEX idx_document_parsed_dataset_status (dataset_id, parse_status, updated_at),
+    INDEX idx_document_parsed_user_status (user_id, parse_status, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '知识文件解析结果表';
+
+-- 10. 知识文件上传配置表
 CREATE TABLE IF NOT EXISTS knowledge_file_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置记录ID',
     max_size_bytes      BIGINT UNSIGNED NOT NULL COMMENT '单文件大小上限，单位字节',
@@ -189,4 +210,5 @@ ALTER TABLE chat_conversation AUTO_INCREMENT = 10000;
 ALTER TABLE chat_message AUTO_INCREMENT = 10000;
 ALTER TABLE llm_usage_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
+ALTER TABLE document_parsed_file AUTO_INCREMENT = 10000;
 ALTER TABLE knowledge_file_config AUTO_INCREMENT = 10000;

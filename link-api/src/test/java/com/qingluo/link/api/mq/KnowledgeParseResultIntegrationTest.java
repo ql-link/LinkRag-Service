@@ -32,6 +32,7 @@ class KnowledgeParseResultIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM document_parsed_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM dataset");
         jdbcTemplate.update("DELETE FROM sys_user");
@@ -55,11 +56,10 @@ class KnowledgeParseResultIntegrationTest {
                 INSERT INTO document_original_file (
                     dataset_id, user_id, original_filename, file_suffix, file_size, content_type,
                     bucket_name, object_key, file_url, upload_status, is_upload_success,
-                    parse_notice_status, parse_task_id, parse_status, is_parse_success,
-                    parse_notice_retry_count
+                    parse_notice_status, parse_task_id, parse_notice_retry_count
                 ) VALUES (?, ?, 'guide.md', 'md', 128, 'text/markdown',
                     'rag-raw', '1/1/2026/04/21/guide.md', 'http://tolink-service:8080/internal/file',
-                    'success', TRUE, 'sent', 'task-integration-1', 'pending', FALSE, 0)
+                    'success', TRUE, 'sent', 'task-integration-1', 0)
                 """, datasetId, userId);
         documentId = jdbcTemplate.queryForObject(
             "SELECT id FROM document_original_file WHERE parse_task_id = 'task-integration-1'", Long.class);
@@ -71,22 +71,31 @@ class KnowledgeParseResultIntegrationTest {
             {"mq_type":"parse_result","mq_name":"tolink.rag.parse_result","payload":{"task_id":"task-integration-1","document_id":"%d","success":true,"status":"success","parsed_bucket_name":"rag-parsed","parsed_object_key":"parsed/2026/04/21/%d.md","parsed_file_url":"http://rag/%d.md","failure_reason":"","time_cost_ms":123}}
             """.formatted(documentId, documentId, documentId));
 
-        String parseStatus = jdbcTemplate.queryForObject(
-            "SELECT parse_status FROM document_original_file WHERE id = ?", String.class, documentId);
-        Boolean isParseSuccess = jdbcTemplate.queryForObject(
-            "SELECT is_parse_success FROM document_original_file WHERE id = ?", Boolean.class, documentId);
+        String parsedStoragePath = jdbcTemplate.queryForObject(
+            "SELECT parsed_storage_path FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, documentId);
+        String parsedStatus = jdbcTemplate.queryForObject(
+            "SELECT parse_status FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, documentId);
+        Boolean parsedSuccess = jdbcTemplate.queryForObject(
+            "SELECT is_parse_success FROM document_parsed_file WHERE document_original_file_id = ?",
+            Boolean.class, documentId);
         String parsedBucketName = jdbcTemplate.queryForObject(
-            "SELECT parsed_bucket_name FROM document_original_file WHERE id = ?", String.class, documentId);
+            "SELECT parsed_bucket_name FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, documentId);
         String parsedObjectKey = jdbcTemplate.queryForObject(
-            "SELECT parsed_object_key FROM document_original_file WHERE id = ?", String.class, documentId);
+            "SELECT parsed_object_key FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, documentId);
         String parsedFileUrl = jdbcTemplate.queryForObject(
-            "SELECT parsed_file_url FROM document_original_file WHERE id = ?", String.class, documentId);
+            "SELECT parsed_file_url FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, documentId);
 
-        assertThat(parseStatus).isEqualTo("success");
-        assertThat(isParseSuccess).isTrue();
+        assertThat(parsedStatus).isEqualTo("success");
+        assertThat(parsedSuccess).isTrue();
         assertThat(parsedBucketName).isEqualTo("rag-parsed");
         assertThat(parsedObjectKey).isEqualTo("parsed/2026/04/21/%d.md".formatted(documentId));
         assertThat(parsedFileUrl).isEqualTo("http://rag/%d.md".formatted(documentId));
+        assertThat(parsedStoragePath).isEqualTo("rag-parsed/parsed/2026/04/21/%d.md".formatted(documentId));
     }
 
     @Test
@@ -95,15 +104,18 @@ class KnowledgeParseResultIntegrationTest {
             {"mq_type":"parse_result","mq_name":"tolink.rag.parse_result","payload":{"task_id":"task-integration-1","document_id":"%d","success":false,"status":"failed","parsed_bucket_name":"","parsed_object_key":"","parsed_file_url":"","failure_reason":"vectorize failed","time_cost_ms":321}}
             """.formatted(documentId));
 
-        String parseStatus = jdbcTemplate.queryForObject(
-            "SELECT parse_status FROM document_original_file WHERE id = ?", String.class, documentId);
-        Boolean isParseSuccess = jdbcTemplate.queryForObject(
-            "SELECT is_parse_success FROM document_original_file WHERE id = ?", Boolean.class, documentId);
-        String parseFailureReason = jdbcTemplate.queryForObject(
-            "SELECT parse_failure_reason FROM document_original_file WHERE id = ?", String.class, documentId);
+        String parsedStatus = jdbcTemplate.queryForObject(
+            "SELECT parse_status FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, documentId);
+        Boolean parsedSuccess = jdbcTemplate.queryForObject(
+            "SELECT is_parse_success FROM document_parsed_file WHERE document_original_file_id = ?",
+            Boolean.class, documentId);
+        String parsedFailureReason = jdbcTemplate.queryForObject(
+            "SELECT failure_reason FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, documentId);
 
-        assertThat(parseStatus).isEqualTo("failed");
-        assertThat(isParseSuccess).isFalse();
-        assertThat(parseFailureReason).isEqualTo("vectorize failed");
+        assertThat(parsedStatus).isEqualTo("failed");
+        assertThat(parsedSuccess).isFalse();
+        assertThat(parsedFailureReason).isEqualTo("vectorize failed");
     }
 }

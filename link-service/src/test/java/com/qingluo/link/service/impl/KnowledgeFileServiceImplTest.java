@@ -14,6 +14,7 @@ import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
+import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
@@ -36,6 +37,9 @@ class KnowledgeFileServiceImplTest {
 
     @Mock
     private KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+
+    @Mock
+    private KnowledgeParsedFileMapper knowledgeParsedFileMapper;
 
     @Mock
     private IOssService ossService;

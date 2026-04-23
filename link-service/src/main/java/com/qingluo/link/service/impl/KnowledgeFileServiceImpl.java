@@ -12,8 +12,10 @@ import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
+import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.Dataset;
+import com.qingluo.link.model.dto.entity.KnowledgeParsedFile;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.model.dto.response.KnowledgeFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
@@ -24,8 +26,11 @@ import com.qingluo.link.service.config.KnowledgeFileProperties;
 import com.qingluo.link.service.config.KnowledgeFileRuntimeConfig;
 import java.io.File;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +57,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
 
     private final DatasetMapper datasetMapper;
     private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final KnowledgeParsedFileMapper knowledgeParsedFileMapper;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
     private final ObjectProvider<MQSend> mqSendProvider;
@@ -80,8 +86,6 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         record.setIsUploadSuccess(false);
         record.setParseNoticeStatus(PARSE_NOTICE_PENDING);
         record.setParseTaskId(UUID.randomUUID().toString());
-        record.setParseStatus(PARSE_STATUS_NOT_STARTED);
-        record.setIsParseSuccess(false);
         record.setParseNoticeRetryCount(0);
         try {
             knowledgeOriginalFileMapper.insert(record);
@@ -118,13 +122,17 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         if (parseImmediately) {
             return createParseTask(record);
         }
-        return toDTO(record);
+        return toDTO(record, null);
     }
 
     @Override
     public PageResult<KnowledgeFileDTO> list(Long userId, Long datasetId, String uploadStatus,
                                              String parseNoticeStatus, String parseStatus, int page, int pageSize) {
         assertOwnedDataset(userId, datasetId);
+        List<Long> filteredIds = resolveFilteredIds(userId, datasetId, parseStatus);
+        if (filteredIds != null && filteredIds.isEmpty()) {
+            return new PageResult<>(List.of(), 0, page, pageSize);
+        }
         PageHelper.startPage(page, pageSize);
         LambdaQueryWrapper<KnowledgeOriginalFile> wrapper = new LambdaQueryWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getDatasetId, datasetId)
@@ -137,17 +145,21 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         if (StringUtils.hasText(parseNoticeStatus)) {
             wrapper.eq(KnowledgeOriginalFile::getParseNoticeStatus, normalizeStatus(parseNoticeStatus));
         }
-        if (StringUtils.hasText(parseStatus)) {
-            wrapper.eq(KnowledgeOriginalFile::getParseStatus, normalizeStatus(parseStatus));
+        if (filteredIds != null) {
+            wrapper.in(KnowledgeOriginalFile::getId, filteredIds);
         }
         List<KnowledgeOriginalFile> records = knowledgeOriginalFileMapper.selectList(wrapper);
+        Map<Long, KnowledgeParsedFile> parsedFileMap = loadParsedFileMap(records);
         PageInfo<KnowledgeOriginalFile> pageInfo = new PageInfo<>(records);
-        return new PageResult<>(records.stream().map(this::toDTO).toList(), pageInfo.getTotal(), page, pageSize);
+        return new PageResult<>(
+            records.stream().map(record -> toDTO(record, parsedFileMap.get(record.getId()))).toList(),
+            pageInfo.getTotal(), page, pageSize);
     }
 
     @Override
     public KnowledgeFileDTO detail(Long userId, Long fileId) {
-        return toDTO(getOwnedFile(userId, fileId));
+        KnowledgeOriginalFile record = getOwnedFile(userId, fileId);
+        return toDTO(record, getParsedFile(record.getId()));
     }
 
     @Override
@@ -157,8 +169,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         if (!Boolean.TRUE.equals(record.getIsUploadSuccess()) || !StringUtils.hasText(record.getObjectKey())) {
             throw new BusinessException(400, "原文件未上传成功，不能创建解析任务", 400);
         }
-        if (PARSE_STATUS_PENDING.equals(record.getParseStatus())) {
-            return toDTO(record);
+        KnowledgeParsedFile parsedFile = getParsedFile(record.getId());
+        if (parsedFile != null && PARSE_STATUS_PENDING.equals(parsedFile.getParseStatus())) {
+            return toDTO(record, parsedFile);
         }
         return createParseTask(record);
     }
@@ -182,6 +195,8 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
             }
         }
         try {
+            knowledgeParsedFileMapper.delete(new LambdaQueryWrapper<KnowledgeParsedFile>()
+                .eq(KnowledgeParsedFile::getDocumentOriginalFileId, record.getId()));
             knowledgeOriginalFileMapper.deleteById(record.getId());
         } catch (RuntimeException e) {
             log.error("Delete knowledge file database record failed after oss delete, userId={}, fileId={}, datasetId={}, objectKey={}",
@@ -211,11 +226,6 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     }
 
     private KnowledgeFileDTO createParseTask(KnowledgeOriginalFile record) {
-        knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
-            .eq(KnowledgeOriginalFile::getId, record.getId())
-            .set(KnowledgeOriginalFile::getParseStatus, PARSE_STATUS_PENDING));
-        record.setParseStatus(PARSE_STATUS_PENDING);
-
         try {
             MQSend mqSend = mqSendProvider.getIfAvailable();
             if (mqSend == null) {
@@ -228,6 +238,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
                 .set(KnowledgeOriginalFile::getFailureReason, null));
             record.setParseNoticeStatus(PARSE_NOTICE_SENT);
             record.setFailureReason(null);
+            createOrUpdatePendingParsedFile(record);
         } catch (Exception e) {
             knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
                 .eq(KnowledgeOriginalFile::getId, record.getId())
@@ -236,7 +247,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
             record.setParseNoticeStatus(PARSE_NOTICE_FAILED);
             record.setFailureReason("文件已上传，解析任务投递失败");
         }
-        return toDTO(record);
+        return toDTO(record, getParsedFile(record.getId()));
     }
 
     private void assertOwnedDataset(Long userId, Long datasetId) {
@@ -333,7 +344,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
             .replace("parse_notice_", "");
     }
 
-    private KnowledgeFileDTO toDTO(KnowledgeOriginalFile record) {
+    private KnowledgeFileDTO toDTO(KnowledgeOriginalFile record, KnowledgeParsedFile parsedFile) {
         KnowledgeFileDTO dto = new KnowledgeFileDTO();
         dto.setId(record.getId());
         dto.setDatasetId(record.getDatasetId());
@@ -344,15 +355,92 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         dto.setIsUploadSuccess(Boolean.TRUE.equals(record.getIsUploadSuccess()));
         dto.setParseNoticeStatus(toParseNoticeStatus(record.getParseNoticeStatus()));
         dto.setParseTaskId(record.getParseTaskId());
-        dto.setParseStatus(toParseStatus(record.getParseStatus()));
-        dto.setIsParseSuccess(Boolean.TRUE.equals(record.getIsParseSuccess()));
-        dto.setFailureReason(record.getFailureReason());
+        dto.setParseStatus(toParseStatus(parsedFile == null ? null : parsedFile.getParseStatus()));
+        dto.setIsParseSuccess(parsedFile != null && Boolean.TRUE.equals(parsedFile.getIsParseSuccess()));
+        dto.setFailureReason(parsedFile != null ? parsedFile.getFailureReason() : record.getFailureReason());
         dto.setCreatedAt(record.getCreatedAt());
         dto.setUpdatedAt(record.getUpdatedAt());
         return dto;
     }
 
+    private void createOrUpdatePendingParsedFile(KnowledgeOriginalFile record) {
+        KnowledgeParsedFile parsedFile = getParsedFile(record.getId());
+        if (parsedFile == null) {
+            parsedFile = new KnowledgeParsedFile();
+            parsedFile.setDocumentOriginalFileId(record.getId());
+            parsedFile.setDatasetId(record.getDatasetId());
+            parsedFile.setUserId(record.getUserId());
+            parsedFile.setParseTaskId(record.getParseTaskId());
+            parsedFile.setOriginalFilename(record.getOriginalFilename());
+        }
+        parsedFile.setParseStatus(PARSE_STATUS_PENDING);
+        parsedFile.setIsParseSuccess(false);
+        parsedFile.setFailureReason(null);
+        parsedFile.setLastResultAt(LocalDateTime.now());
+        if (parsedFile.getId() == null) {
+            knowledgeParsedFileMapper.insert(parsedFile);
+            return;
+        }
+        knowledgeParsedFileMapper.updateById(parsedFile);
+    }
+
+    private KnowledgeParsedFile getParsedFile(Long originalFileId) {
+        return knowledgeParsedFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeParsedFile>()
+            .eq(KnowledgeParsedFile::getDocumentOriginalFileId, originalFileId));
+    }
+
+    private Map<Long, KnowledgeParsedFile> loadParsedFileMap(List<KnowledgeOriginalFile> records) {
+        if (records.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = records.stream().map(KnowledgeOriginalFile::getId).toList();
+        List<KnowledgeParsedFile> parsedFiles = knowledgeParsedFileMapper.selectList(
+            new LambdaQueryWrapper<KnowledgeParsedFile>()
+                .in(KnowledgeParsedFile::getDocumentOriginalFileId, ids));
+        Map<Long, KnowledgeParsedFile> map = new HashMap<>();
+        for (KnowledgeParsedFile parsedFile : parsedFiles) {
+            map.put(parsedFile.getDocumentOriginalFileId(), parsedFile);
+        }
+        return map;
+    }
+
+    private List<Long> resolveFilteredIds(Long userId, Long datasetId, String parseStatus) {
+        if (!StringUtils.hasText(parseStatus)) {
+            return null;
+        }
+        String normalizedStatus = normalizeStatus(parseStatus);
+        if (PARSE_STATUS_NOT_STARTED.equals(normalizedStatus)) {
+            List<Long> allFileIds = knowledgeOriginalFileMapper.selectList(new LambdaQueryWrapper<KnowledgeOriginalFile>()
+                    .eq(KnowledgeOriginalFile::getDatasetId, datasetId)
+                    .eq(KnowledgeOriginalFile::getUserId, userId))
+                .stream()
+                .map(KnowledgeOriginalFile::getId)
+                .toList();
+            if (allFileIds.isEmpty()) {
+                return List.of();
+            }
+            List<Long> parsedFileIds = knowledgeParsedFileMapper.selectList(new LambdaQueryWrapper<KnowledgeParsedFile>()
+                    .eq(KnowledgeParsedFile::getDatasetId, datasetId)
+                    .eq(KnowledgeParsedFile::getUserId, userId)
+                    .in(KnowledgeParsedFile::getDocumentOriginalFileId, allFileIds))
+                .stream()
+                .map(KnowledgeParsedFile::getDocumentOriginalFileId)
+                .toList();
+            return allFileIds.stream().filter(id -> !parsedFileIds.contains(id)).toList();
+        }
+        return knowledgeParsedFileMapper.selectList(new LambdaQueryWrapper<KnowledgeParsedFile>()
+                .eq(KnowledgeParsedFile::getDatasetId, datasetId)
+                .eq(KnowledgeParsedFile::getUserId, userId)
+                .eq(KnowledgeParsedFile::getParseStatus, normalizedStatus))
+            .stream()
+            .map(KnowledgeParsedFile::getDocumentOriginalFileId)
+            .toList();
+    }
+
     private String toUploadStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "UPLOADING";
+        }
         return switch (status) {
             case UPLOAD_SUCCESS -> "UPLOAD_SUCCESS";
             case UPLOAD_FAILED -> "UPLOAD_FAILED";
@@ -361,6 +449,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     }
 
     private String toParseNoticeStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "PARSE_NOTICE_PENDING";
+        }
         return switch (status) {
             case "sent" -> "PARSE_NOTICE_SENT";
             case "failed" -> "PARSE_NOTICE_FAILED";
@@ -369,6 +460,9 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     }
 
     private String toParseStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "NOT_STARTED";
+        }
         return switch (status) {
             case "pending" -> "PENDING";
             case "processing" -> "PROCESSING";

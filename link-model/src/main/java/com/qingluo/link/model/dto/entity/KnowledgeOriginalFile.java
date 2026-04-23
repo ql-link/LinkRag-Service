@@ -53,27 +53,6 @@ public class KnowledgeOriginalFile {
     @TableField("parse_task_id")
     private String parseTaskId;
 
-    @TableField("parse_status")
-    private String parseStatus;
-
-    @TableField("is_parse_success")
-    private Boolean isParseSuccess;
-
-    @TableField("parsed_bucket_name")
-    private String parsedBucketName;
-
-    @TableField("parsed_object_key")
-    private String parsedObjectKey;
-
-    @TableField("parsed_file_url")
-    private String parsedFileUrl;
-
-    @TableField("parsed_at")
-    private LocalDateTime parsedAt;
-
-    @TableField("parse_failure_reason")
-    private String parseFailureReason;
-
     @TableField("failure_reason")
     private String failureReason;
 

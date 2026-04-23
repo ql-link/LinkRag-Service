@@ -76,6 +76,7 @@ class KnowledgeFileControllerTest {
     @BeforeEach
     void setUp() {
         jdbcTemplate.update("DELETE FROM knowledge_file_config");
+        jdbcTemplate.update("DELETE FROM document_parsed_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM chat_conversation");
         jdbcTemplate.update("DELETE FROM dataset");
@@ -288,6 +289,9 @@ class KnowledgeFileControllerTest {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM document_original_file WHERE id = ?", Integer.class, fileId);
         assertThat(count).isEqualTo(0);
+        Integer parsedCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parsed_file WHERE document_original_file_id = ?", Integer.class, fileId);
+        assertThat(parsedCount).isEqualTo(0);
 
         mockMvc.perform(get("/api/v1/datasets/{datasetId}/knowledge-files", datasetId)
                 .header("satoken", token))
@@ -326,22 +330,20 @@ class KnowledgeFileControllerTest {
         jdbcTemplate.update("""
                 INSERT INTO document_original_file (
                     dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
-                    upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_status,
-                    is_parse_success, parse_notice_retry_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_notice_retry_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             datasetId, userId, "unique.txt", "txt", 1L, "local-private",
-            "success", true, "pending", "task-" + System.nanoTime(), "not_started", false, 0);
+            "success", true, "pending", "task-" + System.nanoTime(), 0);
 
         assertThatThrownBy(() -> jdbcTemplate.update("""
                 INSERT INTO document_original_file (
                     dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
-                    upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_status,
-                    is_parse_success, parse_notice_retry_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_notice_retry_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             datasetId, userId, "unique.txt", "txt", 1L, "local-private",
-            "success", true, "pending", "task-" + System.nanoTime(), "not_started", false, 0))
+            "success", true, "pending", "task-" + System.nanoTime(), 0))
             .isInstanceOf(Exception.class);
     }
 
@@ -397,6 +399,10 @@ class KnowledgeFileControllerTest {
         assertThat(recordingMQSend.messages()).hasSize(1);
         assertThat(recordingMQSend.messages().get(0).getMQName()).isEqualTo("tolink.rag.parse_task");
         assertThat(recordingMQSend.messages().get(0).getMessage()).contains("\"document_id\":\"" + fileId + "\"");
+        String parseStatus = jdbcTemplate.queryForObject(
+            "SELECT parse_status FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, fileId);
+        assertThat(parseStatus).isEqualTo("pending");
     }
 
     @Test
@@ -422,6 +428,10 @@ class KnowledgeFileControllerTest {
             .get("data").get("parseTaskId").asText();
         assertThat(parseTaskId).isNotBlank();
         assertThat(recordingMQSend.messages()).hasSize(1);
+        String parseStatus = jdbcTemplate.queryForObject(
+            "SELECT parse_status FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, fileId);
+        assertThat(parseStatus).isEqualTo("pending");
     }
 
     @TestConfiguration

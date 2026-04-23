@@ -10,9 +10,11 @@ import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.DatasetMapper;
+import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
+import com.qingluo.link.model.dto.entity.KnowledgeParsedFile;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.model.dto.request.CreateDatasetRequest;
 import com.qingluo.link.model.dto.response.DatasetDTO;
@@ -37,6 +39,7 @@ public class DatasetServiceImpl implements DatasetService {
     private final ChatConversationMapper chatConversationMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final KnowledgeParsedFileMapper knowledgeParsedFileMapper;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
 
@@ -103,6 +106,8 @@ public class DatasetServiceImpl implements DatasetService {
                     .eq(com.qingluo.link.model.dto.entity.ChatMessage::getConversationId, conversation.getId()));
             }
 
+            knowledgeParsedFileMapper.delete(new LambdaQueryWrapper<KnowledgeParsedFile>()
+                .eq(KnowledgeParsedFile::getDatasetId, dataset.getId()));
             knowledgeOriginalFileMapper.delete(new LambdaQueryWrapper<KnowledgeOriginalFile>()
                 .eq(KnowledgeOriginalFile::getDatasetId, dataset.getId()));
             chatConversationMapper.delete(new LambdaQueryWrapper<ChatConversation>()
