@@ -1,0 +1,28 @@
+llm_module_java_api_design.md
+/.idea/
+/.vscode/
+/.claude/
+
+# Maven
+target/
+logs/
+**/logs/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# 本地配置文件（保留 application-example.yml 作为模板）
+**/application-local.yml
+**/application-local.yaml
+**/application-dev.yml
+**/application-dev.yaml
+**/application-personal.yml
+**/application-personal.yaml
+/.mcp.json
+docs/ToLink-前端API文档.md
+.DS_Store
+/.agents/*
+!/.agents/skills/
+!/.agents/skills/**

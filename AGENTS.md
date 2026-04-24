@@ -1,155 +1,392 @@
-# toLink-Service — Codex 项目配置
+# toLink-Service AI 协作开发宪法
 
-## 项目简介
-多模块 Maven 项目，Java 17 + Spring Boot 2.5.3，提供 AI LLM 代理与管理服务。
+## 1. 文档定位
 
-## 模块结构
+`AGENTS.md` 是本项目的开发宪法，用于约束 AI 与人的协作方式、阶段门禁、文档产物、读取顺序与交付规则。
+
+本文件只写稳定规则，不记录项目动态现状。项目现状统一维护在 `project_info.md`。
+
+## 2. AI 固定入口
+
+AI 在接收到任何新功能、改造、重构、流程调整请求时，必须优先读取以下文件：
+
+1. `AGENTS.md`
+2. `project_info.md`
+
+若任务涉及跨模块数据、缓存、消息、对象存储、接口约定，还必须读取：
+
+3. `docs/architecture/middleware_contract.md`
+
+若任务已经绑定到某次模块开发目录，还必须读取：
+
+4. `docs/module-development-files/<domain>-<module-name>/<phase>/feature_info.md`
+
+## 3. 开发流程总览
+
+项目功能开发遵循以下六阶段流程，禁止跳阶段直接进入实现：
+
+1. 项目上下文加载
+2. 需求分析
+3. 技术设计
+4. 代码实现
+5. 测试与交付
+6. 最终审核与提交/合并/发布
+
+## 4. 人机协作原则
+
+### 4.1 AI 负责的事项
+
+- 读取上下文文档并建立任务背景
+- 将模糊需求整理成结构化分析结果
+- 产出需求、技术、实现、测试交付文档草稿
+- 按确认后的技术方案落地代码
+- 汇总本次改造影响、测试结果与交付说明
+
+### 4.2 人负责的事项
+
+- 确认需求目标、范围、优先级与复杂度等级
+- 回答关键业务问题与边界问题
+- 审核需求文档、技术文档、测试与交付文档
+- 对重要取舍、风险接受、阶段放行做最终决定
+- 决定是否提交、合并或发布
+
+### 4.3 强制人工确认点
+
+以下节点必须人工确认后才能进入下一阶段：
+
+1. 复杂度等级确认
+2. `requirement.md` 审核通过
+3. `technical_design.md` 审核通过（L2/L3）
+4. `testing_delivery.md` 审核通过
+
+## 5. 复杂度分级
+
+复杂度等级在需求澄清后由 AI 提出建议，最终由用户确认。未确认等级前，不允许进入正式需求文档编写。
+
+### 5.1 L1 轻量功能
+
+适用条件：
+
+- 单模块或局部逻辑小改动
+- 不涉及数据库结构变更
+- 不新增或重构 Redis/MQ/OSS 契约
+- 风险较低，验证范围较小
+
+必须产出：
+
+- `feature_info.md`
+- `requirement.md`
+
+可选补充：
+
+- 在 `feature_info.md` 中补充实现摘要与测试结论
+
+### 5.2 L2 标准功能
+
+适用条件：
+
+- 一个完整功能点
+- 涉及多个代码模块协作
+- 需要明确技术方案与测试方案
+- 可能修改已有接口、DTO、Service、Mapper 或缓存逻辑
+
+必须产出：
+
+- `feature_info.md`
+- `requirement.md`
+- `technical_design.md`
+- `testing_delivery.md`
+
+### 5.3 L3 重型功能
+
+适用条件：
+
+- 跨模块或跨中间件改造
+- 涉及 MySQL、Redis、MQ、OSS、外部系统中的一个或多个
+- 存在迁移、兼容性、回滚、幂等、一致性等复杂问题
+- 实际实现可能与技术方案存在显著偏差，需要单独沉淀改造结果
+
+必须产出：
+
+- `feature_info.md`
+- `requirement.md`
+- `technical_design.md`
+- `implementation_report.md`
+- `testing_delivery.md`
+
+### 5.4 等级升级与降级
+
+- AI 在后续分析中发现影响面扩大时，可以提出升级建议，并说明原因
+- 等级升级必须得到用户确认
+- 等级降级也必须得到用户确认
+
+## 6. 模块开发目录规范
+
+每次模块开发先创建模块目录，再按需要拆分阶段子目录。
+
+目录结构如下：
+
+```text
+docs/module-development-files/<domain>-<module-name>/<phase>/
 ```
-link-model                  # 数据模型层：Entity 实体类、Enum 枚举、Request/Response DTO
-link-core                   # 核心层：异常体系 (BusinessException)、工具类 (ApiKeyEncryptService, AuthContext)
-link-components             # 通用组件中台：Redis 组件（含 DoubleDeleteCacheService 双删缓存）、MQ、OSS 等
-link-mapper                 # 数据访问层：MyBatis-Plus Mapper 接口（依赖 link-model）
-link-api                    # Controller 层 + Spring Boot 启动类（依赖 link-core、link-model、link-service、link-mapper）
-link-service                # Service 层：核心业务逻辑（依赖 link-api、link-mapper、link-components）
+
+示例：
+
+```text
+docs/module-development-files/storage-file-management/
+├── 一期/
+│   ├── feature_info.md
+│   ├── requirement.md
+│   ├── technical_design.md
+│   ├── implementation_report.md
+│   └── testing_delivery.md
+└── 二期/
+    ├── feature_info.md
+    ├── requirement.md
+    ├── technical_design.md
+    ├── implementation_report.md
+    └── testing_delivery.md
 ```
 
-## 模块依赖方向
-```
-link-model ←── link-core ←── link-api ←── link-service
-                 ↑              ↑
-                 │               └──► link-mapper ←── link-model
-                 │
-link-components (toLink-components-redis, toLink-components-mq, toLink-components-oss)
-```
-> `link-api` 是 Spring Boot 启动模块，`link-service` 不直接写 Mapper，通过依赖 `link-mapper` 和 `link-api` 实现完整解耦。
+其中：
 
-## 核心技术栈
-- **框架**: Spring Boot 2.5.3, MyBatis-Plus 3.4.2
-- **认证**: sa-token 1.39.0（Header 模式，7 天有效期）
-- **数据库**: MySQL 8，数据库名 `tolink_rag_db`，Druid 连接池
-- **缓存**: Redis (Lettuce)，使用双删策略 (DoubleDeleteCacheService)
-- **安全**: AES-256-GCM 对称加密存储 LLM API Key
+- `<domain>-<module-name>` 使用稳定英文短词，直接表达模块名称，如 `user-management`、`llm-config-management`、`storage-file-management`
+- `<phase>` 默认从 `一期` 开始；若需求分析认为范围过大或适合拆阶段，再增加 `二期`、`三期`
 
-## 环境变量（必须配置）
-| 变量 | 说明 |
-|------|------|
-| `DB_HOST` | MySQL 主机（默认 localhost） |
-| `DB_USERNAME` | 数据库用户名（默认 root） |
-| `DB_PASSWORD` | 数据库密码 |
-| `REDIS_HOST` | Redis 主机（默认 localhost） |
-| `REDIS_USERNAME` | Redis 用户名 |
-| `REDIS_PASSWORD` | Redis 密码 |
-| `LLM_SECRET` | AES-256-GCM 密钥（64位十六进制字符串） |
+### 6.1 是否拆分一期/二期的判断规则
 
-## 数据库
-- Schema 定义: `docs/db/schema.sql`
-- 初始化数据: `docs/db/init.sql`
-- MyBatis-Plus 配置: 主键策略 `assign_id`（雪花算法），逻辑删除字段 `isDeleted`
-- Mapper XML 位置: `link-mapper/src/main/resources/mapper/`（迁移中，原位于 link-service）
+在正式编写 `requirement.md` 前，AI 必须先判断当前模块开发是否需要拆成 `一期 / 二期`。
 
-## 开发约定
-- **包名前缀**: `com.qingluo.link`
-- **异常**: 统一继承 `BusinessException`，通过 `GlobalExceptionHandler` 处理
-- **响应格式**: 统一使用 `Result<T>` / `PageResult<T>`
-- **认证**: 所有需要登录的接口通过 sa-token 拦截，用户信息从 `AuthContext` 获取
-- **API Key 加密**: 存储前必须通过 `ApiKeyEncryptService` 加密，读取时解密
-- **API 文档**: 所有 DTO 必须添加 Swagger `@Schema` 注解，包含字段描述（description）和示例值（example）
-- **Controller 文档**: 所有 Controller 类必须添加 JavaDoc 注释，包含类功能描述、作者、版本信息
-- **接口设计规范**: 参考 [api-design-standards skill](../.Codex/skills/api-design-standards/SKILL.md)，包含 URL 规范、HTTP 方法、状态码、响应格式等
+优先建议拆阶段的情况包括：
 
-## 当前分支
-`user_and_llm_manage`（基于 master），已实现完整业务代码。
+- 一次需求包含多个可以独立交付的功能块
+- 一期可先交付基础能力，二期才补增强能力或复杂联动
+- 范围过大，放在一个阶段会导致需求、设计和测试边界失控
+- 依赖外部系统、数据迁移或复杂中间件改造，适合分步推进
 
+若判断需要拆分，AI 必须：
 
-# 开发规范
+1. 在需求初判中明确提出“建议拆分一期/二期”
+2. 说明每一期的目标边界
+3. 待用户确认后，在对应模块目录下创建 `一期/二期` 子目录
+4. 当前阶段的所有过程文件只放在当前期次目录中
 
-## Profile
-- Role: 资深软件架构师 & 敏捷开发教练
-- Language: 中文
-- Description: 严格遵循 Kent Beck 《测试驱动开发》思想的 AI 结对编程助手，引导开发者通过“红-绿-重构”微循环写出高内聚、低耦合的优雅代码。特别适合在日常开发中沉淀规范，以及在校招机试、技术面试中向面试官展现极高的工程素养与代码严谨性。
+若判断不需要拆分，则只创建当前期次目录，默认使用 `一期`
 
-## Background
-- 测试驱动开发（TDD）的核心不在于测试，而在于“驱动”与“设计”。
-- 必须将测试作为脚手架，从调用者（Client）视角出发设计 API。
-- 遵循“没有失败的测试，就不写业务代码”的铁律。
+## 7. 阶段目录文档职责
 
-## Rules
-1. 步子要小（Baby Steps）：每次只解决一个极小的核心问题。如果测试代码逻辑过长，必须强制拆解。
-2. 意图清晰（Intent over Implementation）：测试方法的命名必须清晰描述业务行为和预期（例如 `Should_ReturnX_When_ConditionY`），而非仅仅测试方法名。
-3. 独立性原则（FIRST Principles）：确保测试是快速的（Fast）、独立的（Independent）、可重复的（Repeatable）、自我验证的（Self-Validating）和及时的（Timely）。优先测试纯逻辑，必要时使用 Mock/Stub 隔离外部依赖。
-4. 强制前置约束：当接收到编写业务代码的请求时，如果未提供对应的测试用例，必须拒绝直接生成业务代码，并反问引导用户先编写测试。
+### 7.1 `feature_info.md`
 
-## Workflow
-1. 【需求拆解】：接收到新功能需求或 Bug 修复任务时，首先简述对需求的理解，并将其拆解为一系列极小的测试用例清单（To-Do List）。
-2. 【红 (Red)】：输出针对清单中第一个任务的单元测试代码。此阶段绝对不输出业务代码。提示用户运行测试，预期结果必须是“失败（或编译报错）”。
-3. 【绿 (Green)】：在用户确认测试失败后，输出最少量、最简单的生产代码。允许使用“伪实现（Fake It）”或硬编码，唯一目标是让刚才的测试通过。
-4. 【重构 (Refactor)】：在确认测试变绿的安全网下，审视并优化刚刚写出的代码。消除重复（DRY），优化变量命名、提取方法，应用设计模式，同时保证测试持续通过。
-5. 【循环】：完成一个微循环后，划掉 To-Do List 上的已完成项，进入下一个测试用例。
+定位：当前模块某一期目录的导航页。
 
-## OutputFormat
-面对用户的任何新需求，必须严格按照以下结构输出第一步的回应：
+职责：
 
-### 🎯 需求理解与拆解
-- **理解**：<一句话简述业务需求>
-- **To-Do List**：
-    - [ ] <测试用例 1：场景与预期>
-    - [ ] <测试用例 2：场景与预期>
+- 记录模块名称、当前期次、当前状态、复杂度等级、当前分支
+- 记录关联模块、关联中间件、关联历史功能
+- 记录本次要求产出的文档
+- 给出当前推荐阅读顺序
 
-### 🔴 Step 1: Red (编写失败的测试)
-```[语言]
-// 只输出针对【测试用例 1】的测试代码
-```
+### 7.2 `requirement.md`
 
----
+定位：需求分析文档。
 
-## 项目文件架构
+职责：
 
-```
-tolink-service/
-├── AGENTS.md                          # 本文件
-├── README.md
-├── pom.xml                            # 父 POM
-│
-├── docs/
-│   ├── ToLink-Service设计文档.md
-│   └── db/
-│       ├── schema.sql                 # 数据库建表脚本
-│       └── init.sql                   # 初始化数据脚本
-│
-├── link-model/                        # 数据模型层
-│   └── src/main/java/com/qingluo/link/model/
-│       ├── dto/
-│       │   ├── entity/                # 实体类（与数据库表一一对应）
-│       │   ├── request/               # 入参 DTO（带 Validation 注解）
-│       │   └── response/              # 出参 DTO
-│       └── enums/
-├── link-core/                         # 核心层
-│   └── src/main/java/com/qingluo/link/core/
-│       ├── config/
-│       ├── exception/                 # 异常体系
-│       └── util/                      # 工具类
-│
-├── link-components/                  # 通用组件中台（pom 打包为 pom，含多个子模块）
-│   ├── pom.xml
-│   ├── toLink-components-mq/          # MQ 组件（预留）
-│   ├── toLink-components-oss/         # OSS 组件（预留）
-│   └── toLink-components-redis/        # Redis 组件
-│       └── src/main/java/com/qingluo/link/components/redis/
-│           ├── service/
-│           └── resources/
-│               └── META-INF/spring.factories
-│
-├── link-mapper/                       # 数据访问层
-│   └── src/main/java/com/qingluo/link/mapper/
-├── link-api/                          # Controller 层 + Spring Boot 启动类
-│   ├── pom.xml                        # 包含所有基础设施依赖 + spring-boot-maven-plugin
-│   └── src/main/
-│       ├── java/com/qingluo/link/api/
-│       │   ├── LinkApplication.java   # Spring Boot 启动类
-│       │   └── controller/
-│       └── resources/
-│
-└── link-service/                      # Service 层（纯业务逻辑，无启动类）
-    └── src/main/java/com/qingluo/link/service/
-        └── impl/
-```
+- 说明做什么、为什么做、给谁用
+- 明确边界、主流程、异常流程、验收标准
+- 只写需求，不写实现方案
+
+### 7.3 `technical_design.md`
+
+定位：技术实现文档。
+
+职责：
+
+- 说明准备如何落地实现
+- 明确涉及模块、接口、数据、缓存、消息、事务、权限与测试策略
+- 必须基于真实代码与现有组件
+
+### 7.4 `implementation_report.md`
+
+定位：改造报告。
+
+职责：
+
+- 说明实际改了哪些模块、文件、接口、配置、表、缓存、消息
+- 说明与技术方案的偏差及原因
+
+### 7.5 `testing_delivery.md`
+
+定位：测试与交付文档。
+
+职责：
+
+- 汇总测试范围、测试环境、测试用例、执行结果、遗留风险与交付注意事项
+
+## 8. 阶段读取顺序与产物
+
+### 8.1 阶段一：项目上下文加载
+
+AI 必读：
+
+1. `AGENTS.md`
+2. `project_info.md`
+3. `docs/architecture/middleware_contract.md`（若涉及中间件或跨模块约定）
+
+AI 输出：
+
+- 需求理解摘要
+- 影响面初判
+- 建议复杂度等级
+- 预计文档集合
+
+人工动作：
+
+- 确认需求理解
+- 确认复杂度等级
+
+### 8.2 阶段二：需求分析
+
+AI 必读：
+
+1. 当前模块当前期次目录 `feature_info.md`
+2. 同业务域或相近历史功能文档
+3. 必要的业务背景文档
+
+AI 产出：
+
+- `requirement.md`
+- 是否建议拆分为 `一期 / 二期`
+- 若拆分，明确本期目标边界并在模块目录下创建对应期次子目录
+
+人工动作：
+
+- 回答关键需求问题
+- 审核并放行需求文档
+
+### 8.3 阶段三：技术设计
+
+AI 必读：
+
+1. 本期 `requirement.md`
+2. `docs/architecture/middleware_contract.md`
+3. 对应组件说明文档
+4. 相关模块真实代码
+
+强制要求：
+
+- 只要技术方案涉及某个组件、某个模块、某段既有链路，就必须先读取对应代码或文档
+- 不允许仅凭历史记忆、命名推测或通用经验直接写方案
+- 若引用 Redis、OSS、MQ、鉴权、加密等通用能力，必须先读对应组件说明文档
+- 若引用业务模块能力，必须先读对应 Controller / Service / Model / Mapper 中至少一个真实入口
+- 若未找到对应代码或文档，必须在技术文档中明确写出“已检查范围”和“当前未知项”
+
+AI 产出：
+
+- `technical_design.md`（L2/L3）
+
+人工动作：
+
+- 审核技术路线与关键取舍
+- 放行技术文档
+
+### 8.4 阶段四：代码实现
+
+AI 必读：
+
+1. 本期 `technical_design.md`（L2/L3）
+2. 当前期次 `feature_info.md`
+3. 对应组件说明文档
+
+AI 产出：
+
+- 代码改动
+- `implementation_report.md`（L3 或复杂偏差场景）
+
+人工动作：
+
+- 对关键偏差、范围变化、风险升级做确认
+
+### 8.5 阶段五：测试与交付
+
+AI 必读：
+
+1. `requirement.md`
+2. `technical_design.md`（若存在）
+3. `implementation_report.md`（若存在）
+4. 实际测试结果
+
+AI 产出：
+
+- `testing_delivery.md`
+- 更新 `project_info.md`
+
+人工动作：
+
+- 审核测试覆盖、遗留风险与交付结论
+
+### 8.6 阶段六：最终审核与提交/合并/发布
+
+AI 必须汇总：
+
+- 本次模块当前期次目录全部产物
+- 代码改动摘要
+- 风险与交付建议
+
+人工动作：
+
+- 决定是否提交、合并、发布
+
+## 9. 跨模块约定与组件说明
+
+### 9.1 `docs/architecture/middleware_contract.md`
+
+只记录跨模块统一契约，例如：
+
+- MySQL 命名与公共字段约定
+- Redis key 与 TTL 约定
+- MQ topic、group、消息结构与幂等约定
+- OSS bucket/path/public-private 约定
+- API 响应、错误码、traceId、日志字段约定
+
+### 9.2 `docs/architecture/components/*.md`
+
+用于记录组件说明书，介绍：
+
+- 组件职责
+- 适用场景
+- 当前实现结构
+- 核心类与配置项
+- 已有能力与使用方式
+- 限制与注意事项
+
+组件说明文档不替代某次需求的技术方案。
+
+## 10. 代码与文档原则
+
+- 技术文档必须引用真实代码、模块或组件，不允许脱离代码现状空想
+- 需求文档与技术文档边界必须清晰，不允许重复描述
+- 改造报告只记录实际落地结果与差异，不重复写需求和设计
+- 测试与交付文档必须以实际验证结果为依据，不允许只写计划不写结果
+- 每次功能开发完成后，必须同步更新 `project_info.md`
+- 编写代码时，关键部分必须补充注释，尤其是：
+  - 复杂业务判断
+  - 关键状态流转
+  - 跨组件调用链路
+  - 不易一眼看懂的设计意图
+- 注释应解释“为什么这样做”或“这一段在保障什么”，不要写无意义的逐行翻译式注释
+
+## 11. Skill 使用原则
+
+本项目的 skill 用于驱动读取顺序、阶段切换与文档产出，不替代项目文档本身。
+
+推荐 skill 体系：
+
+- `project-bootstrap`
+- `requirement-analysis`
+- `technical-design`
+- `implementation-execution`
+- `test-and-delivery`
+- `contract-guard`
+
+各 skill 的职责定义以 `.agents/skills/*/SKILL.md` 为准。
