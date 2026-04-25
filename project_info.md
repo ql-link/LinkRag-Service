@@ -280,7 +280,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - `KnowledgeFileController`
   - `InternalKnowledgeFileController`
   - `OssFileController`
-  - `LocalOssPreviewController`
+  - `ApiLocalOssPreviewController`
   - `KnowledgeFileService`
   - `OssApplicationService`
 - 关联中间件/能力：
@@ -342,7 +342,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 存储前必须通过 `ApiKeyEncryptService` 加密 API Key
 - DTO 应补充 Swagger `@Schema` 注解
 - Controller 应补充 JavaDoc，至少说明功能、作者、版本
-- 涉及接口设计时优先参考 `api-design-standards` skill
+- 涉及接口设计时，在 `technical-design` 中统一定义接口、异常类与错误码
 
 ## 10. 关键代码入口
 
@@ -368,9 +368,9 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 | --- | --- |
 | `AGENTS.md` | AI 协作开发宪法 |
 | `project_info.md` | 项目现状总介绍 |
-| `.agents/skills/` | 项目级 AI skill 工作流定义 |
-| `docs/architecture/middleware_contract.md` | 跨模块公共契约 |
-| `docs/architecture/components/*.md` | 中间件组件说明书 |
+| `.agents/skills/middleware-contracts/SKILL.md` | 中间件契约 skill 入口 |
+| `docs/architecture/middleware_contract.md` | 跨模块公共契约规则文档 |
+| `docs/architecture/middleware-components/*.md` | 中间件组件说明书 |
 | `docs/module-development-files/` | 按每次模块开发归档的需求、设计、实现、测试交付文档 |
 | `docs/db/schema.sql` | 数据库结构定义 |
 | `docs/db/init.sql` | 初始化数据脚本 |
@@ -384,8 +384,9 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 
 ### 12.2 涉及中间件或跨模块约定
 
-3. `docs/architecture/middleware_contract.md`
-4. 对应 `docs/architecture/components/*.md`
+3. `.agents/skills/middleware-contracts/SKILL.md`
+4. `docs/architecture/middleware_contract.md`
+4. 对应 `docs/architecture/middleware-components/*.md`
 
 ### 12.3 已进入某次模块期次目录
 
@@ -394,10 +395,9 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 
 ## 13. 当前分支与协作说明
 
-- 当前 skill 框架同步分支：`skill`
-- AI 协作入口以 `AGENTS.md` 与 `project_info.md` 为准
-- 项目级 skill 定义统一维护在 `.agents/skills/`
-- 旧 `CLAUDE.md` 项目配置已移除，避免与当前协作宪法和 skill 体系重复
+- 当前框架建设分支：`chore/skill-framework`
+- 旧项目介绍来源：`CLAUDE.md`
+- 后续以 `project_info.md` 作为 AI 项目总介绍主入口
 
 ## 14. 最近功能变更摘要
 
@@ -406,7 +406,6 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 已完成用户、LLM 配置、对话、用量统计等基础管理能力
 - 已完成数据集、知识原始文件、解析文件相关能力
 - 已落地 Redis、OSS、MQ 三类中间件组件
-- 已建立项目级 skill 体系，核心流程覆盖上下文加载、需求分析、技术设计、实现执行、测试交付、代码审查与交付前验证
 
 ## 15. 维护要求
 
