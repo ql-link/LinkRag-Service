@@ -1,6 +1,7 @@
 ---
 name: technical-design
 description: 在 requirement.md 审核通过后，为当前模块当前期次目录产出 technical_design.md，并严格基于真实代码、组件文档和公共契约进行设计。
+when_to_use: 当任务进入本 skill 对应阶段，或该 skill 的 description 触发条件命中时使用；进入下一阶段前，必须满足 AGENTS.md 的门禁与人工审核要求。
 ---
 
 # Technical Design

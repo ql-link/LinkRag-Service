@@ -1,6 +1,7 @@
 ---
 name: verification-before-completion
 description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+when_to_use: 当任务进入本 skill 对应阶段，或该 skill 的 description 触发条件命中时使用；进入下一阶段前，必须满足 AGENTS.md 的门禁与人工审核要求。
 ---
 
 # Verification Before Completion

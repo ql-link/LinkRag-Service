@@ -1,6 +1,7 @@
 ---
 name: contract-guard
 description: 在技术设计与代码实现阶段校验是否违反跨模块公共契约，并提醒同步更新 middleware_contract.md。
+when_to_use: 当任务进入本 skill 对应阶段，或该 skill 的 description 触发条件命中时使用；进入下一阶段前，必须满足 AGENTS.md 的门禁与人工审核要求。
 ---
 
 # Contract Guard

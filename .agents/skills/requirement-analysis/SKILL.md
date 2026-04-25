@@ -1,6 +1,7 @@
 ---
 name: requirement-analysis
 description: 在复杂度等级和期次确认后，为当前模块当前期次目录产出 requirement.md，并严格控制需求边界、提问门禁和人工审核停点。
+when_to_use: 当任务进入本 skill 对应阶段，或该 skill 的 description 触发条件命中时使用；进入下一阶段前，必须满足 AGENTS.md 的门禁与人工审核要求。
 ---
 
 # Requirement Analysis

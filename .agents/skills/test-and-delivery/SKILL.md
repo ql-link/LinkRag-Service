@@ -1,6 +1,7 @@
 ---
 name: test-and-delivery
 description: 为开发者或测试执行者生成可直接执行的测试单，记录测试结果、遗留风险和交付结论，并更新 project_info.md。
+when_to_use: 当任务进入本 skill 对应阶段，或该 skill 的 description 触发条件命中时使用；进入下一阶段前，必须满足 AGENTS.md 的门禁与人工审核要求。
 ---
 
 # Test And Delivery

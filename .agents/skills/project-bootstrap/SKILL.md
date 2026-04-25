@@ -1,6 +1,7 @@
 ---
 name: project-bootstrap
 description: 在任何新功能、重构、流程调整开始前读取项目宪法与项目现状，先完成需求讨论与边界澄清，再进入复杂度分级建议与文档计划输出。
+when_to_use: 当任务进入本 skill 对应阶段，或该 skill 的 description 触发条件命中时使用；进入下一阶段前，必须满足 AGENTS.md 的门禁与人工审核要求。
 ---
 
 # Project Bootstrap

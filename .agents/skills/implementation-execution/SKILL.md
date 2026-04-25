@@ -1,6 +1,7 @@
 ---
 name: implementation-execution
 description: 在需求和技术方案确认后执行代码实现，并在必要时产出 implementation_report.md。
+when_to_use: 当任务进入本 skill 对应阶段，或该 skill 的 description 触发条件命中时使用；进入下一阶段前，必须满足 AGENTS.md 的门禁与人工审核要求。
 ---
 
 # Implementation Execution
