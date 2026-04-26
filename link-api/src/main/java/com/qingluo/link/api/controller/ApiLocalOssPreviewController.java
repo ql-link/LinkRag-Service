@@ -18,13 +18,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-public class LocalOssPreviewController {
+public class ApiLocalOssPreviewController {
 
     private static final String PUBLIC_ROUTE_PREFIX = "/api/v1/oss-files/public/";
 
     private final OssProperties ossProperties;
 
-    public LocalOssPreviewController(OssProperties ossProperties) {
+    public ApiLocalOssPreviewController(OssProperties ossProperties) {
         this.ossProperties = ossProperties;
     }
 

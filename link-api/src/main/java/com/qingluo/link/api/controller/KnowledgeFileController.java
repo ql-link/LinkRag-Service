@@ -16,13 +16,28 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 知识库原文件管理接口。
+ *
+ * <p>一期只负责“原文件上传到 MinIO 并记录上传事实”这一条链路：
+ * 上传、列表、详情、删除都围绕 document_original_file 表工作。
+ *
+ * <p>这里暂时不触发解析、不创建解析任务、不返回解析产物。
+ * 前端传入的 parseImmediately 仅用于保持二期交互形态兼容，真正的 MQ 投递和 Python 解析会在二期接入。
+ */
 @RestController
 @RequiredArgsConstructor
 public class KnowledgeFileController {
 
     private final KnowledgeFileService knowledgeFileService;
 
-    @PostMapping("/api/v1/datasets/{datasetId}/knowledge-files")
+    /**
+     * 上传数据集原文件。
+     *
+     * <p>同一用户、同一数据集下，文件名和后缀相同即认为是同一份原文件。
+     * 幂等与失败重试规则由 Service 层结合唯一索引和上传状态统一处理。
+     */
+    @PostMapping("/api/v1/datasets/{datasetId}/files")
     @SaCheckLogin
     public Result<KnowledgeFileDTO> upload(@PathVariable Long datasetId,
                                            @RequestParam("file") MultipartFile file,
@@ -31,34 +46,41 @@ public class KnowledgeFileController {
         return Result.success(knowledgeFileService.upload(userId, datasetId, file, parseImmediately));
     }
 
-    @GetMapping("/api/v1/datasets/{datasetId}/knowledge-files")
+    /**
+     * 分页查询数据集下的原文件列表。
+     *
+     * <p>uploadStatus 只表示原文件上传状态，可选值由一期约定为 uploading、success、failed。
+     * 解析状态不从这里返回，避免原文件表和后续解析任务表职责混在一起。
+     */
+    @GetMapping("/api/v1/datasets/{datasetId}/files")
     @SaCheckLogin
     public Result<PageResult<KnowledgeFileDTO>> list(@PathVariable Long datasetId,
                                                      @RequestParam(required = false) String uploadStatus,
-                                                     @RequestParam(required = false) String parseNoticeStatus,
-                                                     @RequestParam(required = false) String parseStatus,
                                                      @RequestParam(defaultValue = "1") int page,
                                                      @RequestParam(defaultValue = "20") int pageSize) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(knowledgeFileService.list(
-            userId, datasetId, uploadStatus, parseNoticeStatus, parseStatus, page, pageSize));
+        return Result.success(knowledgeFileService.list(userId, datasetId, uploadStatus, page, pageSize));
     }
 
-    @GetMapping("/api/v1/knowledge-files/{fileId}")
+    /**
+     * 查询单个原文件详情。
+     *
+     * <p>详情接口会校验当前登录用户是否拥有该文件，避免通过 fileId 越权访问其他用户数据。
+     */
+    @GetMapping("/api/v1/files/{fileId}")
     @SaCheckLogin
     public Result<KnowledgeFileDTO> detail(@PathVariable Long fileId) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         return Result.success(knowledgeFileService.detail(userId, fileId));
     }
 
-    @PostMapping("/api/v1/knowledge-files/{fileId}/parse-tasks")
-    @SaCheckLogin
-    public Result<KnowledgeFileDTO> createParseTask(@PathVariable Long fileId) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(knowledgeFileService.createParseTask(userId, fileId));
-    }
-
-    @DeleteMapping("/api/v1/knowledge-files/{fileId}")
+    /**
+     * 删除原文件。
+     *
+     * <p>删除动作会同时删除 MinIO 私有对象和数据库记录。
+     * 如果对象删除失败则不删除数据库记录，保证前端仍能看到失败状态并重试或等待补偿。
+     */
+    @DeleteMapping("/api/v1/files/{fileId}")
     @SaCheckLogin
     public Result<Void> delete(@PathVariable Long fileId) {
         Long userId = AuthContext.getLoginUserIdOrThrow();

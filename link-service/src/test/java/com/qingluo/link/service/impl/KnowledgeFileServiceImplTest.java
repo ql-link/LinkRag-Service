@@ -1,33 +1,26 @@
 package com.qingluo.link.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
-import com.qingluo.link.components.mq.AbstractMQ;
-import com.qingluo.link.components.mq.MQSend;
 import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
-import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
 import com.qingluo.link.service.config.KnowledgeFileProperties;
-import java.lang.reflect.Constructor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.ObjectProvider;
 
 @ExtendWith(MockitoExtension.class)
 class KnowledgeFileServiceImplTest {
@@ -39,16 +32,10 @@ class KnowledgeFileServiceImplTest {
     private KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
 
     @Mock
-    private KnowledgeParsedFileMapper knowledgeParsedFileMapper;
-
-    @Mock
     private IOssService ossService;
 
     @Mock
     private PrivateFileResolver privateFileResolver;
-
-    @Mock
-    private ObjectProvider<MQSend> mqSendProvider;
 
     @Mock
     private KnowledgeFileProperties properties;
@@ -58,18 +45,6 @@ class KnowledgeFileServiceImplTest {
 
     @InjectMocks
     private KnowledgeFileServiceImpl knowledgeFileService;
-
-    @Test
-    @DisplayName("Should_CreateParseTaskMq_When_NoArgConstructor")
-    void Should_CreateParseTaskMq_When_NoArgConstructor() throws Exception {
-        Class<?> mqClass = Class.forName("com.qingluo.link.service.impl.KnowledgeFileServiceImpl$KnowledgeParseTaskMQ");
-        Constructor<?> constructor = mqClass.getDeclaredConstructor();
-        constructor.setAccessible(true);
-
-        AbstractMQ mq = (AbstractMQ) BeanUtils.instantiateClass(constructor);
-
-        assertEquals("tolink.rag.parse_task", mq.getMQName());
-    }
 
     @Test
     @DisplayName("Should_NotDeleteDatabaseRecord_When_OssDeleteFails")

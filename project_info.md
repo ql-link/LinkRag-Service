@@ -54,6 +54,36 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - `link-mapper` 负责持久化访问
 - `link-components` 提供 Redis、MQ、OSS 等横向复用能力
 
+### 5.1 系统协作模式
+
+当前系统采用“Java 管理端 + Python 执行端”的协作模式。
+
+- Java 端负责：
+  - 用户交互入口
+  - 配置管理
+  - 数据集与知识文件元数据管理
+  - 原始文件上传、对象存储定位与异步任务触发
+- Python 端负责：
+  - 文档解析
+  - RAG 执行
+  - LLM 调用
+  - 部分执行结果回写
+
+两端通过以下方式协作：
+
+- MySQL：共享结构化业务数据
+- Redis：共享高频缓存数据
+- MQ：异步任务投递与结果回传
+- OSS / MinIO：共享文件对象与中间产物
+
+### 5.2 全局职责边界
+
+- ToLink Service 是 Java 管理端，不承担实际 LLM 调用和 RAG 生成执行
+- Python 执行端不负责前端管理入口、用户态管理和首次文件上传入口
+- 结构化状态、归属关系、列表查询优先由 MySQL 承担
+- 文件对象本体和解析产物优先由对象存储承担
+- 高读频、可回源的数据优先考虑 Redis 缓存
+
 ## 6. 通用能力地图
 
 ### 6.1 能力总览
@@ -272,8 +302,11 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - 统一 OSS 文件上传与访问
   - 私有文件下载与本地缓存访问
 - 当前能力：
-  - 原始知识文件落 OSS，并在 DB 中记录元数据
-  - 支持按数据集管理知识文件
+  - 原始知识文件落 OSS / MinIO，并在 DB 中记录元数据
+  - 支持按数据集管理知识文件，原文件唯一性按 `dataset_id + user_id + original_filename + file_suffix` 控制
+  - 原文件上传状态收敛为 `uploading`、`success`、`failed`
+  - 上传失败记录允许重试并复用原 `object_key`，上传中记录超过 1 分钟可补偿为失败
+  - 原文件上传通过 `knowledgeFileUploadExecutor` 线程池执行，避免业务代码直接创建上传线程
   - 支持私有文件通过 `PrivateFileResolver` 访问
   - 支持通用 OSS 上传入口
 - 关键入口：
@@ -282,6 +315,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - `OssFileController`
   - `ApiLocalOssPreviewController`
   - `KnowledgeFileService`
+  - `KnowledgeFileUploadExecutorConfig`
   - `OssApplicationService`
 - 关联中间件/能力：
   - MySQL：`document_original_file`、`document_parsed_file`
@@ -332,6 +366,26 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 当前项目使用 MyBatis-Plus
 - 业务表删除语义需以实际表结构与当前实现为准
 - 新功能设计前，必须先核对实际表结构、实体类与 Mapper
+
+### 8.4 数据设计原则
+
+- 结构化状态、归属关系、分页查询、统计分析优先进入 MySQL
+- 文件对象本体、解析中间产物、Markdown 结果优先进入对象存储
+- 高读频且允许回源的数据优先进入 Redis
+- 新功能设计前，应先判断数据属于“结构化元数据”还是“对象内容本体”，不要混放
+
+### 8.5 删除与一致性原则
+
+- 当前业务删除语义以实际实现为准，不默认全量逻辑删除
+- 若涉及对象存储文件删除，必须同时考虑 DB 记录与对象存储的一致性
+- 若涉及缓存更新，优先复用现有双删策略，不自行发明失效模式
+
+### 8.6 安全原则速览
+
+- 用户密码只以哈希形式存储，不允许明文落库
+- API Key 等敏感字段必须经过加密后再存储
+- 角色与登录态由 sa-token 体系统一承担
+- 需要鉴权的接口必须通过统一登录与角色校验能力进入
 
 ## 9. 开发约定速览
 
@@ -405,6 +459,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 
 - 已完成用户、LLM 配置、对话、用量统计等基础管理能力
 - 已完成数据集、知识原始文件、解析文件相关能力
+- 2026-04-26：文件上传与解析协同重构一期已完成测试交付文档。当前一期只交付原文件上传链路：原文件上传到 `rag-raw`、原文件表记录上传事实、同名同后缀唯一约束、失败重试复用 `object_key`、上传中 1 分钟超时补偿、列表/详情/删除接口；MQ、Python 解析、解析进度和解析产物进入二期。
 - 已落地 Redis、OSS、MQ 三类中间件组件
 
 ## 15. 维护要求

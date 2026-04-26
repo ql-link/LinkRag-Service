@@ -133,21 +133,16 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     file_url                   VARCHAR(1024),
     upload_status              VARCHAR(20) NOT NULL DEFAULT 'uploading',
     is_upload_success          BOOLEAN NOT NULL DEFAULT FALSE,
-    parse_notice_status        VARCHAR(24) NOT NULL DEFAULT 'pending',
-    parse_task_id              VARCHAR(36) NOT NULL,
-    parse_task_record_id       BIGINT,
     failure_reason             VARCHAR(512),
-    parse_notice_retry_count   INT NOT NULL DEFAULT 0,
-    last_parse_notice_at       DATETIME,
     created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_document_original_parse_task_id ON document_original_file(parse_task_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uk_document_original_dataset_filename
-    ON document_original_file(dataset_id, original_filename);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_document_original_dataset_user_name_suffix
+    ON document_original_file(dataset_id, user_id, original_filename, file_suffix);
 CREATE INDEX IF NOT EXISTS idx_document_original_dataset_created ON document_original_file(dataset_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_document_original_user_created ON document_original_file(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_document_original_upload_status ON document_original_file(upload_status, updated_at);
 
 -- 9. 解析结果文件表
 CREATE TABLE IF NOT EXISTS document_parsed_file (

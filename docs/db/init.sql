@@ -149,18 +149,14 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     file_url                   VARCHAR(1024) DEFAULT NULL COMMENT 'Python/RAG内部下载URL，不含服务间鉴权Token',
     upload_status              VARCHAR(20) NOT NULL DEFAULT 'uploading' COMMENT '上传状态: uploading/success/failed',
     is_upload_success          TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否上传成功',
-    parse_notice_status        VARCHAR(24) NOT NULL DEFAULT 'pending' COMMENT '解析任务MQ投递状态: pending/sent/failed',
-    parse_task_id              VARCHAR(36) NOT NULL COMMENT '解析任务业务唯一标识(UUID)',
-    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '上传失败或解析任务MQ投递失败原因',
-    parse_notice_retry_count   INT NOT NULL DEFAULT 0 COMMENT '解析任务MQ投递重试次数',
-    last_parse_notice_at       DATETIME DEFAULT NULL COMMENT '最近一次解析任务MQ投递时间',
+    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '上传失败原因',
     created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    UNIQUE KEY uk_parse_task_id (parse_task_id),
-    UNIQUE KEY uk_dataset_filename (dataset_id, original_filename),
+    UNIQUE KEY uk_dataset_user_name_suffix (dataset_id, user_id, original_filename, file_suffix),
     INDEX idx_document_original_dataset_created (dataset_id, created_at),
-    INDEX idx_document_original_user_created (user_id, created_at)
+    INDEX idx_document_original_user_created (user_id, created_at),
+    INDEX idx_document_original_upload_status (upload_status, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '知识库原始文档上传记录表';
 
 -- 9. 知识文件解析结果表
