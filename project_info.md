@@ -92,7 +92,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 | --- | --- | --- | --- |
 | Redis 缓存能力 | 缓存读优化、缓存失效、双删一致性 | `user`、`llm-config` | `DoubleDeleteCacheService`、`UserCacheService` |
 | OSS 文件存储能力 | 文件上传、对象存储、公私有访问、私有文件本地解析 | `storage` | `IOssService`、`PrivateFileResolver`、`OssApplicationService` |
-| MQ 异步协作能力 | 异步任务投递、结果回传、多厂商 MQ 适配 | `mq`、`storage` | `MQSend`、`KnowledgeParseResultMQ` |
+| MQ 异步协作能力 | 异步任务投递、结果回传、多厂商 MQ 适配 | `mq`、`storage` | `MQSend`、`KnowledgeParseTaskMQ` |
 | 鉴权与用户上下文能力 | 登录校验、角色鉴权、当前用户识别 | `user`、`llm-config`、`chat`、`dataset`、`storage` | `sa-token`、`AuthContext`、`StpInterfaceImpl` |
 | API Key 加密能力 | 敏感密钥加解密与脱敏展示 | `llm-config` | `ApiKeyEncryptService` |
 
@@ -154,12 +154,14 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 当前能力：
   - `AbstractMQ`、`MQSend`、`MQMsgReceiver`
   - Kafka / RabbitMQ 适配
-  - 已落地解析任务与解析结果两条链路
+  - 已落地解析任务投递链路
+  - 旧解析结果消费链路保留但默认关闭，二期解析结果由 Python 端直接写库并通过 Java 回调接口向前端转发进度事件
 - 关键入口：
   - `link-components/toLink-components-mq`
-  - `KnowledgeParseResultMQ`
-  - `KnowledgeParseResultKafkaReceiver`
-  - `KnowledgeFileServiceImpl.KnowledgeParseTaskMQ`
+  - `KnowledgeParseTaskMQ`
+  - `KnowledgeParseTaskService`
+  - `KnowledgeParseSseService`
+  - `KnowledgeParseResultMQ`（旧链路，默认关闭）
 - 什么时候优先复用：
   - 跨模块异步协作
   - 需要解耦、削峰或外部系统回传
@@ -307,6 +309,10 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - 原文件上传状态收敛为 `uploading`、`success`、`failed`
   - 上传失败记录允许重试并复用原 `object_key`，上传中记录超过 1 分钟可补偿为失败
   - 原文件上传通过 `knowledgeFileUploadExecutor` 线程池执行，避免业务代码直接创建上传线程
+  - 上传成功后可按开关自动创建解析任务并投递 MQ，手动解析也会创建独立解析任务
+  - 解析任务记录同一原文件的多次解析历史，状态收敛为 `created`、`processing`、`success`、`failed`
+  - 解析产物表只保存每个原文件最新成功 Markdown 产物，成功解析次数在解析成功后更新
+  - 前端可通过 SSE 接收 Python 回调到 Java 的解析进度事件，并可按文件列表查询解析结果汇总
   - 支持私有文件通过 `PrivateFileResolver` 访问
   - 支持通用 OSS 上传入口
 - 关键入口：
@@ -315,30 +321,35 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - `OssFileController`
   - `ApiLocalOssPreviewController`
   - `KnowledgeFileService`
+  - `KnowledgeParseTaskService`
+  - `KnowledgeParseSseService`
   - `KnowledgeFileUploadExecutorConfig`
   - `OssApplicationService`
 - 关联中间件/能力：
-  - MySQL：`document_original_file`、`document_parsed_file`
-  - OSS：对象上传、下载、删除、公私有访问
-  - MQ：上传后可触发解析任务投递
+  - MySQL：`document_original_file`、`document_parse_task`、`document_parsed_file`
+  - OSS：原文件 bucket 为 `rag-raw`，Markdown 解析产物 bucket 为 `rag-md`
+  - MQ：上传后自动解析或手动解析触发 `tolink.rag.parse_task` 投递
 
 #### `mq`
 
 - 负责内容：
   - 知识文件解析任务的异步投递
-  - 外部解析结果回传后的消费与入库
+  - 解析任务投递失败后的 Java 内部补偿
+  - 旧解析结果回传链路的兼容保留
 - 当前能力：
-  - 已定义 `parse_task`、`parse_result` 两条主消息链路
-  - 已接入 Kafka 消费者处理解析结果
+  - 已定义 `tolink.rag.parse_task` 解析任务消息，使用扁平 snake_case JSON
+  - Java 创建 `document_parse_task` 后投递 MQ，Python 消费后负责解析、更新任务表和最新解析产物表
+  - MQ 投递失败时任务保持 `created` 状态，由 Java 定时补偿，默认间隔 30 秒、最多 5 次；已成功投递过的 `created` 任务不重复投递
+  - 旧 `parse_result` 消费者默认不装配，避免 Java 与 Python 双写解析结果
   - 已支持通过统一 `MQSend` 抽象发送消息
 - 关键入口：
-  - `KnowledgeParseResultMQ`
-  - `KnowledgeParseResultKafkaReceiver`
-  - `KnowledgeParseResultService`
-  - `KnowledgeFileServiceImpl.KnowledgeParseTaskMQ`
+  - `KnowledgeParseTaskMQ`
+  - `KnowledgeParseTaskService`
+  - `KnowledgeParseResultMQ`（旧链路）
+  - `KnowledgeParseResultKafkaReceiver`（旧链路，默认关闭）
 - 关联中间件/能力：
   - MQ：Kafka / RabbitMQ 适配
-  - MySQL：解析结果回写
+  - MySQL：解析任务记录与最新解析产物
 
 ## 8. 环境与数据入口
 
@@ -460,6 +471,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 已完成用户、LLM 配置、对话、用量统计等基础管理能力
 - 已完成数据集、知识原始文件、解析文件相关能力
 - 2026-04-26：文件上传与解析协同重构一期已完成测试交付文档。当前一期只交付原文件上传链路：原文件上传到 `rag-raw`、原文件表记录上传事实、同名同后缀唯一约束、失败重试复用 `object_key`、上传中 1 分钟超时补偿、列表/详情/删除接口；MQ、Python 解析、解析进度和解析产物进入二期。
+- 2026-04-26：文件上传与解析协同重构二期已完成 Java 端代码实现与目标自动化测试。当前二期交付解析任务创建、上传后自动解析、手动解析、防重复点击、解析任务 MQ 投递、MQ 投递失败内部补偿、Python 进度回调转 SSE、按文件列表查询解析结果；Python 端真实解析、写库和真实 MQ 消费仍需联调确认。
 - 已落地 Redis、OSS、MQ 三类中间件组件
 
 ## 15. 维护要求

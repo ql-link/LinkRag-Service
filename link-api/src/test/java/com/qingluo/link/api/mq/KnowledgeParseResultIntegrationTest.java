@@ -4,13 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.service.mq.kafka.KnowledgeParseResultKafkaReceiver;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
 
+/**
+ * 旧 parse_result Java 写库链路默认关闭。
+ *
+ * <p>二期由 Python 直接写解析任务和最新解析产物，Java 旧消费者如果默认启动会造成双写。
+ */
 @SpringBootTest(properties = {
     "qingluopay.mq.vender=kafka",
     "qingluopay.mq.kafka-auto-create-topics=false",
@@ -21,101 +26,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class KnowledgeParseResultIntegrationTest {
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @Autowired
-    private KnowledgeParseResultKafkaReceiver knowledgeParseResultKafkaReceiver;
-
-    private Long userId;
-    private Long datasetId;
-    private Long documentId;
-
-    @BeforeEach
-    void setUp() {
-        jdbcTemplate.update("DELETE FROM document_parsed_file");
-        jdbcTemplate.update("DELETE FROM document_original_file");
-        jdbcTemplate.update("DELETE FROM dataset");
-        jdbcTemplate.update("DELETE FROM sys_user");
-
-        String username = "mq_user_" + System.nanoTime();
-        jdbcTemplate.update("""
-                INSERT INTO sys_user (username, password_hash, nickname, email, role, status)
-                VALUES (?, 'password', 'MQ测试用户', ?, 'USER', 1)
-                """, username, username + "@test.com");
-        userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE username = ?", Long.class, username);
-
-        String datasetName = "mq_dataset_" + System.nanoTime();
-        jdbcTemplate.update("""
-                INSERT INTO dataset (user_id, name, description, status)
-                VALUES (?, ?, 'MQ解析结果测试数据集', 'ACTIVE')
-                """, userId, datasetName);
-        datasetId = jdbcTemplate.queryForObject("SELECT id FROM dataset WHERE user_id = ? AND name = ?",
-            Long.class, userId, datasetName);
-
-        jdbcTemplate.update("""
-                INSERT INTO document_original_file (
-                    dataset_id, user_id, original_filename, file_suffix, file_size, content_type,
-                    bucket_name, object_key, file_url, upload_status, is_upload_success,
-                    parse_notice_status, parse_task_id, parse_notice_retry_count
-                ) VALUES (?, ?, 'guide.md', 'md', 128, 'text/markdown',
-                    'rag-raw', '1/1/2026/04/21/guide.md', 'http://tolink-service:8080/internal/file',
-                    'success', TRUE, 'sent', 'task-integration-1', 0)
-                """, datasetId, userId);
-        documentId = jdbcTemplate.queryForObject(
-            "SELECT id FROM document_original_file WHERE parse_task_id = 'task-integration-1'", Long.class);
-    }
+    private ApplicationContext applicationContext;
 
     @Test
-    void Should_UpdateDatabase_When_ParseResultReceiverConsumesSuccessMessage() {
-        knowledgeParseResultKafkaReceiver.receive("""
-            {"mq_type":"parse_result","mq_name":"tolink.rag.parse_result","payload":{"task_id":"task-integration-1","document_id":"%d","success":true,"status":"success","parsed_bucket_name":"rag-parsed","parsed_object_key":"parsed/2026/04/21/%d.md","parsed_file_url":"http://rag/%d.md","failure_reason":"","time_cost_ms":123}}
-            """.formatted(documentId, documentId, documentId));
-
-        String parsedStoragePath = jdbcTemplate.queryForObject(
-            "SELECT parsed_storage_path FROM document_parsed_file WHERE document_original_file_id = ?",
-            String.class, documentId);
-        String parsedStatus = jdbcTemplate.queryForObject(
-            "SELECT parse_status FROM document_parsed_file WHERE document_original_file_id = ?",
-            String.class, documentId);
-        Boolean parsedSuccess = jdbcTemplate.queryForObject(
-            "SELECT is_parse_success FROM document_parsed_file WHERE document_original_file_id = ?",
-            Boolean.class, documentId);
-        String parsedBucketName = jdbcTemplate.queryForObject(
-            "SELECT parsed_bucket_name FROM document_parsed_file WHERE document_original_file_id = ?",
-            String.class, documentId);
-        String parsedObjectKey = jdbcTemplate.queryForObject(
-            "SELECT parsed_object_key FROM document_parsed_file WHERE document_original_file_id = ?",
-            String.class, documentId);
-        String parsedFileUrl = jdbcTemplate.queryForObject(
-            "SELECT parsed_file_url FROM document_parsed_file WHERE document_original_file_id = ?",
-            String.class, documentId);
-
-        assertThat(parsedStatus).isEqualTo("success");
-        assertThat(parsedSuccess).isTrue();
-        assertThat(parsedBucketName).isEqualTo("rag-parsed");
-        assertThat(parsedObjectKey).isEqualTo("parsed/2026/04/21/%d.md".formatted(documentId));
-        assertThat(parsedFileUrl).isEqualTo("http://rag/%d.md".formatted(documentId));
-        assertThat(parsedStoragePath).isEqualTo("rag-parsed/parsed/2026/04/21/%d.md".formatted(documentId));
-    }
-
-    @Test
-    void Should_UpdateFailureReason_When_ParseResultReceiverConsumesFailedMessage() {
-        knowledgeParseResultKafkaReceiver.receive("""
-            {"mq_type":"parse_result","mq_name":"tolink.rag.parse_result","payload":{"task_id":"task-integration-1","document_id":"%d","success":false,"status":"failed","parsed_bucket_name":"","parsed_object_key":"","parsed_file_url":"","failure_reason":"vectorize failed","time_cost_ms":321}}
-            """.formatted(documentId));
-
-        String parsedStatus = jdbcTemplate.queryForObject(
-            "SELECT parse_status FROM document_parsed_file WHERE document_original_file_id = ?",
-            String.class, documentId);
-        Boolean parsedSuccess = jdbcTemplate.queryForObject(
-            "SELECT is_parse_success FROM document_parsed_file WHERE document_original_file_id = ?",
-            Boolean.class, documentId);
-        String parsedFailureReason = jdbcTemplate.queryForObject(
-            "SELECT failure_reason FROM document_parsed_file WHERE document_original_file_id = ?",
-            String.class, documentId);
-
-        assertThat(parsedStatus).isEqualTo("failed");
-        assertThat(parsedSuccess).isFalse();
-        assertThat(parsedFailureReason).isEqualTo("vectorize failed");
+    void Should_NotCreateLegacyParseResultKafkaReceiver_When_LegacySwitchDisabled() {
+        assertThat(applicationContext.getBeansOfType(KnowledgeParseResultKafkaReceiver.class)).isEmpty();
+        try {
+            applicationContext.getBean(KnowledgeParseResultKafkaReceiver.class);
+        } catch (NoSuchBeanDefinitionException expected) {
+            return;
+        }
+        throw new AssertionError("legacy parse result receiver should be disabled by default");
     }
 }

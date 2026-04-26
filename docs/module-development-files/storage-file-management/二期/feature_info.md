@@ -5,24 +5,25 @@
 - 模块名称：文件上传与解析协同重构
 - 当前期次：二期
 - 业务域：storage
-- 当前状态：需求与技术方案待审核
+- 当前状态：待最终审核
 - 复杂度等级：L3
-- 当前分支：skill-test
+- 当前分支：feature/knowledge_file_upload_and_parse
 
 ## 2. 功能摘要
 
-- 背景：一期只完成原文件上传链路；二期补齐上传后的解析任务、MQ 投递、Python 解析协同、解析进度展示和解析结果记录。
-- 目标：用户可对已上传成功的原文件发起解析，Java 端创建解析任务并投递 MQ，Python 端消费任务后执行解析、更新任务结果并维护最新解析文件。
+- 背景：一期已完成原文件上传、MinIO 存储、原文件记录、上传幂等、失败重试和超时处理；二期补齐上传成功后的解析协同链路。
+- 目标：用户可对已上传成功的原文件发起自动解析或手动解析，Java 端创建解析任务并投递 MQ，Python 端消费任务后执行解析、上报进度和结果，并维护解析任务与最新解析产物。
 - 本期目标：
   - 建立解析任务表，记录同一原文件的多次解析历史。
   - 建立解析文件表，记录每个原文件当前最新成功解析结果和成功解析次数。
-  - 定义 Java 到 Python 的解析任务 MQ 消息体。
-  - 定义 Python 解析进度上报与前端查询链路。
+  - 定义 Java 创建解析任务、投递 MQ、投递失败处理和用户重试边界。
+  - 定义 Python 解析进度上报与前端进度条展示边界。
   - 定义解析失败后的可见状态与再次解析入口。
 - 本次不做：
   - 不实现向量化、检索、问答消费链路。
   - 不实现解析结果历史版本人工切换。
-  - 不修改 MQ、Redis、OSS framework 抽象。
+  - 不引入 Redis 作为解析进度默认依赖。
+  - 不修改 MQ、OSS framework 抽象。
 
 ## 3. 影响范围
 
@@ -35,7 +36,6 @@
   - MySQL
   - OSS / MinIO
   - MQ
-  - Redis
 - 关联外部系统：
   - Python 解析服务
 
@@ -43,6 +43,8 @@
 
 - `requirement.md`
 - `technical_design.md`
+- `implementation_report.md`
+- `testing_delivery.md`
 
 ## 5. 关联功能
 
@@ -69,11 +71,14 @@
 7. `project_info.md`
 8. `docs/architecture/middleware_contract.md`
 9. `docs/architecture/middleware-components/kafka_component.md`
-10. `docs/architecture/middleware-components/redis_component.md`
-11. `docs/architecture/middleware-components/oss_component.md`
+10. `docs/architecture/middleware-components/oss_component.md`
 
 ## 7. 实现完成后回填
 
 - 实际完成摘要：
+- 已新增解析任务表与最新解析文件表结构，Java 端负责创建解析任务、投递解析 MQ、提供手动解析入口、自动解析入口、SSE 进度订阅入口和文件解析结果查询入口。
+- 已将解析任务 MQ 定义为与 Python 约定的扁平 snake_case JSON，`task_id` 与解析任务表业务标识保持一致，Markdown 产物 bucket 固定为 `rag-md`。
+- 已禁用旧解析结果 MQ 消费链路的默认装配，避免二期中 Java 端继续写解析结果数据。
 - 测试结论：
-- 是否已更新 `project_info.md`：否
+- 已通过服务层和 API 层目标测试，测试明细见后续 `testing_delivery.md`。
+- 是否已更新 `project_info.md`：是

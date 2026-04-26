@@ -17,6 +17,7 @@ import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.KnowledgeFileDownloadResource;
 import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
 import com.qingluo.link.service.KnowledgeFileService;
+import com.qingluo.link.service.KnowledgeParseTaskService;
 import com.qingluo.link.service.config.KnowledgeFileProperties;
 import com.qingluo.link.service.config.KnowledgeFileRuntimeConfig;
 import java.io.File;
@@ -72,6 +73,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     private final PrivateFileResolver privateFileResolver;
     private final KnowledgeFileProperties properties;
     private final KnowledgeFileRuntimeConfigService knowledgeFileRuntimeConfigService;
+    private final KnowledgeParseTaskService knowledgeParseTaskService;
     @Qualifier("knowledgeFileUploadExecutor")
     private final Executor knowledgeFileUploadExecutor;
 
@@ -124,6 +126,10 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         record.setUploadStatus(UPLOAD_SUCCESS);
         record.setIsUploadSuccess(true);
         record.setFailureReason(null);
+        if (parseImmediately) {
+            // 自动解析必须在原文件上传成功后触发；解析任务服务会在事务提交后再投 MQ，避免 Python 先消费。
+            knowledgeParseTaskService.submitAutoParseAfterUpload(userId, record);
+        }
         return toDTO(record);
     }
 

@@ -23,17 +23,12 @@ public class KnowledgeParsedFile {
     @TableField("user_id")
     private Long userId;
 
-    @TableField("parse_task_id")
-    private String parseTaskId;
+    /** 最新成功解析任务 ID，对应 document_parse_task.task_id。 */
+    @TableField("latest_success_task_id")
+    private String latestSuccessTaskId;
 
     @TableField("original_filename")
     private String originalFilename;
-
-    @TableField("parse_status")
-    private String parseStatus;
-
-    @TableField("is_parse_success")
-    private Boolean isParseSuccess;
 
     @TableField("parsed_filename")
     private String parsedFilename;
@@ -50,21 +45,38 @@ public class KnowledgeParsedFile {
     @TableField("parsed_storage_path")
     private String parsedStoragePath;
 
-    @TableField("parse_result")
-    private String parseResult;
-
-    @TableField("failure_reason")
-    private String failureReason;
+    /** 当前原文件累计成功解析次数，只在解析成功后递增。 */
+    @TableField("parse_count")
+    private Integer parseCount;
 
     @TableField("parsed_at")
     private LocalDateTime parsedAt;
-
-    @TableField("last_result_at")
-    private LocalDateTime lastResultAt;
 
     @TableField("created_at")
     private LocalDateTime createdAt;
 
     @TableField("updated_at")
     private LocalDateTime updatedAt;
+
+    /*
+     * 以下字段是一期前旧解析结果链路的兼容字段，不再映射到二期解析产物表。
+     * 保留它们只为避免旧代码在删除前编译失败，二期主链路不要继续写这些字段。
+     */
+    @TableField(exist = false)
+    private String parseTaskId;
+
+    @TableField(exist = false)
+    private String parseStatus;
+
+    @TableField(exist = false)
+    private Boolean isParseSuccess;
+
+    @TableField(exist = false)
+    private String parseResult;
+
+    @TableField(exist = false)
+    private String failureReason;
+
+    @TableField(exist = false)
+    private LocalDateTime lastResultAt;
 }

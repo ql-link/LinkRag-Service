@@ -39,7 +39,8 @@ import com.qingluo.link.service.KnowledgeFileService;
     "tolink.oss.file-root-path=/tmp/tolink-knowledge-file-test",
     "tolink.knowledge-file.max-size-bytes=64",
     "tolink.knowledge-file.internal-base-url=http://tolink-service:8080",
-    "tolink.knowledge-file.service-token=test-service-token"
+    "tolink.knowledge-file.service-token=test-service-token",
+    "qingluopay.mq.vender=none"
 })
 @AutoConfigureMockMvc
 @Import(TestSecurityConfig.class)
@@ -71,6 +72,7 @@ class KnowledgeFileControllerTest {
     void setUp() throws Exception {
         jdbcTemplate.update("DELETE FROM knowledge_file_config");
         jdbcTemplate.update("DELETE FROM document_parsed_file");
+        jdbcTemplate.update("DELETE FROM document_parse_task");
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM chat_conversation");
         jdbcTemplate.update("DELETE FROM dataset");
@@ -124,6 +126,9 @@ class KnowledgeFileControllerTest {
         assertThat(bucketName).isEqualTo("rag-raw");
         assertThat(Files.readString(Path.of("/tmp/tolink-knowledge-file-test/private").resolve(objectKey)))
             .isEqualTo("# hello");
+        Integer taskCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parse_task WHERE document_original_file_id = ?", Integer.class, fileId);
+        assertThat(taskCount).isEqualTo(1);
     }
 
     @Test
@@ -267,6 +272,69 @@ class KnowledgeFileControllerTest {
         assertThat(count).isZero();
     }
 
+    @Test
+    void Should_CreateParseTask_When_UserSubmitsManualParse() throws Exception {
+        Long fileId = insertOriginalFile("manual.pdf", "pdf", "success", true,
+            "original/user-%d/dataset-%d/2026/04/26/123/manual.pdf".formatted(userId, datasetId));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/v1/files/{fileId}/parse", fileId)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.fileId").value(fileId))
+            .andExpect(jsonPath("$.data.frontendStatus").value("parse_waiting"));
+
+        String taskStatus = jdbcTemplate.queryForObject(
+            "SELECT task_status FROM document_parse_task WHERE document_original_file_id = ?", String.class, fileId);
+        Integer retryCount = jdbcTemplate.queryForObject(
+            "SELECT dispatch_retry_count FROM document_parse_task WHERE document_original_file_id = ?",
+            Integer.class, fileId);
+        assertThat(taskStatus).isEqualTo("created");
+        assertThat(retryCount).isEqualTo(1);
+    }
+
+    @Test
+    void Should_RejectManualParse_When_FileAlreadyHasRunningTask() throws Exception {
+        Long fileId = insertOriginalFile("running.txt", "txt", "success", true,
+            "original/user-%d/dataset-%d/2026/04/26/123/running.txt".formatted(userId, datasetId));
+        insertParseTask(fileId, "running-task", "created", null);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/v1/files/{fileId}/parse", fileId)
+                .header("satoken", token))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.message").value("文件正在解析中，请勿重复提交"));
+    }
+
+    @Test
+    void Should_ReturnAllFileParseResults_When_QueryByFileList() throws Exception {
+        Long successFileId = insertOriginalFile("ok.pdf", "pdf", "success", true,
+            "original/user-%d/dataset-%d/2026/04/26/123/ok.pdf".formatted(userId, datasetId));
+        Long failedFileId = insertOriginalFile("bad.pdf", "pdf", "success", true,
+            "original/user-%d/dataset-%d/2026/04/26/123/bad.pdf".formatted(userId, datasetId));
+        insertParseTask(successFileId, "success-task", "success", null);
+        insertParseTask(failedFileId, "failed-task", "failed", "格式暂不支持");
+        jdbcTemplate.update("""
+                INSERT INTO document_parsed_file (
+                    document_original_file_id, dataset_id, user_id, latest_success_task_id,
+                    original_filename, parsed_filename, parsed_bucket_name, parsed_object_key,
+                    parsed_storage_path, parse_count, parsed_at
+                ) VALUES (?, ?, ?, ?, 'ok.pdf', 'ok.md', 'rag-md', 'parsed/ok.md',
+                    'rag-md/parsed/ok.md', 1, CURRENT_TIMESTAMP)
+                """, successFileId, datasetId, userId, "success-task");
+
+        mockMvc.perform(get("/api/v1/datasets/{datasetId}/files/parse-results", datasetId)
+                .param("fileIds", successFileId + "," + failedFileId)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].fileId").value(successFileId))
+            .andExpect(jsonPath("$.data[0].frontendStatus").value("parse_success"))
+            .andExpect(jsonPath("$.data[0].parsedFilename").value("ok.md"))
+            .andExpect(jsonPath("$.data[1].fileId").value(failedFileId))
+            .andExpect(jsonPath("$.data[1].frontendStatus").value("parse_failed"))
+            .andExpect(jsonPath("$.data[1].failureReason").value("格式暂不支持"));
+    }
+
     private Long insertOriginalFile(String filename, String suffix, String status, boolean success, String objectKey) {
         jdbcTemplate.update("""
                 INSERT INTO document_original_file (
@@ -279,6 +347,15 @@ class KnowledgeFileControllerTest {
                 SELECT id FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ? AND file_suffix = ?
                 """, Long.class, datasetId, userId, filename, suffix);
+    }
+
+    private void insertParseTask(Long fileId, String taskId, String status, String failureReason) {
+        jdbcTemplate.update("""
+                INSERT INTO document_parse_task (
+                    task_id, document_original_file_id, dataset_id, user_id,
+                    trigger_mode, task_status, failure_reason
+                ) VALUES (?, ?, ?, ?, 'manual_retry', ?, ?)
+                """, taskId, fileId, datasetId, userId, status, failureReason);
     }
 
     private void deleteDirectory(Path path) throws Exception {

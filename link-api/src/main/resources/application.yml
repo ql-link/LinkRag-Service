@@ -89,6 +89,9 @@ tolink:
     max-size-bytes: ${KNOWLEDGE_FILE_MAX_SIZE_BYTES:20971520}
     internal-base-url: ${KNOWLEDGE_FILE_INTERNAL_BASE_URL:http://tolink-service:8080}
     service-token: ${KNOWLEDGE_FILE_SERVICE_TOKEN:}
+    parse-dispatch-retry-interval-seconds: ${KNOWLEDGE_FILE_PARSE_DISPATCH_RETRY_INTERVAL_SECONDS:30}
+    parse-dispatch-max-retry-count: ${KNOWLEDGE_FILE_PARSE_DISPATCH_MAX_RETRY_COUNT:5}
+    sse-timeout-ms: ${KNOWLEDGE_FILE_SSE_TIMEOUT_MS:300000}
     allowed-suffixes:
       - md
       - markdown

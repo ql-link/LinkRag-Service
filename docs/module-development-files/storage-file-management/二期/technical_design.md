@@ -1,22 +1,21 @@
-# ToLink Service 文件上传与解析协同重构 二期技术实现文档
+# ToLink Service 文件上传与解析协同重构二期技术实现文档
 
-> **文档状态：** 草稿
+> **文档状态：** 技术方案待审核
 > **项目名称**：ToLink Service
 > **模块名称**：文件上传与解析协同重构（二期）
 > **需求文档**：`docs/module-development-files/storage-file-management/二期/requirement.md`
-> **一期技术文档**：`docs/module-development-files/storage-file-management/一期/technical_design.md`
-> **分支名称**：skill-test
+> **分支名称**：feature/knowledge_file_upload_and_parse
 > **技术负责人：** AI 协作草拟
-> **最后更新时间：** 2026-04-25
+> **最后更新时间：** 2026-04-26
 
 ---
 
 ## 1. 文档修订记录 (Change Log)
-*规范：任何技术方案调整必须在此记录，避免口头变更和实现偏差。*
 
 | 版本号 | 修改日期 | 修改内容简述 | 修改人 | 审核人 |
 | :--- | :--- | :--- | :--- | :--- |
 | v1.0 | 2026-04-25 | 初始化二期技术方案，沉淀解析任务、MQ、Python、进度、解析文件设计 | AI | 待审核 |
+| v1.1 | 2026-04-26 | 按新版 PRD 和一期真实代码重建设计，改为 Java 创建任务、MQ 简化补偿、Python 直接写库、SSE 进度反馈 | AI | 待审核 |
 
 ---
 
@@ -24,42 +23,48 @@
 
 ### 2.1 技术目标与核心思路 (Technical Goals)
 
-* **技术目标：** 在一期原文件上传成功的基础上，补齐“解析任务创建 -> MQ 投递 -> Python 解析 -> 进度展示 -> 结果写回 -> 最新解析文件维护”的异步协同链路。
-* **设计原则：** Java 端负责解析任务创建、MQ 投递和前端查询接口；Python 端负责消费任务、执行解析、写入解析任务结果、保存解析结果文件并维护最新解析文件。
-* **成功标准：** 同一原文件可重复解析且每次都有独立任务记录；前端可查看单个任务百分比进度和最终结果；成功解析后最新解析文件被更新，历史任务不丢失。
+* **技术目标：** 在一期原文件上传成功链路上，补齐“解析任务创建、MQ 投递、Python 解析、SSE 进度反馈、结果查询、失败重试”的二期解析协同能力。
+* **设计原则：** 原文件表只记录上传事实；解析任务表记录每次解析尝试；解析产物表只记录每个原文件最新成功解析产物；Java 负责创建任务、投递 MQ、SSE 推送和前端查询；Python 负责消费任务、解析文件、写任务状态和最新解析产物。
+* **成功标准：** 只上传模式和上传立即解析模式均可工作；同一原文件在等待解析或解析中时不能重复提交；前端可通过 SSE 看到百分比进度；所有文件完成后可查询文件名和解析结果；MQ 临时投递失败不直接暴露给用户，超过补偿范围后进入解析失败。
 
 ### 2.2 实现范围与边界 (In Scope / Out of Scope)
 
-**本期必须实现：**
+**必须实现：**
 
-- 新增解析任务表 `document_parse_task`。
-- 新增或调整解析文件表 `document_parsed_file`。
-- 支持上传后立即解析和已上传文件手动解析。
-- Java 端创建解析任务并投递 `parse_task` MQ。
-- 定义 `parse_task` MQ 消息体。
-- Python 端消费任务后推进任务状态。
-- Python 端解析过程中上报百分比进度，Java 端提供前端查询能力。
-- Python 端解析成功后保存解析结果文件，并维护最新解析文件记录。
-- 支持解析失败可见和再次解析。
+- 新增解析任务表 `document_parse_task` 和实体、Mapper。
+- 调整 `document_parsed_file` 为“最新成功解析产物表”，补充成功解析次数。
+- 上传接口 `parseImmediately=true` 时，在原文件上传成功后自动创建解析任务并投递 MQ。
+- 新增手动解析接口，基于已上传成功的原文件创建解析任务并投递 MQ。
+- 新增 `parse_task` MQ 消息模型，复用项目 `AbstractMQ` / `MQSend`。
+- 新增 MQ 投递补偿定时任务，扫描长期停留 `created` 的任务重投。
+- 新增 SSE 进度通道，Python 回调 Java 后由 Java 推给浏览器。
+- 新增 Python 内部回调接口，用于上报解析进度和最终结果事件。
+- 新增解析结果查询接口，按本次文件列表返回文件名、解析结果和业务化失败原因。
+- 禁止同一原文件在 `created` / `processing` 任务存在时再次提交解析。
 
-**本期明确不实现：**
+**暂不实现：**
 
-- 不实现解析结果历史版本人工切换。
-- 不实现向量化、检索、问答消费链路。
-- 不修改 MQ、Redis、OSS framework 抽象。
-- 不让 Java 端消费 `parse_result` MQ 再写库，二期结果数据由 Python 端直接写入数据库。
-- 不把解析百分比持久化到解析任务表。
+- 不引入 Redis 保存解析进度。
+- 不新增批次表，批量结束由前端按本次文件列表自行判断。
+- 不提供解析产物预览和下载。
+- 不做解析产物历史版本人工切换。
+- 不做向量化、检索、问答消费链路。
+- 不改 MQ / OSS framework 抽象。
+- 不采用 Java 消费 `parse_result` MQ 后写解析结果的旧链路。
+- 不实现本地消息表 / Outbox；该能力作为三期候选目标。
+- 不调整一期原文件删除链路；原文件软删除、解析产物由 Java 物理删除等删除策略放到三期独立处理。
 
 ### 2.3 验收项到实现点映射 (Requirement Mapping)
 
 | 需求验收项 | 技术实现点 | 测试方式 | 责任模块 |
 | :--- | :--- | :--- | :--- |
-| 自动解析 | 上传成功后创建解析任务并投递 MQ | 接口集成测试 | `link-service` |
-| 手动解析 | 已上传成功文件可再次创建解析任务 | Controller / Service 测试 | `link-api` / `link-service` |
-| 重复解析历史 | 同一原文件可保留多条解析任务 | Mapper / 数据库测试 | `link-model` / `link-mapper` |
-| 解析进度展示 | Python 上报百分比，前端按任务查询 | Redis / Controller 测试 | `link-service` |
-| 最新解析文件 | 成功解析后 upsert 最新解析文件并递增成功解析次数 | Mapper / 回调测试 | `link-mapper` |
-| 失败可重试 | 失败任务保留失败原因，不覆盖最新成功结果 | 接口与状态测试 | `link-service` |
+| 自动解析 | `KnowledgeFileServiceImpl.upload` 上传成功后调用解析任务服务 | Controller / Service 测试 | `link-api` / `link-service` |
+| 手动解析 | 新增文件解析提交接口，校验文件归属和上传状态 | Controller / Service 测试 | `link-api` / `link-service` |
+| 禁止重复点击解析 | 查询同原文件 `created/processing` 任务并拒绝新任务 | Service 测试 | `link-service` |
+| MQ 投递与补偿 | `KnowledgeParseTaskMQ` + `MQSend` + 定时补偿扫描 | MQ 序列化测试 / Service 测试 | `link-service` |
+| SSE 进度条 | `SseEmitter` 注册、Python 进度回调、按 fileId 推送事件 | Controller 测试 | `link-api` / `link-service` |
+| 最终结果展示 | 结果查询接口按 fileIds 返回文件名和解析结果 | Controller / Mapper 测试 | `link-api` / `link-service` |
+| 最新解析产物 | Python 写 `document_parsed_file`，Java 只查询不预览下载 | Mapper / 接口测试 | Python / `link-service` |
 
 ---
 
@@ -67,47 +72,50 @@
 
 ### 3.1 相关模块盘点
 
-| 模块 | 当前职责 | 本期处理方式 | 是否修改 |
+| 模块 | 当前职责 | 现状说明 | 是否修改 |
 | :--- | :--- | :--- | :--- |
-| `link-api` | 文件 Controller 与内部接口入口 | 扩展解析任务创建、进度查询、结果查询、Python 进度上报接口 | 是 |
-| `link-service` | 文件业务、MQ、解析结果处理 | 新增解析任务服务、进度服务、MQ 投递服务；废弃 Java 消费解析结果写库闭环 | 是 |
-| `link-model` | Entity / DTO / Enum | 新增解析任务实体、调整解析文件实体、增加任务状态 DTO | 是 |
-| `link-mapper` | 持久化 | 新增解析任务 Mapper，调整解析文件 Mapper | 是 |
-| `link-components` | MQ / Redis / OSS framework | 只复用，不修改 framework | 否 |
-| Python 解析服务 | 文件解析执行方 | 消费 MQ、解析文件、写任务状态、上报进度、维护最新解析文件 | 外部协作 |
+| `link-api` | Controller / API 入口 | 已有 `KnowledgeFileController`、`InternalKnowledgeFileController` 和统一异常处理 | 是 |
+| `link-service` | 业务服务 | 已有一期上传实现、旧解析结果 MQ 消费链路、上传线程池和定时补偿 | 是 |
+| `link-model` | Entity / DTO / Enum | 已有 `KnowledgeOriginalFile`、`KnowledgeParsedFile`、`KnowledgeFileDTO`、`Result`、`ErrorCode` | 是 |
+| `link-mapper` | Mapper / 持久化 | 已有原文件和解析文件 Mapper | 是 |
+| `link-core` | 通用异常 / 工具 | 已有 `BusinessException`、`ErrorCode`、全局异常处理 | 是 |
+| `link-components` | MQ / OSS framework | 已有 `AbstractMQ`、`MQSend`、`IOssService`、`PrivateFileResolver` | 否 |
 
 ### 3.2 已复用能力 (Reusable Components)
 
-- MQ：复用 `AbstractMQ` 和 `MQSend`，业务消息放在 `link-service` 的业务 mq 包内。
-- Redis：复用 `RedisTemplate<String, Object>` 或业务 cache service 封装进度读写，不在 Controller 直连 Redis。
-- OSS：复用 `IOssService` / MinIO 存储解析结果文件，保留 bucket 与 objectKey。
-- 鉴权：复用 `@SaCheckLogin` 和 `AuthContext.getLoginUserIdOrThrow()`。
-- 异常：复用 `BusinessException` 和统一 `Result<T>` 出参。
+- **统一响应：** 复用 `Result<T>`，成功为 `code=200,message=success`。
+- **异常体系：** 复用 `BusinessException`、`ErrorCode`、`GlobalExceptionHandler`。
+- **登录鉴权：** 复用 `@SaCheckLogin` 和 `AuthContext.getLoginUserIdOrThrow()`。
+- **内部服务鉴权：** 复用 `InternalKnowledgeFileController` 中 `Authorization: Bearer {serviceToken}` 的服务间鉴权风格。
+- **MQ：** 复用 `AbstractMQ` / `MQSend`；业务消息放在 `link-service`，不改 `link-components`。
+- **OSS：** 原文件继续复用一期对象定位；解析产物由 Python 写入 `rag-md`，Java 只保存和查询元数据。
 
 ### 3.3 已参考代码 (Code References)
 
 | 文件/模块 | 参考点 | 对方案的影响 |
 | :--- | :--- | :--- |
-| `link-api/src/main/java/com/qingluo/link/api/controller/KnowledgeFileController.java` | 当前文件接口入口 | 二期解析任务接口可沿用文件业务入口 |
-| `link-api/src/main/java/com/qingluo/link/api/controller/InternalKnowledgeFileController.java` | 当前内部接口入口 | Python 进度上报可放内部接口，但需加内部鉴权 |
-| `link-service/src/main/java/com/qingluo/link/service/impl/KnowledgeFileServiceImpl.java` | 当前上传、MQ 投递、解析查询混合逻辑 | 二期拆分为文件服务与解析任务服务 |
-| `link-service/src/main/java/com/qingluo/link/service/mq/KnowledgeParseResultMQ.java` | 当前解析结果 MQ 模型 | 二期不沿用 Java 消费结果写库闭环 |
-| `link-service/src/main/java/com/qingluo/link/service/mq/kafka/KnowledgeParseResultKafkaReceiver.java` | 当前 Kafka 消费写库入口 | 二期需要停用或迁移该结果消费路径 |
-| `link-service/src/main/java/com/qingluo/link/service/impl/KnowledgeParseResultServiceImpl.java` | 当前 Java 处理解析结果 | 二期结果由 Python 直接写库，该服务不作为主链路 |
-| `link-model/src/main/java/com/qingluo/link/model/dto/entity/KnowledgeOriginalFile.java` | 原文件实体 | 解析任务必须引用原文件 ID 和对象定位 |
-| `link-model/src/main/java/com/qingluo/link/model/dto/entity/KnowledgeParsedFile.java` | 当前解析文件实体 | 二期改为当前最新成功解析文件模型 |
-| `link-mapper/src/main/java/com/qingluo/link/mapper/KnowledgeOriginalFileMapper.java` | 原文件查询 | 创建解析任务前校验原文件存在且上传成功 |
-| `link-mapper/src/main/java/com/qingluo/link/mapper/KnowledgeParsedFileMapper.java` | 解析文件持久化 | 二期改为 upsert 最新解析文件 |
-| `docs/architecture/middleware-components/kafka_component.md` | MQ 接入方式 | 业务新增 `AbstractMQ`，不改 framework |
-| `docs/architecture/middleware-components/redis_component.md` | Redis 接入方式 | 进度通过业务 cache service 封装 |
-| `docs/architecture/middleware-components/oss_component.md` | OSS 接入方式 | 解析结果文件保存 MinIO，保留 objectKey |
-| `docs/architecture/middleware_contract.md` | MySQL / Redis / MQ / OSS 约定 | 新增公共 key、topic、表结构需回写公共契约 |
+| `link-api/src/main/java/com/qingluo/link/api/controller/KnowledgeFileController.java` | 文件上传、列表、详情、删除入口 | 二期继续扩展文件解析接口，沿用登录态和 `Result<T>` |
+| `link-api/src/main/java/com/qingluo/link/api/controller/InternalKnowledgeFileController.java` | 内部服务 Token 校验、原文件下载 | Python 进度/结果回调接口沿用 Bearer 服务 Token |
+| `link-service/src/main/java/com/qingluo/link/service/impl/KnowledgeFileServiceImpl.java` | 一期上传、超时补偿、object key 生成 | 上传成功后接入自动解析；原文件表仍不写解析状态 |
+| `link-service/src/main/java/com/qingluo/link/service/KnowledgeFileService.java` | 原文件服务边界说明 | 二期解析逻辑独立为解析任务服务，避免原文件服务过胖 |
+| `link-model/src/main/java/com/qingluo/link/model/dto/entity/KnowledgeOriginalFile.java` | 原文件表实体、旧解析字段为非表字段 | 二期新增解析任务表承载解析状态，不恢复原文件解析字段 |
+| `link-model/src/main/java/com/qingluo/link/model/dto/entity/KnowledgeParsedFile.java` | 当前解析文件实体 | 二期调整为最新成功解析产物模型 |
+| `docs/db/init.sql` | 当前原文件表和解析文件表 DDL | 二期新增任务表并调整解析文件表 |
+| `link-service/src/main/java/com/qingluo/link/service/mq/KnowledgeParseResultMQ.java` | 旧解析结果 MQ envelope 写法 | 新增 `KnowledgeParseTaskMQ` 改为二期约定的扁平消息体 |
+| `link-service/src/main/java/com/qingluo/link/service/mq/kafka/KnowledgeParseResultKafkaReceiver.java` | 旧 Kafka 结果消费入口 | 二期不再作为解析结果写库主链路 |
+| `link-service/src/main/java/com/qingluo/link/service/impl/KnowledgeParseResultServiceImpl.java` | 旧 Java 写解析文件逻辑 | 二期应删除或禁用，避免和 Python 直接写库双写 |
+| `link-components/toLink-components-mq/.../KafkaMQSend.java` | Kafka `send()` 当前异步发送不等待 ack | 二期 MQ 补偿只能覆盖同步调用异常，强一致留到三期 Outbox |
+| `docs/architecture/middleware-components/kafka_component.md` | MQ 组件接入方式 | 业务新增消息模型，不改 framework |
+| `docs/architecture/middleware-components/oss_component.md` | OSS 组件接入方式 | Java 不直接预览/下载解析产物，不改 OSS framework |
+| `docs/architecture/middleware_contract.md` | MySQL / MQ / OSS 约定 | 本期会形成新的解析任务、SSE、解析产物路径契约，需要回写公共契约 |
 
 ### 3.4 现有问题与约束 (Constraints)
 
-- 当前存在 Java 消费 `parse_result` 后写解析文件的链路，二期目标改为 Python 直接写入解析任务和解析文件，需避免双写。
-- 当前解析进度没有清晰的持久化边界，二期明确只走 Redis 临时进度，不写入解析任务表。
-- MQ 消息体目前只有基础字段，二期需明确最小业务载荷、幂等键和失败补偿口径。
+- `docs/architecture/middleware_contract.md` 中原文件 OSS 路径已按一期真实代码回写为 `original/user-{userId}/dataset-{datasetId}/{yyyy}/{MM}/{dd}/{fileId}/{filename}`，本技术方案评审时需一并确认。
+- 当前 `document_parsed_file` 同时包含解析状态和最新结果信息；二期需要把状态历史移到 `document_parse_task`。
+- 当前旧 `parse_result` 消费链路会由 Java 写解析文件；二期若继续启用会和 Python 直接写库冲突，必须删除、禁用或改为非主链路。
+- 当前 Kafka `MQSend.send()` 不等待 broker ack，不能把“方法未抛异常”等同于消息已可靠落盘；二期通过 `created` 补偿降低风险，三期再考虑 Outbox。
+- SSE 进度为单机内存连接管理；多 Java 实例下的跨节点进度分发不在二期解决，移动到三期。
 
 ---
 
@@ -115,78 +123,113 @@
 
 ### 4.1 总体设计思路 (Architecture Overview)
 
-二期采用“三表协同 + MQ 下发 + Redis 进度”的模型：
+二期采用“三张表 + MQ 下发 + 回调事件 + SSE 推送”的模型：
 
-- `document_original_file`：一期已落地，作为解析来源。
-- `document_parse_task`：保存每次解析任务状态、解析时间、结果和失败原因。
-- `document_parsed_file`：保存每个原文件当前最新成功解析文件，与原文件一对一。
-- MQ `tolink.rag.parse_task`：Java 创建任务后投递给 Python。
-- Redis `storage:parse:progress:{taskId}`：保存解析过程百分比进度，供前端轮询。
+- `document_original_file`：一期已落地，只负责原文件上传事实。
+- `document_parse_task`：二期新增，记录每一次解析任务和状态流转。
+- `document_parsed_file`：二期调整，只记录当前最新成功解析产物和成功解析次数。
+- `tolink.rag.parse_task`：Java 创建任务后下发给 Python。
+- Python 回调 Java：进度和最终结果事件统一走内部回调接口。
+- Java SSE：将 Python 回调事件推给当前浏览器连接；不持久化百分比进度。
 
-### 4.2 二期调用链路 (Call Flow)
+### 4.2 目标调用链路 (Call Flow)
 
 ```text
-自动解析:
-上传成功 -> Java 创建解析任务(created) -> Java 投递 parse_task MQ -> 前端收到 taskId
+只上传:
+前端上传文件 -> Java 上传 MinIO -> Java 写原文件 success -> 返回原文件信息 -> 前端展示已上传待解析
+
+上传并立即解析:
+前端上传文件(parseImmediately=true) -> Java 上传 MinIO -> Java 写原文件 success
+-> Java 创建解析任务(created) -> Java 投递 parse_task -> 返回原文件信息 -> 前端展示等待解析
 
 手动解析:
-前端点击解析 -> Java 校验原文件已上传成功 -> Java 创建解析任务(created) -> Java 投递 parse_task MQ -> 前端收到 taskId
+前端点击解析 -> Java 校验文件归属/上传成功/无进行中任务
+-> Java 创建解析任务(created) -> Java 投递 parse_task -> 返回等待解析
 
 解析执行:
-Python 消费 MQ -> 更新任务 processing -> 解析中上报进度 -> 保存解析结果文件 -> 更新任务 success/failed -> 成功时 upsert 最新解析文件
-
-前端展示:
-前端轮询任务进度 -> 全部任务结束后查询任务结果与最新解析文件 -> 展示成功/失败文件 -> 失败文件可再次解析
+Python 消费 parse_task -> Python 更新任务 processing -> Python 回调 Java 进度
+-> Java SSE 推送进度 -> Python 保存解析产物到 rag-md
+-> Python 写任务 success/failed 和最新解析产物 -> Python 回调 Java 最终事件
+-> Java SSE 推送最终结果 -> 前端展示本次所有文件结果，并自行判断是否全部完成
 ```
 
 ### 4.3 核心模块职责划分 (Module Responsibilities)
 
-| 模块/类 | 本期职责 | 输入/输出边界 |
+| 模块/类 | 职责 | 输入/输出边界 |
 | :--- | :--- | :--- |
-| `KnowledgeFileController` | 手动解析、任务历史、最新结果、进度查询入口 | HTTP 请求 / `Result<T>` |
-| `InternalKnowledgeFileController` | Python 解析进度上报入口 | 内部 token + taskId/progress |
-| `KnowledgeParseTaskService` | 创建任务、投递 MQ、查询任务历史和结果 | fileId、taskId / task DTO |
-| `KnowledgeParseProgressService` | 封装 Redis 进度写入与读取 | taskId、progress / progress DTO |
-| `KnowledgeParseTaskMQ` | `parse_task` 业务消息模型 | task payload / `AbstractMQ` |
-| `KnowledgeParseTaskMapper` | 解析任务持久化 | Entity / DB |
-| `KnowledgeParsedFileMapper` | 最新解析文件 upsert 与查询 | Entity / DB |
+| `KnowledgeFileController` | 保留上传/列表/详情/删除；新增手动解析、解析结果查询、SSE 订阅入口 | 用户 HTTP 请求 / `Result<T>` 或 `SseEmitter` |
+| `InternalKnowledgeFileController` | 保留原文件内部下载；新增 Python 解析事件回调入口 | Bearer 服务 Token + 回调事件 |
+| `KnowledgeFileServiceImpl` | 一期上传成功后按 `parseImmediately` 调用解析任务服务 | 原文件上传请求 / `KnowledgeFileDTO` |
+| `KnowledgeParseTaskService` | 创建任务、禁止重复解析、投递 MQ、补偿重投、查询结果 | fileId、userId、triggerMode |
+| `KnowledgeParseSseService` | 管理 SSE 连接和按文件推送进度/最终事件 | userId、fileId、event |
+| `KnowledgeParseTaskMQ` | `parse_task` 消息模型 | 扁平 JSON 消息体 |
+| `KnowledgeParseTaskMapper` | 解析任务表持久化 | Entity / DB |
+| `KnowledgeParsedFileMapper` | 最新解析产物查询 | Entity / DB |
 
-### 4.4 二期核心时序图 (Sequence Diagram)
+### 4.4 核心时序图 (Sequence Diagrams)
+
+#### 场景 1：上传并立即解析
 
 ```mermaid
 sequenceDiagram
     participant FE as 前端
     participant Java as Java 服务
-    participant DB as MySQL
+    participant RawOSS as MinIO rag-raw
+    participant MySQL as MySQL
     participant MQ as MQ
-    participant Py as Python 服务
-    participant Redis as Redis
-    participant OSS as MinIO
+    participant Py as Python
+    participant ParsedOSS as MinIO rag-md
 
-    FE->>Java: 发起解析(fileId)
-    Java->>DB: 校验原文件存在且上传成功
-    Java->>DB: 创建解析任务(created)
-    Java->>MQ: 发送 parse_task(task_id, document_id, file_url, file_type)
-    Java-->>FE: 返回 taskId 和任务已创建
-    MQ-->>Py: 投递解析任务
-    Py->>DB: 更新任务 processing
-    loop 解析中
-        Py->>Java: 上报 taskId 百分比进度
-        Java->>Redis: 写入 progress
-        FE->>Java: 查询 taskId 进度
-        Java->>Redis: 读取 progress
-        Java-->>FE: 返回进度
+    FE->>Java: 上传文件(parseImmediately=true)
+    Java->>RawOSS: 上传原文件
+    RawOSS-->>Java: 返回 objectKey
+    Java->>MySQL: document_original_file=success
+    Java->>MySQL: 插入 document_parse_task(created)
+    Java->>MQ: 发送 parse_task
+    alt 发送方法调用成功
+        Java-->>FE: 返回原文件信息，前端展示等待解析
+    else 同步调用异常
+        Java->>MySQL: 保持任务 created，记录补偿信息
+        Java-->>FE: 返回原文件信息，前端展示等待解析
     end
-    Py->>OSS: 保存解析结果文件
-    alt 解析成功
-        Py->>DB: 更新任务 success 和结果定位
-        Py->>DB: upsert 最新解析文件并递增 parse_count
-    else 解析失败
-        Py->>DB: 更新任务 failed 和失败原因
+    Py->>MQ: 消费 parse_task
+    Py->>MySQL: 更新任务 processing
+    Py->>Java: 回调 progress 0-100
+    Java-->>FE: SSE 推送解析进度
+    Py->>ParsedOSS: 保存解析产物
+    Py->>MySQL: 更新任务 success/failed
+    opt success
+        Py->>MySQL: upsert document_parsed_file
     end
-    FE->>Java: 查询解析结果
-    Java->>DB: 查询任务和最新解析文件
-    Java-->>FE: 返回解析结果
+    Py->>Java: 回调 final 事件
+    Java-->>FE: SSE 推送解析成功/失败
+```
+
+#### 场景 2：手动解析与补偿重投
+
+```mermaid
+sequenceDiagram
+    participant FE as 前端
+    participant Java as Java 服务
+    participant MySQL as MySQL
+    participant MQ as MQ
+    participant Scheduler as Java 定时补偿
+
+    FE->>Java: 点击解析(fileId)
+    Java->>MySQL: 校验文件归属、上传成功、无进行中任务
+    Java->>MySQL: 插入 document_parse_task(created)
+    Java->>MQ: 发送 parse_task
+    alt 发送方法调用成功
+        Java-->>FE: 返回等待解析
+    else 同步调用异常
+        Java->>MySQL: 记录 retry_count/last_error
+        Java-->>FE: 返回等待解析
+    end
+    Scheduler->>MySQL: 扫描 created 且到达重试时间的任务
+    Scheduler->>MQ: 重投 parse_task
+    alt 超过最大补偿范围
+        Scheduler->>MySQL: 更新任务 failed，写业务化失败原因
+    end
 ```
 
 ---
@@ -197,50 +240,76 @@ sequenceDiagram
 
 | 方法 | 路径 | 说明 | 权限 |
 | :--- | :--- | :--- | :--- |
-| POST | `/api/v1/files/{fileId}/parse-tasks` | 手动发起一次解析 | 登录用户 |
-| GET | `/api/v1/files/{fileId}/parse-tasks` | 查询某文件解析任务历史 | 登录用户 |
-| GET | `/api/v1/parse-tasks/{taskId}/progress` | 查询某解析任务百分比进度 | 登录用户 |
-| GET | `/api/v1/files/{fileId}/parsed-result` | 查询当前最新成功解析结果 | 登录用户 |
-| POST | `/api/v1/internal/parse-tasks/{taskId}/progress` | Python 上报解析进度 | 内部服务 |
+| POST | `/api/v1/datasets/{datasetId}/files` | 一期上传接口，二期支持 `parseImmediately=true` 自动提交解析 | 登录用户 |
+| POST | `/api/v1/files/{fileId}/parse` | 手动发起解析或失败后再次解析 | 登录用户 |
+| GET | `/api/v1/datasets/{datasetId}/files/parse-events` | SSE 订阅本次文件列表的解析进度和最终事件 | 登录用户 |
+| GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 查询本次文件列表的解析结果汇总 | 登录用户 |
+| POST | `/api/v1/internal/parse-tasks/{taskId}/events` | Python 上报进度和最终事件 | 内部服务 Token |
 
-说明：上传后立即解析由一期上传接口的 `parseImmediately=true` 触发，二期在上传成功后复用创建解析任务逻辑。
+说明：
+
+- 自动解析不要求前端拿 `task_id`；上传成功后前端本地把该文件切到“等待解析”。
+- 手动解析响应也不向前端暴露 `task_id`，前端按 `fileId` 订阅和查询。
+- 如后续排障需要任务历史，可在管理端另行设计，不纳入二期前端主链路。
 
 ### 5.2 请求参数
 
-| 参数 | 位置 | 类型 | 必填 | 说明 |
-| :--- | :--- | :--- | :--- | :--- |
-| `fileId` | path | Long | 是 | 原文件 ID |
-| `taskId` | path | String | 是 | 解析任务业务 ID |
-| `triggerMode` | body/query | String | 否 | `upload_auto/manual_retry` |
-| `progress` | body | Integer | 是 | Python 上报百分比，0-100 |
+| 接口 | 参数 | 位置 | 类型 | 必填 | 说明 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 上传 | `parseImmediately` | query/form | boolean | 否 | `true` 表示上传成功后自动提交解析 |
+| 手动解析 | `fileId` | path | Long | 是 | 原文件 ID |
+| SSE 订阅 | `datasetId` | path | Long | 是 | 数据集 ID |
+| SSE 订阅 | `fileIds` | query | String | 是 | 本次关注的文件 ID 列表，逗号分隔 |
+| 结果查询 | `fileIds` | query | String | 是 | 本次文件 ID 列表，逗号分隔 |
+| Python 回调 | `taskId` | path | String | 是 | 解析任务业务 ID |
+| Python 回调 | `eventType` | body | String | 是 | `processing/progress/success/failed` |
+| Python 回调 | `progress` | body | Integer | 否 | 百分比，0-100 |
+| Python 回调 | `failureReason` | body | String | 否 | 业务化失败原因 |
 
 ### 5.3 响应结构
 
-创建解析任务响应：
+手动解析提交响应：
 
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "taskId": "task-uuid",
-    "fileId": 1,
-    "taskStatus": "created"
+    "fileId": 10000,
+    "originalFilename": "demo.pdf",
+    "frontendStatus": "parse_waiting"
   }
 }
 ```
 
-进度响应：
+SSE 事件数据：
+
+```json
+{
+  "fileId": 10000,
+  "originalFilename": "demo.pdf",
+  "frontendStatus": "parsing",
+  "progress": 68,
+  "parseStatus": "processing",
+  "failureReason": null
+}
+```
+
+结果查询响应：
 
 ```json
 {
   "code": 200,
   "message": "success",
-  "data": {
-    "taskId": "task-uuid",
-    "progress": 68,
-    "taskStatus": "processing"
-  }
+  "data": [
+    {
+      "fileId": 10000,
+      "originalFilename": "demo.pdf",
+      "frontendStatus": "parse_success",
+      "parseStatus": "success",
+      "failureReason": null
+    }
+  ]
 }
 ```
 
@@ -250,10 +319,33 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | 原文件不存在或无权访问 | 404 | 404 | 文件不存在或无权访问 |
 | 原文件未上传成功 | 400 | 400 | 原文件尚未上传成功，不能解析 |
+| 同一文件已有等待解析或解析中任务 | 409 | 409 | 文件正在解析中，请勿重复提交 |
 | 解析任务不存在 | 404 | 404 | 解析任务不存在 |
-| 进度值非法 | 400 | 400 | 解析进度必须在 0 到 100 之间 |
-| 内部接口鉴权失败 | 401 | 401 | 内部接口鉴权失败 |
-| MQ 发送失败 | 500 | 500 | 解析任务创建成功但投递失败，请稍后重试 |
+| Python 回调进度非法 | 400 | 400 | 解析进度必须在 0 到 100 之间 |
+| 内部接口鉴权失败 | 401 | 401 | 服务鉴权失败 |
+| SSE 文件列表为空 | 400 | 400 | 请选择要查看的文件 |
+
+### 5.5 异常类与错误码定义
+
+| 异常类 | 继承关系 | 使用场景 | 说明 |
+| :--- | :--- | :--- | :--- |
+| 复用 `BusinessException` | `RuntimeException` | 文件无权访问、状态非法、重复解析、内部回调参数非法 | 保持当前 Controller 风格 |
+
+二期优先沿用当前项目中直接构造 `BusinessException(code,message,httpStatus)` 的写法。若实现阶段补充枚举，建议在 `ErrorCode` 新增知识文件范围：
+
+| 错误码 | 枚举名/常量名 | HTTP 状态 | 触发场景 | 前端提示策略 |
+| :--- | :--- | :--- | :--- | :--- |
+| 10011 | `KNOWLEDGE_FILE_NOT_FOUND` | 404 | 文件不存在或无权访问 | toast |
+| 10012 | `KNOWLEDGE_FILE_NOT_UPLOADED` | 400 | 原文件未上传成功 | toast |
+| 10013 | `KNOWLEDGE_FILE_PARSE_RUNNING` | 409 | 文件已有进行中解析任务 | 禁用按钮并提示 |
+| 10014 | `KNOWLEDGE_PARSE_TASK_NOT_FOUND` | 404 | 任务不存在 | toast |
+| 10015 | `KNOWLEDGE_PARSE_PROGRESS_INVALID` | 400 | 回调进度非法 | 内部调用方排查 |
+
+### 5.6 兼容性说明
+
+- 上传接口路径保持不变，`parseImmediately` 从一期兼容参数变为二期真实开关。
+- `KnowledgeFileDTO` 仍只表达原文件上传事实，不混入解析任务进度。
+- 旧 `parse_result` MQ 消费链路不再作为结果写库主链路；实现阶段应删除或条件禁用旧消费者，避免双写。
 
 ---
 
@@ -269,32 +361,30 @@ document_parse_task   1 - 0/1 document_parsed_file(latest_success_task_id)
 
 ### 6.2 数据库组件与结构变更 (Database & Schema Changes)
 
-#### MySQL 变更
-
 | 表名 | 变更类型 | 变更说明 | 备注 |
 | :--- | :--- | :--- | :--- |
-| `document_parse_task` | 新增 | 保存每次解析任务状态、解析时间、结果、失败原因和历史结果定位 | Java 创建，Python 推进 |
-| `document_parsed_file` | 重建/调整 | 保存每个原文件当前最新成功解析文件 | 与原文件一对一 |
+| `document_parse_task` | 新增 | 保存每次解析任务、状态、MQ 补偿信息、解析时间、结果和失败原因 | Java 创建，Python 更新状态和结果 |
+| `document_parsed_file` | 调整 | 保存每个原文件当前最新成功解析产物和成功解析次数 | Python 成功解析后 upsert |
+| `document_original_file` | 不改表结构 | 继续只保存上传事实 | 二期只读取上传成功状态和原文件定位 |
 
 ### 6.3 字段设计：`document_parse_task`
 
 | 字段 | 类型 | 是否必填 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| `id` | bigint | 是 | 自增 | 主键 |
-| `task_id` | varchar | 是 | 无 | 解析任务业务 ID，唯一 |
-| `document_original_file_id` | bigint | 是 | 无 | 原文件 ID |
-| `dataset_id` | bigint | 是 | 无 | 数据集 ID |
-| `user_id` | bigint | 是 | 无 | 用户 ID |
-| `trigger_mode` | varchar | 是 | 无 | `upload_auto/manual_retry` |
-| `task_status` | varchar | 是 | `created` | `created/processing/success/failed` |
+| `id` | bigint unsigned | 是 | 自增 | 主键 |
+| `task_id` | varchar(36) | 是 | 无 | 解析任务业务 ID，UUID，唯一 |
+| `document_original_file_id` | bigint unsigned | 是 | 无 | 原文件 ID |
+| `dataset_id` | bigint unsigned | 是 | 无 | 数据集 ID |
+| `user_id` | bigint unsigned | 是 | 无 | 用户 ID |
+| `trigger_mode` | varchar(20) | 是 | 无 | `upload_auto/manual_retry` |
+| `task_status` | varchar(16) | 是 | `created` | `created/processing/success/failed` |
+| `failure_reason` | varchar(512) | 否 | null | 前端展示的业务化失败原因 |
+| `dispatch_retry_count` | int | 是 | 0 | Java MQ 补偿重试次数 |
+| `last_dispatch_error` | varchar(512) | 否 | null | 最近一次投递异常摘要，不直接展示给用户 |
+| `last_dispatched_at` | datetime | 否 | null | 最近一次调用 MQ 发送时间 |
 | `parse_started_at` | datetime | 否 | null | Python 开始解析时间 |
 | `parse_finished_at` | datetime | 否 | null | Python 结束解析时间 |
 | `parse_duration_ms` | bigint | 否 | null | 解析耗时 |
-| `parsed_bucket_name` | varchar | 否 | null | 本次任务解析结果 bucket，固定为 `rag-parsed` |
-| `parsed_object_key` | varchar | 否 | null | 本次任务解析结果 object key |
-| `parsed_file_url` | varchar | 否 | null | 本次任务解析结果访问 URL |
-| `parse_result` | text | 否 | null | Python 返回的结果摘要 |
-| `failure_reason` | varchar | 否 | null | 失败原因 |
 | `created_at` | datetime | 是 | 当前时间 | 创建时间 |
 | `updated_at` | datetime | 是 | 当前时间 | 更新时间 |
 
@@ -302,37 +392,51 @@ document_parse_task   1 - 0/1 document_parsed_file(latest_success_task_id)
 
 | 字段 | 类型 | 是否必填 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| `id` | bigint | 是 | 自增 | 主键 |
-| `document_original_file_id` | bigint | 是 | 无 | 原文件 ID |
-| `latest_success_task_id` | varchar | 是 | 无 | 最新成功解析任务 ID |
-| `dataset_id` | bigint | 是 | 无 | 数据集 ID |
-| `user_id` | bigint | 是 | 无 | 用户 ID |
-| `original_filename` | varchar | 是 | 无 | 原始文件名 |
-| `parsed_filename` | varchar | 否 | null | 解析结果文件名 |
-| `parsed_bucket_name` | varchar | 是 | 无 | 最新解析文件 bucket，固定为 `rag-parsed` |
-| `parsed_object_key` | varchar | 是 | 无 | 最新解析文件 object key |
-| `parsed_file_url` | varchar | 否 | null | 最新解析文件访问 URL |
-| `parsed_storage_path` | varchar | 否 | null | bucket/objectKey 组合定位 |
-| `parse_result` | text | 否 | null | 最新解析摘要 |
-| `parse_count` | int | 是 | 1 | 当前原文件累计成功解析次数，仅成功解析后递增 |
+| `id` | bigint unsigned | 是 | 自增 | 主键 |
+| `document_original_file_id` | bigint unsigned | 是 | 无 | 原文件 ID，唯一 |
+| `dataset_id` | bigint unsigned | 是 | 无 | 数据集 ID |
+| `user_id` | bigint unsigned | 是 | 无 | 用户 ID |
+| `latest_success_task_id` | varchar(36) | 是 | 无 | 最新成功解析任务 ID |
+| `original_filename` | varchar(255) | 是 | 无 | 原始文件名快照 |
+| `parsed_filename` | varchar(255) | 否 | null | 解析产物文件名 |
+| `parsed_bucket_name` | varchar(64) | 是 | `rag-md` | 解析产物 bucket |
+| `parsed_object_key` | varchar(512) | 是 | 无 | 解析产物 object key |
+| `parsed_file_url` | varchar(1024) | 否 | null | 内部定位地址，本期不对前端暴露 |
+| `parsed_storage_path` | varchar(1024) | 否 | null | `bucket/objectKey` 组合定位 |
+| `parse_count` | int | 是 | 1 | 累计成功解析次数，仅成功后递增 |
 | `parsed_at` | datetime | 是 | 无 | 最新成功解析时间 |
 | `created_at` | datetime | 是 | 当前时间 | 创建时间 |
 | `updated_at` | datetime | 是 | 当前时间 | 更新时间 |
 
+说明：
+
+- `document_parsed_file` 不再保存失败状态。失败属于 `document_parse_task`。
+- 本期前端不下载、不预览解析产物，因此 `parsed_file_url` 不作为前端响应字段。
+
 ### 6.5 索引与约束
 
-- `document_parse_task`：唯一索引 `uk_task_id(task_id)`。
-- `document_parse_task`：普通索引 `idx_original_file(document_original_file_id)`。
-- `document_parse_task`：普通索引 `idx_dataset_user_status(dataset_id, user_id, task_status)`。
-- `document_parsed_file`：唯一索引 `uk_original_file(document_original_file_id)`。
-- `document_parsed_file`：普通索引 `idx_latest_success_task(latest_success_task_id)`。
+- `document_parse_task`：唯一索引 `uk_parse_task_id(task_id)`。
+- `document_parse_task`：普通索引 `idx_parse_task_original_status(document_original_file_id, task_status, updated_at)`，用于禁止重复解析和补偿扫描。
+- `document_parse_task`：普通索引 `idx_parse_task_dataset_user(dataset_id, user_id, created_at)`，用于权限范围查询。
+- `document_parse_task`：普通索引 `idx_parse_task_status_retry(task_status, dispatch_retry_count, last_dispatched_at)`，用于 MQ 补偿。
+- `document_parsed_file`：唯一索引 `uk_document_parsed_original_file(document_original_file_id)`。
+- `document_parsed_file`：普通索引 `idx_document_parsed_dataset_user(dataset_id, user_id, updated_at)`。
+- `document_parsed_file`：普通索引 `idx_document_parsed_latest_task(latest_success_task_id)`。
 
-### 6.6 Redis 与 OSS 存储
+### 6.6 中间件与其他存储设计
 
-| 组件 | 存储内容 | Bucket / Key 规则 | 备注 |
+| 组件 | 存储内容 | Key/Path 规则 | 备注 |
 | :--- | :--- | :--- | :--- |
-| Redis | 解析百分比进度 | `storage:parse:progress:{taskId}` | TTL 建议 24 小时，值为 0-100 |
-| OSS / MinIO | 解析结果文件 | bucket: `rag-parsed`；object key: `parsed/user-{userId}/dataset-{datasetId}/{taskId}/{safeParsedFilename}` | Python 保存，DB 记录 bucket/objectKey；用户和数据集目录必须加语义前缀 |
+| Redis | 不使用 | 无 | 本期不引入 Redis 进度 |
+| MQ | 解析任务消息 | `tolink.rag.parse_task` | Java 发送，Python 消费 |
+| OSS / MinIO | 原文件 | bucket `rag-raw`，object key 沿用一期真实代码 | Java 上传 |
+| OSS / MinIO | 解析产物 | bucket `rag-md`，object key `parsed/user-{userId}/dataset-{datasetId}/{yyyy}/{MM}/{dd}/{taskId}/{parsedFilename}` | Python 上传 |
+
+### 6.7 数据迁移与回滚
+
+* **是否需要迁移：** 需要。`document_parsed_file` 现有字段语义需要调整，新增 `document_parse_task`。
+* **迁移策略：** 开发环境可重建；生产环境需用 `ALTER TABLE` 新增字段、保留旧字段或迁移后删除。二期实现时以 `docs/db/init.sql` 为建库基线，同时补充变更 SQL。
+* **回滚策略：** 回滚 Java 服务时暂停前端解析入口和 Python 消费；保留新增表数据用于排查，不主动删除。
 
 ---
 
@@ -342,60 +446,56 @@ document_parse_task   1 - 0/1 document_parsed_file(latest_success_task_id)
 
 | 项 | 设计 |
 | :--- | :--- |
-| Topic / MQ 名称 | `tolink.rag.parse_task` |
+| MQ 名称 | `tolink.rag.parse_task` |
 | 发送方 | Java `KnowledgeParseTaskService` |
 | 消费方 | Python 解析服务 |
-| 消息类型 | 普通异步任务消息 |
+| 消息类型 | `MQSendType.QUEUE` |
 | 幂等主键 | `task_id` |
 
-### 7.2 消息 Envelope
+### 7.2 消息体结构
 
-沿用项目 MQ 约定的 envelope + payload 结构：
-
-```json
-{
-  "mq_type": "normal",
-  "mq_name": "tolink.rag.parse_task",
-  "payload": {}
-}
-```
-
-### 7.3 Payload 字段
+二期 `parse_task` 消息体改为扁平 JSON，不再包一层 envelope。Python 端直接按字段读取：
 
 ```json
 {
-  "task_id": "task-uuid",
-  "document_id": 1,
-  "dataset_id": 10,
-  "user_id": 10001,
-  "bucket_name": "rag-raw",
-  "object_key": "original/user-10001/dataset-10/2026/04/25/1/demo.pdf",
-  "file_url": "/api/v1/files/1/download",
-  "original_filename": "demo.pdf",
+  "task_id": "9f6b7d7e-4e7b-4a3f-9f4d-8d2a1b6c7e90",
+  "original_file_id": 10001,
+  "user_id": 10002,
+  "dataset_id": 10003,
   "file_type": "pdf",
-  "trigger_mode": "manual_retry"
+  "source_bucket": "rag-raw",
+  "source_object_key": "original/user-10002/dataset-10003/2026/04/26/10001/report.pdf",
+  "source_filename": "report.pdf",
+  "md_bucket": "rag-md",
+  "md_object_key": "parsed/user-10002/dataset-10003/2026/04/26/9f6b7d7e-4e7b-4a3f-9f4d-8d2a1b6c7e90/report.md"
 }
 ```
+
+### 7.3 消息字段
 
 | 字段 | 必填 | 说明 |
 | :--- | :--- | :--- |
-| `task_id` | 是 | 解析任务业务 ID，Python 写库和幂等处理必须使用 |
-| `document_id` | 是 | 原文件 ID |
-| `dataset_id` | 是 | 数据集 ID |
+| `task_id` | 是 | 解析任务业务 ID，Python 更新任务状态和幂等处理必须使用 |
+| `original_file_id` | 是 | 原文件 ID，对应 `document_original_file.id` |
 | `user_id` | 是 | 上传用户 ID |
-| `bucket_name` | 是 | 原文件 bucket，固定为 `rag-raw` |
-| `object_key` | 是 | 原文件 object key |
-| `file_url` | 否 | Java 受控下载地址，供 Python 需要时拉取 |
-| `original_filename` | 是 | 原始文件名 |
-| `file_type` | 是 | 文件类型或后缀 |
-| `trigger_mode` | 是 | `upload_auto/manual_retry` |
+| `dataset_id` | 是 | 数据集 ID |
+| `file_type` | 是 | 文件类型或文件后缀，如 `pdf`、`docx`、`txt` |
+| `source_bucket` | 是 | 原文件 bucket，固定为 `rag-raw` |
+| `source_object_key` | 是 | 原文件 object key |
+| `source_filename` | 是 | 用户上传时的原始文件名 |
+| `md_bucket` | 是 | 解析产物 bucket，按当前桶约定为 `rag-md` |
+| `md_object_key` | 是 | Python 解析后写入 Markdown 产物的目标 object key |
 
-### 7.4 发送失败处理
+### 7.4 发送失败与补偿
 
-- Java 创建任务后发送 MQ。
-- MQ 发送成功：任务保持 `created`，等待 Python 消费后推进为 `processing`。
-- MQ 发送失败：任务仍保留为 `created`，记录错误日志，前端可再次触发解析或由后续补偿任务重发。
-- 不引入 `sent` 状态，避免 `created` 与 `sent` 状态边界混淆；非成功任务均可按业务规则再次发送。
+- Java 创建任务后立即调用 `MQSend.send(new KnowledgeParseTaskMQ(payload))`。
+- 如果同步调用未抛异常，更新 `last_dispatched_at`，任务保持 `created`。
+- 如果同步调用抛异常，任务仍保持 `created`，更新 `dispatch_retry_count`、`last_dispatch_error`，前端仍展示等待解析。
+- 定时补偿扫描 `task_status=created` 且达到重试间隔的任务，重新投递同一个 `task_id`。
+- 超过最大补偿次数后，Java 将任务置为 `failed`，`failure_reason=解析任务提交失败，请稍后重试`。
+- Python 必须以 `task_id` 幂等：已是 `processing/success/failed` 的任务不得被重复消息破坏状态。
+
+注意：当前 Kafka 发送实现不等待 broker ack，二期补偿不是严格 Outbox；数据库任务与 MQ 投递的强一致性放到三期本地消息表方案。
 
 ---
 
@@ -405,38 +505,52 @@ document_parse_task   1 - 0/1 document_parsed_file(latest_success_task_id)
 
 ```java
 public interface KnowledgeParseTaskService {
-    KnowledgeParseTaskDTO createParseTask(Long userId, Long fileId, String triggerMode);
-    PageResult<KnowledgeParseTaskDTO> listTasks(Long userId, Long fileId, int page, int pageSize);
-    KnowledgeParsedResultDTO getLatestParsedResult(Long userId, Long fileId);
+    FileParseSubmitDTO submitManualParse(Long userId, Long fileId);
+    void submitAutoParseAfterUpload(Long userId, KnowledgeOriginalFile originalFile);
+    List<FileParseResultDTO> listParseResults(Long userId, Long datasetId, List<Long> fileIds);
+    int compensateCreatedTasks();
 }
 
-public interface KnowledgeParseProgressService {
-    void reportProgress(String taskId, int progress);
-    KnowledgeParseProgressDTO getProgress(Long userId, String taskId);
+public interface KnowledgeParseSseService {
+    SseEmitter subscribe(Long userId, Long datasetId, List<Long> fileIds);
+    void publishTaskEvent(KnowledgeParseCallbackRequest request);
 }
 ```
 
-### 8.2 关键处理流程
+### 8.2 核心方法职责
 
-1. Java 校验登录、文件归属、原文件上传成功。
-2. Java 生成 `task_id`，插入 `document_parse_task`，状态为 `created`。
-3. Java 构建 `parse_task` MQ 消息并发送。
-4. Java 向前端返回 `taskId`。
-5. Python 消费消息后以 `task_id` 做幂等校验。
-6. Python 将任务更新为 `processing`，写入 `parse_started_at`。
-7. Python 解析过程中调用 Java 内部进度接口，上报 0-100 百分比。
-8. Java 将进度写入 Redis，不落库。
-9. Python 解析成功后保存结果文件到 MinIO，更新任务为 `success`，写入结果定位、耗时和摘要。
-10. Python 成功后 upsert `document_parsed_file`，更新最新成功结果并递增 `parse_count`。
-11. Python 解析失败后更新任务为 `failed`，写入失败原因，不覆盖最新解析文件。
+| 方法 | 职责 | 输入 | 输出 |
+| :--- | :--- | :--- | :--- |
+| `submitAutoParseAfterUpload` | 上传成功后自动创建解析任务并投递 MQ | userId、原文件实体 | 无，失败不影响上传响应 |
+| `submitManualParse` | 手动解析提交 | userId、fileId | `FileParseSubmitDTO` |
+| `createTaskAndDispatch` | 统一创建任务、校验进行中任务、投递 MQ | 原文件、triggerMode | 任务实体 |
+| `compensateCreatedTasks` | 扫描 `created` 任务并重投 MQ | 无 | 影响行数 |
+| `subscribe` | 注册 SSE 连接并在断开时清理 | userId、datasetId、fileIds | `SseEmitter` |
+| `publishTaskEvent` | 校验内部回调、查询任务归属、推送 SSE | callback request | 无 |
+| `listParseResults` | 按文件列表查询最终展示结果 | userId、datasetId、fileIds | 结果列表 |
 
-### 8.3 并发、幂等与一致性
+### 8.3 关键处理流程
 
-- **重复解析：** 不做任务幂等拦截，每次用户触发都创建新任务。
-- **消息幂等：** Python 以 `task_id` 判断是否重复消费；已为 `success/failed` 的任务不再重复执行。
-- **最新结果一致性：** 只有任务成功时才更新 `document_parsed_file`；失败任务不覆盖最新成功结果。
-- **进度一致性：** Redis 进度只用于展示，任务成功/失败后以 MySQL 任务状态为最终事实。
-- **跨组件一致性：** MQ 与 MySQL 非强事务；发送失败保留 `created` 任务并记录日志，允许后续重发。
+1. 上传接口完成一期上传成功状态回写。
+2. 如果 `parseImmediately=false`，直接返回 `KnowledgeFileDTO`。
+3. 如果 `parseImmediately=true`，调用 `submitAutoParseAfterUpload`。
+4. 解析任务服务检查原文件上传状态为 `success`。
+5. 查询同一原文件是否存在 `created/processing` 任务；存在则拒绝手动解析，自动解析场景记录日志后跳过。
+6. 插入 `document_parse_task`，状态为 `created`。
+7. 构建 `KnowledgeParseTaskMQ` 并调用 `MQSend`。
+8. Python 消费后更新任务为 `processing`，并在解析过程中回调 Java。
+9. Java 收到回调后不写进度到 DB，只向当前 SSE 连接推送事件。
+10. Python 解析完成后先写任务最终状态和最新解析产物，再回调 Java 最终事件。
+11. 前端按本次文件列表接收 SSE 或查询结果，展示本次所有文件结果，并自行判断是否全部到达终态。
+
+### 8.4 并发、幂等与一致性
+
+- **重复点击控制：** 以 `document_parse_task(document_original_file_id, task_status in created/processing)` 查询拦截，同一文件不允许同时多个进行中任务。
+- **MQ 幂等：** 同一个 `task_id` 可被 Java 补偿重复发送，Python 必须幂等处理。
+- **任务状态更新：** Java 只创建 `created` 和处理 MQ 补偿失败；Python 负责 `processing/success/failed` 解析状态。
+- **最新产物一致性：** 只有 Python 解析成功才 upsert `document_parsed_file` 并递增 `parse_count`。
+- **进度一致性：** SSE 进度是运行期事件，不是最终事实；最终结果以 MySQL 任务状态和解析产物为准。
+- **事务边界：** 创建任务和首次投递 MQ 不放在同一个强事务内；先提交任务记录，再投递 MQ，避免 Python 消费时找不到任务。
 
 ---
 
@@ -444,10 +558,18 @@ public interface KnowledgeParseProgressService {
 
 | 组件 | 用途 | 配置项 | 失败处理 |
 | :--- | :--- | :--- | :--- |
-| MQ | Java 向 Python 投递解析任务 | `qingluopay.mq.*`，topic `tolink.rag.parse_task` | 任务保留 `created`，允许重试投递 |
-| Redis | 保存解析百分比进度 | `storage:parse:progress:{taskId}`，TTL 24h | 查询不到时根据任务状态返回推导进度 |
-| OSS / MinIO | 保存解析结果文件 | `tolink.oss.*` | Python 解析失败并写任务失败原因 |
-| MySQL | 保存解析任务和最新解析文件 | `tolink_rag_db` | 写入失败记录日志并暴露失败状态 |
+| MQ | Java 向 Python 投递解析任务 | `qingluopay.mq.*`，`tolink.rag.parse_task` | 任务保持 `created` 并定时补偿 |
+| SSE | Java 向浏览器推送进度和最终事件 | 无新增中间件配置 | 断开后前端通过结果查询兜底 |
+| OSS / MinIO | 原文件和解析产物存储 | `tolink.oss.*` | 原文件失败走一期上传失败；解析产物失败由 Python 写任务失败 |
+| MySQL | 原文件、任务、最新产物事实存储 | `docs/db/init.sql` / migration | 写入失败由对应服务记录失败原因或告警 |
+
+新增建议配置：
+
+| 配置项 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `tolink.knowledge-file.parse-dispatch-retry-interval-seconds` | 30 | `created` 任务补偿重投间隔，本期确认使用该默认值 |
+| `tolink.knowledge-file.parse-dispatch-max-retry-count` | 5 | 超过后任务置为 failed，本期确认使用该默认值 |
+| `tolink.knowledge-file.sse-timeout-ms` | 300000 | SSE 连接超时时间 |
 
 ---
 
@@ -457,22 +579,24 @@ public interface KnowledgeParseProgressService {
 
 | 操作 | 权限要求 | 校验位置 |
 | :--- | :--- | :--- |
-| 手动解析 | 登录且文件属于当前用户可访问数据集，原文件上传成功 | Service |
-| 查询任务历史 | 登录且文件属于当前用户可访问数据集 | Service |
-| 查询进度 | 登录且任务属于当前用户可访问文件 | Service |
-| 查询最新解析结果 | 登录且文件属于当前用户可访问数据集 | Service |
-| Python 上报进度 | 内部服务鉴权 | 内部接口拦截器或共享 token |
+| 上传文件 | 登录用户，数据集属于当前用户 | `KnowledgeFileServiceImpl` |
+| 手动解析 | 登录用户，文件属于当前用户，原文件上传成功 | `KnowledgeParseTaskService` |
+| SSE 订阅 | 登录用户，数据集和 fileIds 均属于当前用户 | `KnowledgeParseSseService` / Service |
+| 结果查询 | 登录用户，只能查询自己数据集下文件 | `KnowledgeParseTaskService` |
+| Python 回调 | Bearer 服务 Token | `InternalKnowledgeFileController` |
 
 ### 10.2 敏感数据处理
 
-- MQ 消息不传 MinIO 密钥、签名 URL 或用户敏感信息。
-- 日志记录 `task_id`、`document_original_file_id`、`dataset_id`，不打印完整私有访问 URL。
-- Python 内部接口必须使用内部 token 或网关访问控制。
+- MQ 消息不携带服务 Token、MinIO 密钥、签名 URL。
+- Python 获取原文件时使用 MQ 中的 `source_bucket` 和 `source_object_key` 定位原文件；服务 Token 仅用于 Python 回调 Java 内部接口。
+- 前端响应不返回解析产物下载地址和预览地址。
+- 日志记录 `task_id`、`fileId`、`datasetId`，不打印服务 Token。
 
 ### 10.3 审计要求
 
-- 记录解析任务创建、MQ 投递失败、Python 任务失败。
-- 解析失败日志必须包含 `task_id`、`document_original_file_id`、`dataset_id`、`failure_reason`。
+- 记录解析任务创建、MQ 同步调用异常、补偿重投、超过补偿范围失败。
+- 记录 Python 回调非法进度、非法 taskId、服务鉴权失败。
+- 记录 Python 上报失败时的业务化失败原因。
 
 ---
 
@@ -480,12 +604,15 @@ public interface KnowledgeParseProgressService {
 
 | 异常场景 | 处理方式 | 错误码 | 用户提示 | 是否重试 |
 | :--- | :--- | :--- | :--- | :--- |
-| 原文件未上传成功 | 拒绝创建解析任务 | 400 | 原文件尚未上传成功，不能解析 | 否 |
-| MQ 发送失败 | 保留任务为 `created`，记录日志 | 500 | 解析任务未成功触发，请稍后重试 | 是 |
-| Python 重复消费 | 以 `task_id` 幂等跳过已完成任务 | 无 | 无 | 否 |
-| Python 解析失败 | 更新任务为 `failed`，记录失败原因 | 无 | 解析失败，可重试 | 是 |
-| Redis 进度丢失 | 根据任务状态推导进度 | 200 | 显示处理中或最终状态 | 否 |
-| 最新解析文件更新失败 | 任务成功但结果索引更新失败，记录告警 | 500/告警 | 解析结果暂不可用 | 是 |
+| 原文件未上传成功 | 拒绝创建解析任务 | 400 / 10012 | 原文件尚未上传成功，不能解析 | 否 |
+| 同一文件已有进行中任务 | 拒绝重复提交 | 409 / 10013 | 文件正在解析中，请勿重复提交 | 否 |
+| MQ 同步调用异常 | 任务保持 `created`，记录补偿信息 | 200 | 前端仍展示等待解析 | 系统重试 |
+| MQ 超过补偿范围 | 任务置为 `failed` | 无 HTTP | 解析失败，可重试 | 用户可重试 |
+| Python 重复消费 | Python 按 `task_id` 幂等跳过或忽略 | 无 | 无 | 否 |
+| Python 解析失败 | Python 写任务 `failed` 和业务化失败原因 | 无 HTTP | 解析失败，可重试 | 用户可重试 |
+| Python 解析超时 | Python 负责将任务更新为 `failed` 并写业务化失败原因 | 无 HTTP | 解析失败，可重试 | Python 处理 |
+| SSE 断开 | 清理连接，前端重连或查结果 | 200 | 继续显示解析中或最终状态 | 前端重连 |
+| Python 回调鉴权失败 | 拒绝处理 | 401 | 不展示给普通用户 | Python 排查 |
 
 ---
 
@@ -495,32 +622,33 @@ public interface KnowledgeParseProgressService {
 
 | 测试类 | 覆盖内容 |
 | :--- | :--- |
-| `KnowledgeParseTaskServiceTest` | 创建任务、重复解析、多任务历史、MQ 发送失败 |
-| `KnowledgeParseProgressServiceTest` | 进度写入、读取、范围校验、TTL |
-| `KnowledgeParsedFileMapperTest` | 最新解析文件 upsert、parse_count 递增 |
+| `KnowledgeParseTaskServiceImplTest` | 手动解析、自动解析、原文件状态校验、重复点击限制、MQ 异常补偿信息 |
+| `KnowledgeParseDispatchCompensationTest` | `created` 任务扫描、重投、超过最大次数置失败 |
+| `KnowledgeParseTaskMQTest` | 扁平消息体序列化、必填字段校验 |
+| `KnowledgeParseSseServiceTest` | SSE 订阅、推送、断开清理、无连接时忽略 |
 
 ### 12.2 集成测试
 
 | 测试类 | 覆盖接口/流程 |
 | :--- | :--- |
-| `KnowledgeParseTaskControllerTest` | 手动解析、任务历史、最新结果查询 |
-| `KnowledgeParseProgressControllerTest` | Python 上报进度、前端查询进度 |
-| `KnowledgeParseTaskMQTest` | MQ 消息体序列化与投递 |
+| `KnowledgeFileControllerTest` | 上传接口 `parseImmediately=true/false` 行为兼容 |
+| `KnowledgeParseControllerTest` | 手动解析、重复解析拦截、结果查询 |
+| `InternalKnowledgeParseControllerTest` | Python 回调鉴权、进度范围校验、最终事件推送 |
 
 ### 12.3 回归测试
 
 | 回归点 | 验证方式 |
 | :--- | :--- |
-| 一期上传链路 | 上传成功后仍能正常返回原文件信息 |
-| 旧解析结果消费 | 确认不再依赖 Java `parse_result` 消费链路写库 |
-| 数据集权限 | 非本人可访问文件不能解析或查询结果 |
-| 失败重试 | 失败任务保留历史，再次解析生成新任务 |
+| 一期上传链路 | `parseImmediately=false` 时仍只上传并返回原文件 DTO |
+| 上传失败重试 | 原文件失败重试仍复用 object_key，不触发解析 |
+| 原文件删除 | 二期不调整一期删除链路，软删除和解析产物级联清理放到三期 |
+| 旧解析结果消费 | 确认旧 `parse_result` Java 写库链路不再自动生效 |
 
 ### 12.4 验证命令
 
 ```bash
-mvn -pl link-api -am test
-mvn -pl link-service -am test
+mvn -pl link-api -am -Dtest=KnowledgeFileControllerTest,KnowledgeParseControllerTest,InternalKnowledgeParseControllerTest test
+mvn -pl link-service -am -Dtest=KnowledgeParseTaskServiceImplTest,KnowledgeParseDispatchCompensationTest,KnowledgeParseTaskMQTest,KnowledgeParseSseServiceTest test
 ```
 
 ---
@@ -532,31 +660,44 @@ mvn -pl link-service -am test
 | 配置项 | 默认值 | 说明 |
 | :--- | :--- | :--- |
 | `qingluopay.mq.*` | 沿用现有 | MQ vendor、扫描包、topic 自动创建配置 |
-| `storage.parse.progress.ttl` | 24h | 解析进度 Redis TTL，建议新增业务配置 |
-| `storage.internal.callback-token` | 无 | Python 上报进度接口鉴权 token，建议新增 |
-| `tolink.oss.*` | 沿用现有 | 解析结果文件 MinIO 配置 |
+| `tolink.oss.*` | 沿用现有 | MinIO / local provider 配置 |
+| `tolink.knowledge-file.service-token` | 沿用现有 | Python 内部下载和回调鉴权 |
+| `tolink.knowledge-file.parse-dispatch-retry-interval-seconds` | 30 | MQ 补偿重试间隔，本期确认使用该默认值 |
+| `tolink.knowledge-file.parse-dispatch-max-retry-count` | 5 | MQ 最大补偿次数，本期确认使用该默认值 |
+| `tolink.knowledge-file.sse-timeout-ms` | 300000 | SSE 超时时间 |
 
 ### 13.2 发布步骤
 
-1. 合入二期数据库 DDL，创建解析任务表和解析文件表。
-2. 部署 Java 服务，启用解析任务、进度和结果查询接口。
-3. 确认 MQ topic `tolink.rag.parse_task` 可用。
-4. 部署 Python 解析服务，确认可消费 MQ、访问 MinIO、写入 MySQL、调用 Java 进度接口。
-5. 联调上传后自动解析、手动解析、进度查询、失败重试、最新结果查询。
+1. 合入数据库变更，新增 `document_parse_task` 并调整 `document_parsed_file`。
+2. 部署 Java 服务，开启解析提交、SSE、Python 回调和 MQ 补偿。
+3. 确认 MQ 名称 `tolink.rag.parse_task` 可用。
+4. 部署 Python 解析服务，确认可消费 MQ、通过服务 Token 读取原文件、写 MySQL、写 `rag-md`、回调 Java。
+5. 联调只上传、上传立即解析、手动解析、SSE 进度、最终结果汇总和失败重试。
 
 ### 13.3 回滚方案
 
-- 暂停前端解析入口。
+- 前端关闭自动解析和手动解析入口。
 - 停止 Python 消费新解析任务。
-- 回滚 Java 服务到上一版本。
-- 保留 `document_parse_task` 和 `document_parsed_file` 数据用于排查，不直接删除。
-- 如需恢复旧 Java 消费 `parse_result` 链路，必须先确认不会与 Python 直接写库形成双写。
+- 回滚 Java 服务到一期版本。
+- 保留 `document_parse_task` 和 `document_parsed_file` 数据用于排查。
+- 如需恢复旧 Java `parse_result` 消费链路，必须先确认不会与 Python 直接写库形成双写。
 
 ---
 
-## 14. 待确认问题 (Open Issues)
+## 14. 公共契约影响 (Middleware Contract Impact)
 
-- Python 端最终解析结果摘要 `parse_result` 的结构是纯文本、JSON，还是按文件类型拆分。
-- Python 上报进度接口是否采用共享 token、网关白名单，还是服务间签名。
-- MQ 发送失败后的自动补偿任务是否在二期同步实现，还是先通过人工/接口重试。
-- 解析成功后的下游向量化、检索消费是否进入三期独立设计。
+本期触碰 MySQL、MQ、OSS、统一 API 和内部服务回调，属于公共契约变更。已同步回写 `docs/architecture/middleware_contract.md`，技术方案评审时需一并确认：
+
+- **MySQL 约定：** 新增 `document_parse_task`，调整 `document_parsed_file` 为最新解析产物表。
+- **MQ 约定：** 明确 `tolink.rag.parse_task` 的扁平消息体字段和 Java/Python 职责；旧 `parse_result` 不再作为二期主链路。
+- **OSS 约定：** 修正一期原文件 object key 真实格式；新增解析产物 bucket `rag-md` 和 object key 格式。
+- **API 约定：** 明确 Python 内部回调使用 Bearer 服务 Token；SSE 为解析进度推送方式。
+
+---
+
+## 15. 待确认问题 (Open Issues)
+
+- Python 端已确认按照 Java 端技术文档约定的表结构、状态枚举、唯一索引和更新时间规则写库。
+- 原文件软删除、解析产物由 Java 端删除、删除时历史任务保留等策略移动到三期，本期不处理。
+- SSE 多实例跨节点进度分发移动到三期，本期不解决。
+- 解析任务超时由 Python 端负责更新任务失败状态和业务化失败原因，Java 端不额外做 `processing` 超时补偿。

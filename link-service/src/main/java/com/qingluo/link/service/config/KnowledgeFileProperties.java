@@ -13,6 +13,9 @@ public class KnowledgeFileProperties {
     private long maxSizeBytes = 20L * 1024 * 1024;
     private String internalBaseUrl = "http://localhost:8080";
     private String serviceToken;
+    private long parseDispatchRetryIntervalSeconds = 30L;
+    private int parseDispatchMaxRetryCount = 5;
+    private long sseTimeoutMs = 300_000L;
 
     public Set<String> getAllowedSuffixes() {
         return allowedSuffixes;
@@ -44,5 +47,29 @@ public class KnowledgeFileProperties {
 
     public void setServiceToken(String serviceToken) {
         this.serviceToken = serviceToken;
+    }
+
+    public long getParseDispatchRetryIntervalSeconds() {
+        return parseDispatchRetryIntervalSeconds;
+    }
+
+    public void setParseDispatchRetryIntervalSeconds(long parseDispatchRetryIntervalSeconds) {
+        this.parseDispatchRetryIntervalSeconds = parseDispatchRetryIntervalSeconds;
+    }
+
+    public int getParseDispatchMaxRetryCount() {
+        return parseDispatchMaxRetryCount;
+    }
+
+    public void setParseDispatchMaxRetryCount(int parseDispatchMaxRetryCount) {
+        this.parseDispatchMaxRetryCount = parseDispatchMaxRetryCount;
+    }
+
+    public long getSseTimeoutMs() {
+        return sseTimeoutMs;
+    }
+
+    public void setSseTimeoutMs(long sseTimeoutMs) {
+        this.sseTimeoutMs = sseTimeoutMs;
     }
 }
