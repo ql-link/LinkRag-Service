@@ -23,4 +23,6 @@ release.properties
 /.mcp.json
 docs/ToLink-前端API文档.md
 .DS_Store
-/.agents/
+/.agents/*
+!/.agents/skills/
+!/.agents/skills/**
