@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.willReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doAnswer;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,6 +35,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import com.qingluo.link.service.KnowledgeFileService;
+import com.qingluo.link.components.mq.MQSend;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 @SpringBootTest(properties = {
     "tolink.oss.file-root-path=/tmp/tolink-knowledge-file-test",
@@ -61,8 +64,14 @@ class KnowledgeFileControllerTest {
     @Autowired
     private KnowledgeFileService knowledgeFileService;
 
+    @Autowired
+    private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
+
     @SpyBean
     private com.qingluo.link.components.oss.service.IOssService ossService;
+
+    @MockBean
+    private MQSend mqSend;
 
     private String token;
     private Long userId;
@@ -70,9 +79,9 @@ class KnowledgeFileControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbcTemplate.update("DELETE FROM knowledge_file_config");
+        redisTemplate.delete("knowledge:file-upload:config");
         jdbcTemplate.update("DELETE FROM document_parsed_file");
-        jdbcTemplate.update("DELETE FROM document_parse_task");
+        jdbcTemplate.update("DELETE FROM document_parse_log");
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM chat_conversation");
         jdbcTemplate.update("DELETE FROM dataset");
@@ -127,8 +136,16 @@ class KnowledgeFileControllerTest {
         assertThat(Files.readString(Path.of("/tmp/tolink-knowledge-file-test/private").resolve(objectKey)))
             .isEqualTo("# hello");
         Integer taskCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM document_parse_task WHERE document_original_file_id = ?", Integer.class, fileId);
-        assertThat(taskCount).isEqualTo(1);
+            "SELECT COUNT(*) FROM document_parse_log WHERE document_original_file_id = ?", Integer.class, fileId);
+        assertThat(taskCount).isZero();
+        Integer parsedCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parsed_file WHERE document_original_file_id = ? AND parse_count = 0",
+            Integer.class, fileId);
+        assertThat(parsedCount).isEqualTo(1);
+        String latestTaskId = jdbcTemplate.queryForObject(
+            "SELECT latest_parse_task_id FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, fileId);
+        assertThat(latestTaskId).isNotBlank();
     }
 
     @Test
@@ -220,7 +237,7 @@ class KnowledgeFileControllerTest {
 
         assertThat(status).isEqualTo("failed");
         assertThat(success).isFalse();
-        assertThat(reason).isEqualTo("上传超时，请重新上传");
+        assertThat(reason).isEqualTo("UPLOAD_TIMEOUT");
     }
 
     @Test
@@ -238,7 +255,12 @@ class KnowledgeFileControllerTest {
                 SELECT upload_status FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ? AND file_suffix = ?
                 """, String.class, datasetId, userId, "failed.txt", "txt");
+        String failureReason = jdbcTemplate.queryForObject("""
+                SELECT failure_reason FROM document_original_file
+                WHERE dataset_id = ? AND user_id = ? AND original_filename = ? AND file_suffix = ?
+                """, String.class, datasetId, userId, "failed.txt", "txt");
         assertThat(uploadStatus).isEqualTo("failed");
+        assertThat(failureReason).isEqualTo("OSS_UPLOAD_FAILED");
     }
 
     @Test
@@ -273,30 +295,32 @@ class KnowledgeFileControllerTest {
     }
 
     @Test
-    void Should_CreateParseTask_When_UserSubmitsManualParse() throws Exception {
+    void Should_UpdateLatestTaskPointerAndDispatchMq_When_UserSubmitsManualParse() throws Exception {
         Long fileId = insertOriginalFile("manual.pdf", "pdf", "success", true,
             "original/user-%d/dataset-%d/2026/04/26/123/manual.pdf".formatted(userId, datasetId));
+        insertParsedFile(fileId, "manual.pdf", null);
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .post("/api/v1/files/{fileId}/parse", fileId)
                 .header("satoken", token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.fileId").value(fileId))
-            .andExpect(jsonPath("$.data.frontendStatus").value("parse_waiting"));
+            .andExpect(jsonPath("$.data.frontendStatus").value("parsing"));
 
-        String taskStatus = jdbcTemplate.queryForObject(
-            "SELECT task_status FROM document_parse_task WHERE document_original_file_id = ?", String.class, fileId);
-        Integer retryCount = jdbcTemplate.queryForObject(
-            "SELECT dispatch_retry_count FROM document_parse_task WHERE document_original_file_id = ?",
-            Integer.class, fileId);
-        assertThat(taskStatus).isEqualTo("created");
-        assertThat(retryCount).isEqualTo(1);
+        String latestTaskId = jdbcTemplate.queryForObject(
+            "SELECT latest_parse_task_id FROM document_parsed_file WHERE document_original_file_id = ?",
+            String.class, fileId);
+        Integer taskCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parse_log WHERE document_original_file_id = ?", Integer.class, fileId);
+        assertThat(taskCount).isZero();
+        assertThat(latestTaskId).isNotBlank();
     }
 
     @Test
     void Should_RejectManualParse_When_FileAlreadyHasRunningTask() throws Exception {
         Long fileId = insertOriginalFile("running.txt", "txt", "success", true,
             "original/user-%d/dataset-%d/2026/04/26/123/running.txt".formatted(userId, datasetId));
+        insertParsedFile(fileId, "running.txt", "running-task");
         insertParseTask(fileId, "running-task", "created", null);
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
@@ -304,6 +328,28 @@ class KnowledgeFileControllerTest {
                 .header("satoken", token))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.message").value("文件正在解析中，请勿重复提交"));
+    }
+
+    @Test
+    void Should_RollbackTaskAndLatestPointer_When_MqDispatchFails() throws Exception {
+        Long fileId = insertOriginalFile("mq-fail.pdf", "pdf", "success", true,
+            "original/user-%d/dataset-%d/2026/04/26/123/mq-fail.pdf".formatted(userId, datasetId));
+        insertParsedFile(fileId, "mq-fail.pdf", null);
+        doThrow(new IllegalStateException("mq down")).when(mqSend).send(any());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/v1/files/{fileId}/parse", fileId)
+                .header("satoken", token))
+            .andExpect(status().isInternalServerError());
+
+        Integer taskCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parse_log WHERE document_original_file_id = ?",
+            Integer.class, fileId);
+        Integer latestTaskPointerCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parsed_file WHERE document_original_file_id = ? AND latest_parse_task_id IS NOT NULL",
+            Integer.class, fileId);
+        assertThat(taskCount).isZero();
+        assertThat(latestTaskPointerCount).isZero();
     }
 
     @Test
@@ -316,11 +362,9 @@ class KnowledgeFileControllerTest {
         insertParseTask(failedFileId, "failed-task", "failed", "格式暂不支持");
         jdbcTemplate.update("""
                 INSERT INTO document_parsed_file (
-                    document_original_file_id, dataset_id, user_id, latest_success_task_id,
-                    original_filename, parsed_filename, parsed_bucket_name, parsed_object_key,
-                    parsed_storage_path, parse_count, parsed_at
-                ) VALUES (?, ?, ?, ?, 'ok.pdf', 'ok.md', 'rag-md', 'parsed/ok.md',
-                    'rag-md/parsed/ok.md', 1, CURRENT_TIMESTAMP)
+                    document_original_file_id, dataset_id, user_id, latest_parse_task_id,
+                    original_filename, parse_count
+                ) VALUES (?, ?, ?, ?, 'ok.pdf', 1)
                 """, successFileId, datasetId, userId, "success-task");
 
         mockMvc.perform(get("/api/v1/datasets/{datasetId}/files/parse-results", datasetId)
@@ -351,11 +395,20 @@ class KnowledgeFileControllerTest {
 
     private void insertParseTask(Long fileId, String taskId, String status, String failureReason) {
         jdbcTemplate.update("""
-                INSERT INTO document_parse_task (
+                INSERT INTO document_parse_log (
                     task_id, document_original_file_id, dataset_id, user_id,
                     trigger_mode, task_status, failure_reason
                 ) VALUES (?, ?, ?, ?, 'manual_retry', ?, ?)
                 """, taskId, fileId, datasetId, userId, status, failureReason);
+    }
+
+    private void insertParsedFile(Long fileId, String originalFilename, String latestTaskId) {
+        jdbcTemplate.update("""
+                INSERT INTO document_parsed_file (
+                    document_original_file_id, dataset_id, user_id, latest_parse_task_id,
+                    original_filename, parse_count
+                ) VALUES (?, ?, ?, ?, ?, 0)
+                """, fileId, datasetId, userId, latestTaskId, originalFilename);
     }
 
     private void deleteDirectory(Path path) throws Exception {

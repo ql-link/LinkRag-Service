@@ -18,6 +18,9 @@ import com.qingluo.link.service.cache.UserCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.time.LocalDateTime;
 
 /**
  * 认证服务实现
@@ -32,8 +35,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResult login(LoginRequest request) {
+        String username = normalizeUsername(request.getUsername());
         SysUser user = sysUserMapper.selectOne(
-            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername())
+            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)
         );
 
         if (user == null) {
@@ -47,6 +51,8 @@ public class AuthServiceImpl implements AuthService {
         }
 
         StpUtil.login(user.getId());
+        user.setLastLoginAt(LocalDateTime.now());
+        sysUserMapper.updateById(user);
         userCacheService.put(user.getId(), toDTO(user));
 
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
@@ -54,20 +60,32 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResult register(RegisterRequest request) {
+        String username = normalizeUsername(request.getUsername());
         SysUser existUser = sysUserMapper.selectOne(
-            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername())
+            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)
         );
         if (existUser != null) {
-            throw new ConflictException(ErrorCode.DUPLICATE_USER_CONFIG, "用户名已存在");
+            throw new ConflictException(ErrorCode.DUPLICATE_USERNAME);
+        }
+
+        String email = normalizeOptional(request.getEmail());
+        if (email != null) {
+            SysUser existEmailUser = sysUserMapper.selectOne(
+                new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmail, email)
+            );
+            if (existEmailUser != null) {
+                throw new ConflictException(ErrorCode.DUPLICATE_EMAIL);
+            }
         }
 
         SysUser user = new SysUser();
-        user.setUsername(request.getUsername());
+        user.setUsername(username);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setNickname(request.getNickname());
-        user.setEmail(request.getEmail());
+        user.setNickname(resolveNickname(request.getNickname(), username));
+        user.setEmail(email);
         user.setRole(UserRole.USER.name());
         user.setStatus(1);
+        user.setLastLoginAt(LocalDateTime.now());
 
         sysUserMapper.insert(user);
         StpUtil.login(user.getId());
@@ -133,5 +151,21 @@ public class AuthServiceImpl implements AuthService {
         dto.setRole(user.getRole());
         dto.setStatus(user.getStatus());
         return dto;
+    }
+
+    private String normalizeUsername(String username) {
+        return username == null ? null : username.trim();
+    }
+
+    private String normalizeOptional(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private String resolveNickname(String nickname, String username) {
+        String normalizedNickname = normalizeOptional(nickname);
+        return normalizedNickname != null ? normalizedNickname : username;
     }
 }

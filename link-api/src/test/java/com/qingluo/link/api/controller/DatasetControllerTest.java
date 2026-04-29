@@ -146,20 +146,18 @@ class DatasetControllerTest {
         jdbcTemplate.update("""
             INSERT INTO document_original_file (
                 dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
-                upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_notice_retry_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                upload_status, is_upload_success
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, datasetId, TEST_USER_ID, "to-delete.txt", "txt", 1L, "local-private",
-            "success", true, "pending", "task-" + System.nanoTime(), 0);
+            "success", true);
         Long fileId = jdbcTemplate.queryForObject(
             "SELECT id FROM document_original_file WHERE dataset_id = ? AND original_filename = ?",
             Long.class, datasetId, "to-delete.txt");
         jdbcTemplate.update("""
             INSERT INTO document_parsed_file (
-                document_original_file_id, dataset_id, user_id, parse_task_id, original_filename,
-                parse_status, is_parse_success, failure_reason
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, fileId, datasetId, TEST_USER_ID, "task-parsed-" + System.nanoTime(), "to-delete.txt",
-            "failed", false, "failed");
+                document_original_file_id, dataset_id, user_id, latest_parse_task_id, original_filename, parse_count
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """, fileId, datasetId, TEST_USER_ID, "task-parsed-" + System.nanoTime(), "to-delete.txt", 0);
 
         mockMvc.perform(delete("/api/v1/datasets/{datasetId}", datasetId)
                 .header("satoken", token))

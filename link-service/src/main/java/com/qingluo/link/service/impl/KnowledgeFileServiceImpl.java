@@ -10,8 +10,10 @@ import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
+import com.qingluo.link.model.dto.entity.KnowledgeParsedFile;
 import com.qingluo.link.model.dto.response.KnowledgeFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.KnowledgeFileDownloadResource;
@@ -34,9 +36,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -45,7 +48,8 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <p>本类是一期文件上传模块的核心编排点，负责把一次前端上传拆成几个确定步骤：
  * 校验数据集归属、基于唯一键处理幂等、写入 uploading 状态、通过线程池上传 MinIO、
- * 根据上传结果写 success/failed，并对超时 uploading 记录做补偿。
+ * 根据上传结果写 success/failed，并在上传成功后初始化解析文件业务记录。
+ * 若前端选择 `parseImmediately=true`，则在上传事务提交后继续触发二期解析提交。
  *
  * <p>设计上刻意不在这里写解析状态：
  * 原文件表只描述“原文件是否已经成功进入对象存储”，解析任务和解析结果由二期独立表维护。
@@ -56,19 +60,23 @@ import org.springframework.web.multipart.MultipartFile;
 public class KnowledgeFileServiceImpl implements KnowledgeFileService {
 
     /**
-     * 一期只处理原文件事实，不承载解析任务状态。
-     * 解析触发和解析产物在二期重新建表后接入，避免原文件表同时承担上传和解析两类职责。
+     * 原文件表只处理上传事实，不承载解析任务状态。
+     * 二期虽然支持上传后自动解析，但解析任务和解析结果仍由独立表维护。
      */
     private static final String RAW_BUCKET = "rag-raw";
     private static final String UPLOADING = "uploading";
     private static final String UPLOAD_SUCCESS = "success";
     private static final String UPLOAD_FAILED = "failed";
-    private static final String TIMEOUT_FAILURE_REASON = "上传超时，请重新上传";
+    private static final String FAILURE_OSS_UPLOAD_FAILED = "OSS_UPLOAD_FAILED";
+    private static final String FAILURE_UPLOAD_TIMEOUT = "UPLOAD_TIMEOUT";
+    private static final String FAILURE_PARSED_FILE_INIT_FAILED = "PARSED_FILE_INIT_FAILED";
+    private static final String FAILURE_UNKNOWN_UPLOAD_FAILED = "UNKNOWN_UPLOAD_FAILED";
     private static final long UPLOAD_TIMEOUT_MINUTES = 1L;
     private static final long OSS_UPLOAD_WAIT_SECONDS = 30L;
 
     private final DatasetMapper datasetMapper;
     private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final KnowledgeParsedFileMapper knowledgeParsedFileMapper;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
     private final KnowledgeFileProperties properties;
@@ -80,7 +88,8 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     @Override
     @Transactional(noRollbackFor = BusinessException.class)
     public KnowledgeFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately) {
-        // parseImmediately 是二期解析开关的前端兼容参数，一期必须接收但不触发 MQ 或解析任务。
+        // 上传与解析是两个事务边界：
+        // 上传成功必须先稳定落库；若选择自动解析，则在提交后进入单独的解析提交流程。
         assertOwnedDataset(userId, datasetId);
         validateFile(file);
 
@@ -109,9 +118,14 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
             if (!StringUtils.hasText(uploadResult)) {
                 throw new IllegalStateException("OSS returned blank object key");
             }
+        } catch (UploadTimeoutException e) {
+            markFailed(record.getId(), FAILURE_UPLOAD_TIMEOUT);
+            log.error("Upload original file to OSS timeout, userId={}, datasetId={}, fileId={}, objectKey={}",
+                userId, datasetId, record.getId(), objectKey, e);
+            throw new BusinessException(500, "文件上传超时，请重新上传", 500);
         } catch (RuntimeException e) {
             // OSS 失败后保留原文件记录，后续同一唯一键重试时复用 object_key 并覆盖对象。
-            markFailed(record.getId(), "文件上传失败，请稍后重试");
+            markFailed(record.getId(), FAILURE_OSS_UPLOAD_FAILED);
             log.error("Upload original file to OSS failed, userId={}, datasetId={}, fileId={}, objectKey={}",
                 userId, datasetId, record.getId(), objectKey, e);
             throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
@@ -119,18 +133,54 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
 
         String fileUrl = normalizeBaseUrl(properties.getInternalBaseUrl())
             + "/api/v1/internal/files/" + record.getId() + "/content";
-        markSuccess(record.getId(), objectKey, fileUrl);
+        try {
+            markSuccess(record.getId(), objectKey, fileUrl);
+        } catch (RuntimeException e) {
+            safeMarkFailed(record.getId(), FAILURE_UNKNOWN_UPLOAD_FAILED);
+            log.error("Mark original file upload success failed, userId={}, datasetId={}, fileId={}, objectKey={}",
+                userId, datasetId, record.getId(), objectKey, e);
+            throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
+        }
 
         record.setObjectKey(objectKey);
         record.setFileUrl(fileUrl);
         record.setUploadStatus(UPLOAD_SUCCESS);
         record.setIsUploadSuccess(true);
         record.setFailureReason(null);
+        try {
+            initializeParsedFileIfAbsent(record);
+        } catch (RuntimeException e) {
+            // OSS 已成功但解析文件业务记录初始化失败时，一期仍按上传失败返回，等待用户手动重试。
+            markFailed(record.getId(), FAILURE_PARSED_FILE_INIT_FAILED);
+            log.error("Initialize parsed file failed after original upload success, userId={}, datasetId={}, fileId={}, objectKey={}",
+                userId, datasetId, record.getId(), objectKey, e);
+            throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
+        }
         if (parseImmediately) {
-            // 自动解析必须在原文件上传成功后触发；解析任务服务会在事务提交后再投 MQ，避免 Python 先消费。
-            knowledgeParseTaskService.submitAutoParseAfterUpload(userId, record);
+            submitAutoParseAfterUploadCommitted(userId, record);
         }
         return toDTO(record);
+    }
+
+    /**
+     * 上传成功后的自动解析必须在原文件上传事务提交之后再触发。
+     *
+     * <p>这样可以保证：
+     * 1. Python 或 Java 解析提交侧读取到的是已提交的原文件/解析聚合记录；
+     * 2. 自动解析提交失败时只回滚解析提交事务，不影响本次已成功的上传事实。
+     */
+    private void submitAutoParseAfterUploadCommitted(Long userId, KnowledgeOriginalFile record) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+            && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    knowledgeParseTaskService.submitAutoParseAfterUpload(userId, record);
+                }
+            });
+            return;
+        }
+        knowledgeParseTaskService.submitAutoParseAfterUpload(userId, record);
     }
 
     private String uploadObjectWithTimeout(MultipartFile file, String objectKey) {
@@ -143,7 +193,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         } catch (TimeoutException e) {
             // 即使底层 MinIO 稍后完成，DB 已进入 failed；后续重试会复用 object_key 并覆盖对象。
             uploadTask.cancel(true);
-            throw new IllegalStateException("OSS upload timeout", e);
+            throw new UploadTimeoutException(e);
         } catch (InterruptedException e) {
             // 保留中断标记，避免上层线程池或容器误判当前线程仍可继续执行后续任务。
             Thread.currentThread().interrupt();
@@ -222,23 +272,15 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     @Override
     @Transactional
     public int markTimeoutUploadsFailed() {
-        // 超时补偿只处理长期停留在 uploading 的记录，不检查 MinIO 对象是否已存在。
-        // 这是业务确认过的口径：即使对象后来写入成功，也按失败展示，重试时覆盖同一个 object_key。
+        // 一期不启用自动定时补偿；该方法只作为显式入口/测试工具。
+        // 即使对象后来写入成功，也按失败展示，重试时覆盖同一个 object_key。
         LocalDateTime expiredAt = LocalDateTime.now().minusMinutes(UPLOAD_TIMEOUT_MINUTES);
         return knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getUploadStatus, UPLOADING)
             .lt(KnowledgeOriginalFile::getUpdatedAt, expiredAt)
             .set(KnowledgeOriginalFile::getUploadStatus, UPLOAD_FAILED)
             .set(KnowledgeOriginalFile::getIsUploadSuccess, false)
-            .set(KnowledgeOriginalFile::getFailureReason, TIMEOUT_FAILURE_REASON));
-    }
-
-    @Scheduled(fixedDelay = 60_000L)
-    public void compensateTimeoutUploads() {
-        int affected = markTimeoutUploadsFailed();
-        if (affected > 0) {
-            log.warn("Marked timeout original file uploads as failed, affected={}", affected);
-        }
+            .set(KnowledgeOriginalFile::getFailureReason, FAILURE_UPLOAD_TIMEOUT));
     }
 
     private KnowledgeOriginalFile prepareUploadingRecord(Long userId, Long datasetId, MultipartFile file,
@@ -318,6 +360,39 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
             .set(KnowledgeOriginalFile::getUploadStatus, UPLOAD_FAILED)
             .set(KnowledgeOriginalFile::getIsUploadSuccess, false)
             .set(KnowledgeOriginalFile::getFailureReason, reason));
+    }
+
+    private void safeMarkFailed(Long fileId, String reason) {
+        try {
+            markFailed(fileId, reason);
+        } catch (RuntimeException e) {
+            log.error("Mark original file failed status failed, fileId={}, failureReason={}", fileId, reason, e);
+        }
+    }
+
+    private KnowledgeParsedFile initializeParsedFileIfAbsent(KnowledgeOriginalFile record) {
+        KnowledgeParsedFile existing = knowledgeParsedFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeParsedFile>()
+            .eq(KnowledgeParsedFile::getDocumentOriginalFileId, record.getId()));
+        if (existing != null) {
+            return existing;
+        }
+        KnowledgeParsedFile parsedFile = new KnowledgeParsedFile();
+        parsedFile.setDocumentOriginalFileId(record.getId());
+        parsedFile.setDatasetId(record.getDatasetId());
+        parsedFile.setUserId(record.getUserId());
+        parsedFile.setOriginalFilename(record.getOriginalFilename());
+        parsedFile.setParseCount(0);
+        try {
+            knowledgeParsedFileMapper.insert(parsedFile);
+            return parsedFile;
+        } catch (DataIntegrityViolationException e) {
+            KnowledgeParsedFile concurrent = knowledgeParsedFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeParsedFile>()
+                .eq(KnowledgeParsedFile::getDocumentOriginalFileId, record.getId()));
+            if (concurrent != null) {
+                return concurrent;
+            }
+            throw e;
+        }
     }
 
     private KnowledgeOriginalFile findByUniqueKey(Long userId, Long datasetId, String originalFilename, String suffix) {
@@ -422,14 +497,18 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         dto.setOriginalFilename(record.getOriginalFilename());
         dto.setFileSuffix(record.getFileSuffix());
         dto.setFileSize(record.getFileSize());
-        dto.setBucketName(record.getBucketName());
-        dto.setObjectKey(record.getObjectKey());
-        dto.setFileUrl(record.getFileUrl());
         dto.setUploadStatus(record.getUploadStatus());
         dto.setIsUploadSuccess(Boolean.TRUE.equals(record.getIsUploadSuccess()));
         dto.setFailureReason(record.getFailureReason());
         dto.setCreatedAt(record.getCreatedAt());
         dto.setUpdatedAt(record.getUpdatedAt());
         return dto;
+    }
+
+    private static class UploadTimeoutException extends RuntimeException {
+
+        private UploadTimeoutException(Throwable cause) {
+            super("OSS upload timeout", cause);
+        }
     }
 }

@@ -8,13 +8,13 @@ import java.time.LocalDateTime;
 import lombok.Data;
 
 /**
- * 文件解析任务实体。
+ * 文件解析日志实体。
  *
- * <p>一条记录代表一次解析尝试。Java 只负责创建任务、投递 MQ 和处理投递补偿；
- * Python 负责把任务推进到 processing/success/failed，并写入解析时间与失败原因。
+ * <p>一条记录代表一次解析尝试。Java 只负责生成 task_id、更新 latest_parse_task_id 并投递 MQ；
+ * Python 负责创建并推进 document_parse_log 记录，写入解析时间与失败原因。
  */
 @Data
-@TableName("document_parse_task")
+@TableName("document_parse_log")
 public class KnowledgeParseTask {
 
     /** 数据库自增主键，不作为跨系统幂等键。 */
@@ -47,11 +47,11 @@ public class KnowledgeParseTask {
     @TableField("failure_reason")
     private String failureReason;
 
-    /** MQ 投递补偿次数，只由 Java 维护。 */
+    /** 历史兼容字段，当前默认不走 Java 侧补偿。 */
     @TableField("dispatch_retry_count")
     private Integer dispatchRetryCount;
 
-    /** 最近一次投递异常摘要，用于排查，不直接暴露给用户。 */
+    /** 历史兼容字段，保留异常摘要用于排查。 */
     @TableField("last_dispatch_error")
     private String lastDispatchError;
 

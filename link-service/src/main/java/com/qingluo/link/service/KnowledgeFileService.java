@@ -8,7 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
  * 知识库原文件服务。
  *
  * <p>一期服务边界只覆盖原文件上传事实：
- * 校验数据集归属、写入原文件表、上传私有 MinIO、失败重试、超时补偿和删除。
+ * 校验数据集归属、写入原文件表、上传私有 MinIO、失败重试和删除。
  *
  * <p>解析任务、解析进度、解析产物不放在本接口里扩展；
  * 二期会通过独立解析任务表和解析产物表承载，避免原文件服务承担过多职责。
@@ -43,7 +43,7 @@ public interface KnowledgeFileService {
     KnowledgeFileDownloadResource openOriginalFile(Long fileId);
 
     /**
-     * 将长时间停留在 uploading 的记录标记为 failed，供定时任务和测试复用。
+     * 将长时间停留在 uploading 的记录标记为 failed，供显式补偿入口和测试复用；一期不启用自动定时补偿。
      */
     int markTimeoutUploadsFailed();
 }

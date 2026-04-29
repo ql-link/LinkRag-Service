@@ -16,6 +16,7 @@ class KnowledgeParseTaskMQTest {
         KnowledgeParseTaskMQ mq = new KnowledgeParseTaskMQ(new KnowledgeParseTaskMQ.MsgPayload(
             "task-1",
             10001L,
+            20001L,  // parsed_file_id
             10002L,
             10003L,
             "pdf",
@@ -32,6 +33,7 @@ class KnowledgeParseTaskMQTest {
         assertThat(json).doesNotContainKeys("payload", "mq_name", "mq_type");
         assertThat(json.getString("task_id")).isEqualTo("task-1");
         assertThat(json.getLong("original_file_id")).isEqualTo(10001L);
+        assertThat(json.getLong("parsed_file_id")).isEqualTo(20001L);
         assertThat(json.getLong("user_id")).isEqualTo(10002L);
         assertThat(json.getLong("dataset_id")).isEqualTo(10003L);
         assertThat(json.getString("source_bucket")).isEqualTo("rag-raw");
@@ -44,6 +46,7 @@ class KnowledgeParseTaskMQTest {
         KnowledgeParseTaskMQ mq = new KnowledgeParseTaskMQ(new KnowledgeParseTaskMQ.MsgPayload(
             "",
             10001L,
+            20001L,  // parsed_file_id
             10002L,
             10003L,
             "pdf",
@@ -57,5 +60,27 @@ class KnowledgeParseTaskMQTest {
         assertThatThrownBy(mq::getMessage)
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("parse_task task_id is missing");
+    }
+
+    @Test
+    @DisplayName("Should_RejectMessage_When_ParsedFileIdMissing")
+    void Should_RejectMessage_When_ParsedFileIdMissing() {
+        KnowledgeParseTaskMQ mq = new KnowledgeParseTaskMQ(new KnowledgeParseTaskMQ.MsgPayload(
+            "task-1",
+            10001L,
+            null,
+            10002L,
+            10003L,
+            "pdf",
+            "rag-raw",
+            "source/key",
+            "report.pdf",
+            "rag-md",
+            "md/key"
+        ));
+
+        assertThatThrownBy(mq::getMessage)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("parse_task parsed_file_id is missing");
     }
 }

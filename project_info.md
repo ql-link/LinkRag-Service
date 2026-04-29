@@ -326,7 +326,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - `KnowledgeFileUploadExecutorConfig`
   - `OssApplicationService`
 - 关联中间件/能力：
-  - MySQL：`document_original_file`、`document_parse_task`、`document_parsed_file`
+  - MySQL：`document_original_file`、`document_parse_log`、`document_parsed_file`
   - OSS：原文件 bucket 为 `rag-raw`，Markdown 解析产物 bucket 为 `rag-md`
   - MQ：上传后自动解析或手动解析触发 `tolink.rag.parse_task` 投递
 
@@ -338,8 +338,8 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - 旧解析结果回传链路的兼容保留
 - 当前能力：
   - 已定义 `tolink.rag.parse_task` 解析任务消息，使用扁平 snake_case JSON
-  - Java 创建 `document_parse_task` 后投递 MQ，Python 消费后负责解析、更新任务表和最新解析产物表
-  - MQ 投递失败时任务保持 `created` 状态，由 Java 定时补偿，默认间隔 30 秒、最多 5 次；已成功投递过的 `created` 任务不重复投递
+  - Java 更新 `document_parsed_file.latest_parse_task_id` 后同步投递 MQ，Python 消费后创建 `document_parse_log`、负责解析并更新日志与解析聚合表
+  - MQ 投递失败时事务直接回滚，不保留待补偿任务；后续如需 Outbox 或补偿表，放到三期处理
   - 旧 `parse_result` 消费者默认不装配，避免 Java 与 Python 双写解析结果
   - 已支持通过统一 `MQSend` 抽象发送消息
 - 关键入口：
@@ -472,6 +472,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 已完成数据集、知识原始文件、解析文件相关能力
 - 2026-04-26：文件上传与解析协同重构一期已完成测试交付文档。当前一期只交付原文件上传链路：原文件上传到 `rag-raw`、原文件表记录上传事实、同名同后缀唯一约束、失败重试复用 `object_key`、上传中 1 分钟超时补偿、列表/详情/删除接口；MQ、Python 解析、解析进度和解析产物进入二期。
 - 2026-04-26：文件上传与解析协同重构二期已完成 Java 端代码实现与目标自动化测试。当前二期交付解析任务创建、上传后自动解析、手动解析、防重复点击、解析任务 MQ 投递、MQ 投递失败内部补偿、Python 进度回调转 SSE、按文件列表查询解析结果；Python 端真实解析、写库和真实 MQ 消费仍需联调确认。
+- 2026-04-29：文件上传表结构与业务流程重构一期已完成代码实现与测试交付，阶段目录为 `docs/module-development-files/文件上传与解析重构/一期/`。当前上传成功后由 Java 初始化一对一 `document_parsed_file`，上传阶段不创建 `document_parse_log`、不投递解析 MQ；上传配置切换为 Redis key `knowledge:file-upload:config` + YAML fallback；原文件失败原因改为稳定编码，前端响应不暴露 OSS 内部定位字段。
 - 已落地 Redis、OSS、MQ 三类中间件组件
 
 ## 15. 维护要求

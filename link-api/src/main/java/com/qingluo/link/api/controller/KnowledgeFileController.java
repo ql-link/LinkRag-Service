@@ -30,8 +30,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * <p>一期只负责“原文件上传到 MinIO 并记录上传事实”这一条链路：
  * 上传、列表、详情、删除都围绕 document_original_file 表工作。
  *
- * <p>这里暂时不触发解析、不创建解析任务、不返回解析产物。
- * 前端传入的 parseImmediately 仅用于保持二期交互形态兼容，真正的 MQ 投递和 Python 解析会在二期接入。
+ * <p>二期开始，上传成功后若前端传入 `parseImmediately=true`，
+ * Java 会在上传事务提交后继续触发解析提交流程。
  */
 @RestController
 @RequiredArgsConstructor
@@ -101,7 +101,8 @@ public class KnowledgeFileController {
     /**
      * 手动提交解析任务。
      *
-     * <p>二期前端按文件维度订阅进度，不依赖 taskId 操作，所以这里只返回文件状态。
+     * <p>二期前端按文件维度订阅进度，不依赖 taskId 操作。
+     * Java 成功受理并完成 MQ 投递后，提交响应中的前端状态直接收敛为 `parsing`。
      */
     @PostMapping("/api/v1/files/{fileId}/parse")
     @SaCheckLogin
@@ -136,6 +137,14 @@ public class KnowledgeFileController {
         return Result.success(knowledgeParseTaskService.listParseResults(userId, datasetId, parseFileIds(fileIds)));
     }
 
+    /**
+     * 将前端传入的逗号分隔文件 ID 列表转换为 Long 集合。
+     *
+     * <p>SSE 订阅和解析结果查询都复用这个解析规则，保证空值、空片段和前后空格的处理口径一致。
+     *
+     * @param fileIds 逗号分隔的文件 ID 字符串，例如 {@code 10001,10002}
+     * @return 解析后的文件 ID 列表；入参为空时返回空集合
+     */
     private List<Long> parseFileIds(String fileIds) {
         if (fileIds == null || fileIds.isBlank()) {
             return List.of();

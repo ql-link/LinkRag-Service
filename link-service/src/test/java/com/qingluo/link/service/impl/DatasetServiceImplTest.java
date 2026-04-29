@@ -14,6 +14,7 @@ import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
@@ -39,6 +40,9 @@ class DatasetServiceImplTest {
 
     @Mock
     private KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+
+    @Mock
+    private KnowledgeParsedFileMapper knowledgeParsedFileMapper;
 
     @Mock
     private IOssService ossService;

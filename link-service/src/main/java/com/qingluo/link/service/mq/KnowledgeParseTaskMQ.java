@@ -13,7 +13,7 @@ import org.springframework.util.StringUtils;
  * 原文件解析任务 MQ 消息。
  *
  * <p>二期与 Python 约定使用扁平 JSON 消息体，不再套 envelope。
- * task_id 是解析链路的业务幂等键，必须与 document_parse_task.task_id 保持一致。
+ * task_id 是解析链路的业务幂等键，必须与 document_parse_log.task_id 保持一致。
  */
 public class KnowledgeParseTaskMQ implements AbstractMQ {
 
@@ -61,6 +61,9 @@ public class KnowledgeParseTaskMQ implements AbstractMQ {
         if (payload.getOriginalFileId() == null) {
             throw new IllegalArgumentException("parse_task original_file_id is missing");
         }
+        if (payload.getParsedFileId() == null) {
+            throw new IllegalArgumentException("parse_task parsed_file_id is missing");
+        }
         if (payload.getUserId() == null) {
             throw new IllegalArgumentException("parse_task user_id is missing");
         }
@@ -83,6 +86,8 @@ public class KnowledgeParseTaskMQ implements AbstractMQ {
         private String taskId;
         @JSONField(name = "original_file_id")
         private Long originalFileId;
+        @JSONField(name = "parsed_file_id")
+        private Long parsedFileId;
         @JSONField(name = "user_id")
         private Long userId;
         @JSONField(name = "dataset_id")
