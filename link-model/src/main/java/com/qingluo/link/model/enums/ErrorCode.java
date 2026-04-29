@@ -33,6 +33,8 @@ public enum ErrorCode {
     AUTH_DISABLED(20003, "账号已被禁用", 403),
     CONVERSATION_NOT_FOUND(20004, "对话不存在", 404),
     UNAUTHORIZED_ACCESS(20005, "无权访问该对话内容", 403),
+    DUPLICATE_USERNAME(20006, "用户名已存在", 409),
+    DUPLICATE_EMAIL(20007, "邮箱已被使用", 409),
 
     // 系统错误 (50001-59999)
     UNKNOWN_ERROR(50001, "系统内部错误", 500),

@@ -55,6 +55,7 @@ class DatasetControllerTest {
     void setup() {
         jdbcTemplate.update("DELETE FROM chat_message");
         jdbcTemplate.update("DELETE FROM chat_conversation");
+        jdbcTemplate.update("DELETE FROM document_parsed_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM dataset");
         jdbcTemplate.update("DELETE FROM sys_user");
@@ -145,11 +146,18 @@ class DatasetControllerTest {
         jdbcTemplate.update("""
             INSERT INTO document_original_file (
                 dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
-                upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_status,
-                is_parse_success, parse_notice_retry_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                upload_status, is_upload_success
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, datasetId, TEST_USER_ID, "to-delete.txt", "txt", 1L, "local-private",
-            "success", true, "pending", "task-" + System.nanoTime(), "not_started", false, 0);
+            "success", true);
+        Long fileId = jdbcTemplate.queryForObject(
+            "SELECT id FROM document_original_file WHERE dataset_id = ? AND original_filename = ?",
+            Long.class, datasetId, "to-delete.txt");
+        jdbcTemplate.update("""
+            INSERT INTO document_parsed_file (
+                document_original_file_id, dataset_id, user_id, latest_parse_task_id, original_filename, parse_count
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """, fileId, datasetId, TEST_USER_ID, "task-parsed-" + System.nanoTime(), "to-delete.txt", 0);
 
         mockMvc.perform(delete("/api/v1/datasets/{datasetId}", datasetId)
                 .header("satoken", token))
@@ -162,12 +170,15 @@ class DatasetControllerTest {
             "SELECT COUNT(*) FROM chat_conversation WHERE dataset_id = ?", Integer.class, datasetId);
         Integer fileCount = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ?", Integer.class, datasetId);
+        Integer parsedFileCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parsed_file WHERE dataset_id = ?", Integer.class, datasetId);
         Integer messageCount = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM chat_message WHERE conversation_id = ?", Integer.class, conversationId);
 
         assertThat(datasetCount).isEqualTo(0);
         assertThat(conversationCount).isEqualTo(0);
         assertThat(fileCount).isEqualTo(0);
+        assertThat(parsedFileCount).isEqualTo(0);
         assertThat(messageCount).isEqualTo(0);
     }
 }

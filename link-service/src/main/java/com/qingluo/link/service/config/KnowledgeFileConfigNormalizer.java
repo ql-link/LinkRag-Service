@@ -56,6 +56,21 @@ public final class KnowledgeFileConfigNormalizer {
         }
     }
 
+    public static Set<String> normalizeOrFallback(List<String> suffixes, Set<String> fallback) {
+        if (suffixes == null || suffixes.isEmpty()) {
+            return new LinkedHashSet<>(fallback);
+        }
+        LinkedHashSet<String> normalized = suffixes.stream()
+            .filter(StringUtils::hasText)
+            .map(String::trim)
+            .map(value -> value.toLowerCase(Locale.ROOT))
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!fallback.containsAll(normalized)) {
+            return new LinkedHashSet<>(fallback);
+        }
+        return normalized.isEmpty() ? new LinkedHashSet<>(fallback) : normalized;
+    }
+
     public static String writeSuffixes(Set<String> suffixes, ObjectMapper objectMapper) {
         try {
             return objectMapper.writeValueAsString(suffixes);

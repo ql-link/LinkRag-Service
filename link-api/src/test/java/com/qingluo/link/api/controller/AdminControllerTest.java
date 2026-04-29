@@ -77,6 +77,9 @@ class AdminControllerTest {
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
+
     /**
      * PasswordEncoder - BCrypt 密码加密
      */
@@ -116,8 +119,7 @@ class AdminControllerTest {
      */
     @BeforeAll
     void setup() {
-        jdbcTemplate.update("DELETE FROM knowledge_file_config");
-
+        redisTemplate.delete("knowledge:file-upload:config");
         // ===== 步骤 1: 插入管理员用户 =====
         SysUser admin = new SysUser();
         admin.setId(ADMIN_USER_ID);

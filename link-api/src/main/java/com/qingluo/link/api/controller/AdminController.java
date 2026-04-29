@@ -106,12 +106,29 @@ public class AdminController {
         return Result.success(adminProviderService.listProviders(page, size));
     }
 
+    /**
+     * 查询当前生效的知识文件上传配置。
+     *
+     * <p>配置读取遵循 Redis 优先、YAML 兜底的规则：
+     * Redis 中存在动态覆盖配置时返回 Redis 配置，否则返回应用启动时加载的默认配置。
+     *
+     * @return 当前生效的知识文件上传配置
+     */
     @GetMapping("/knowledge-file-config")
     @Operation(summary = "查询知识文件上传配置", description = "查询当前生效的知识文件上传大小限制和格式白名单")
     public Result<KnowledgeFileConfigDTO> getKnowledgeFileConfig() {
         return Result.success(adminKnowledgeFileConfigService.getCurrentConfig());
     }
 
+    /**
+     * 修改知识文件上传配置。
+     *
+     * <p>本接口只写入 Redis 运行时覆盖配置，不再写入 MySQL 配置表。
+     * 后续上传请求会在开始时读取新的配置快照，已经进入上传流程的请求不受影响。
+     *
+     * @param request 上传大小限制和后缀白名单
+     * @return 无返回内容
+     */
     @PatchMapping("/knowledge-file-config")
     @Operation(summary = "修改知识文件上传配置", description = "修改当前生效的知识文件上传大小限制和格式白名单")
     public Result<Void> updateKnowledgeFileConfig(@RequestBody @Validated UpdateKnowledgeFileConfigRequest request) {

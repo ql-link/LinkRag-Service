@@ -1,6 +1,5 @@
-package com.qingluo.link.service.impl;
+package com.qingluo.link.service.impl.know;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -12,12 +11,9 @@ import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
 import java.time.LocalDateTime;
-
-import com.qingluo.link.service.impl.know.KnowledgeParseResultServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,11 +28,10 @@ class KnowledgeParseResultServiceImplTest {
     private KnowledgeParseResultServiceImpl knowledgeParseResultService;
 
     @Test
-    @DisplayName("Should_UpdateParsedFields_When_ParseResultIsSuccess")
-    void Should_UpdateParsedFields_When_ParseResultIsSuccess() {
-        KnowledgeOriginalFile record = buildRecord("task-1", 101L, "pending", false);
+    @DisplayName("Should_OnlyLogCompatibilityMessage_When_ParseResultIsSuccess")
+    void Should_OnlyLogCompatibilityMessage_When_ParseResultIsSuccess() {
+        KnowledgeOriginalFile record = buildRecord("task-1", 101L);
         given(knowledgeOriginalFileMapper.selectOne(any())).willReturn(record);
-        given(knowledgeOriginalFileMapper.updateById(any(KnowledgeOriginalFile.class))).willReturn(1);
 
         knowledgeParseResultService.handleParseResult(new KnowledgeParseResultMQ.MsgPayload(
             "task-1",
@@ -50,28 +45,14 @@ class KnowledgeParseResultServiceImplTest {
             1200L
         ));
 
-        ArgumentCaptor<KnowledgeOriginalFile> captor = ArgumentCaptor.forClass(KnowledgeOriginalFile.class);
-        verify(knowledgeOriginalFileMapper).updateById(captor.capture());
-        KnowledgeOriginalFile updated = captor.getValue();
-        assertThat(updated.getId()).isEqualTo(101L);
-        assertThat(updated.getParseStatus()).isEqualTo("success");
-        assertThat(updated.getIsParseSuccess()).isTrue();
-        assertThat(updated.getParsedBucketName()).isEqualTo("rag-parsed");
-        assertThat(updated.getParsedObjectKey()).isEqualTo("parsed/2026/04/21/101.md");
-        assertThat(updated.getParsedFileUrl()).isEqualTo("http://rag/101.md");
-        assertThat(updated.getParseFailureReason()).isNull();
-        assertThat(updated.getParsedAt()).isNotNull();
+        verify(knowledgeOriginalFileMapper, never()).updateById(any(KnowledgeOriginalFile.class));
     }
 
     @Test
-    @DisplayName("Should_UpdateFailureReason_When_ParseResultIsFailed")
-    void Should_UpdateFailureReason_When_ParseResultIsFailed() {
-        KnowledgeOriginalFile record = buildRecord("task-2", 102L, "pending", false);
-        record.setParsedBucketName("old-bucket");
-        record.setParsedObjectKey("old-key");
-        record.setParsedFileUrl("old-url");
+    @DisplayName("Should_OnlyLogCompatibilityMessage_When_ParseResultIsFailed")
+    void Should_OnlyLogCompatibilityMessage_When_ParseResultIsFailed() {
+        KnowledgeOriginalFile record = buildRecord("task-2", 102L);
         given(knowledgeOriginalFileMapper.selectOne(any())).willReturn(record);
-        given(knowledgeOriginalFileMapper.updateById(any(KnowledgeOriginalFile.class))).willReturn(1);
 
         knowledgeParseResultService.handleParseResult(new KnowledgeParseResultMQ.MsgPayload(
             "task-2",
@@ -85,22 +66,13 @@ class KnowledgeParseResultServiceImplTest {
             800L
         ));
 
-        ArgumentCaptor<KnowledgeOriginalFile> captor = ArgumentCaptor.forClass(KnowledgeOriginalFile.class);
-        verify(knowledgeOriginalFileMapper).updateById(captor.capture());
-        KnowledgeOriginalFile updated = captor.getValue();
-        assertThat(updated.getId()).isEqualTo(102L);
-        assertThat(updated.getParseStatus()).isEqualTo("failed");
-        assertThat(updated.getIsParseSuccess()).isFalse();
-        assertThat(updated.getParseFailureReason()).isEqualTo("parse failed");
-        assertThat(updated.getParsedBucketName()).isNull();
-        assertThat(updated.getParsedObjectKey()).isNull();
-        assertThat(updated.getParsedFileUrl()).isNull();
+        verify(knowledgeOriginalFileMapper, never()).updateById(any(KnowledgeOriginalFile.class));
     }
 
     @Test
-    @DisplayName("Should_IgnoreFailedParseResult_When_RecordAlreadySucceeded")
-    void Should_IgnoreFailedParseResult_When_RecordAlreadySucceeded() {
-        KnowledgeOriginalFile record = buildRecord("task-3", 103L, "success", true);
+    @DisplayName("Should_NotWriteParsedFile_When_ParseResultIsCompatibilityMessage")
+    void Should_NotWriteParsedFile_When_ParseResultIsCompatibilityMessage() {
+        KnowledgeOriginalFile record = buildRecord("task-3", 103L);
         given(knowledgeOriginalFileMapper.selectOne(any())).willReturn(record);
 
         knowledgeParseResultService.handleParseResult(new KnowledgeParseResultMQ.MsgPayload(
@@ -119,9 +91,30 @@ class KnowledgeParseResultServiceImplTest {
     }
 
     @Test
+    @DisplayName("Should_NotUpdateParsedFile_When_ParseResultRecordAlreadyExists")
+    void Should_NotUpdateParsedFile_When_ParseResultRecordAlreadyExists() {
+        KnowledgeOriginalFile record = buildRecord("task-5", 105L);
+        given(knowledgeOriginalFileMapper.selectOne(any())).willReturn(record);
+
+        knowledgeParseResultService.handleParseResult(new KnowledgeParseResultMQ.MsgPayload(
+            "task-5",
+            "105",
+            true,
+            "success",
+            "rag-parsed",
+            "parsed/2026/04/21/105.md",
+            "http://rag/105.md",
+            null,
+            321L
+        ));
+
+        verify(knowledgeOriginalFileMapper, never()).updateById(any(KnowledgeOriginalFile.class));
+    }
+
+    @Test
     @DisplayName("Should_ThrowBusinessException_When_DocumentIdDoesNotMatch")
     void Should_ThrowBusinessException_When_DocumentIdDoesNotMatch() {
-        KnowledgeOriginalFile record = buildRecord("task-4", 104L, "pending", false);
+        KnowledgeOriginalFile record = buildRecord("task-4", 104L);
         given(knowledgeOriginalFileMapper.selectOne(any())).willReturn(record);
 
         assertThatThrownBy(() -> knowledgeParseResultService.handleParseResult(new KnowledgeParseResultMQ.MsgPayload(
@@ -139,13 +132,13 @@ class KnowledgeParseResultServiceImplTest {
             .hasMessage("解析结果消息中的文档标识不匹配");
     }
 
-    private KnowledgeOriginalFile buildRecord(String taskId, Long documentId, String parseStatus, boolean parseSuccess) {
+    private KnowledgeOriginalFile buildRecord(String taskId, Long documentId) {
         KnowledgeOriginalFile record = new KnowledgeOriginalFile();
         record.setId(documentId);
         record.setDatasetId(201L);
+        record.setUserId(301L);
+        record.setOriginalFilename("guide.md");
         record.setParseTaskId(taskId);
-        record.setParseStatus(parseStatus);
-        record.setIsParseSuccess(parseSuccess);
         record.setCreatedAt(LocalDateTime.now());
         record.setUpdatedAt(LocalDateTime.now());
         return record;

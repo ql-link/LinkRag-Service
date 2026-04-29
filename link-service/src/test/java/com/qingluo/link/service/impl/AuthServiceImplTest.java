@@ -1,7 +1,9 @@
 package com.qingluo.link.service.impl;
 
 import com.qingluo.link.mapper.SysUserMapper;
+import com.qingluo.link.core.exception.ConflictException;
 import com.qingluo.link.model.dto.entity.SysUser;
+import com.qingluo.link.model.dto.request.RegisterRequest;
 import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
@@ -14,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -32,6 +35,25 @@ class AuthServiceImplTest {
 
     @InjectMocks
     private AuthServiceImpl authService;
+
+    @Test
+    @DisplayName("Should_RejectDuplicateEmail_When_Register")
+    void Should_RejectDuplicateEmail_When_Register() {
+        given(sysUserMapper.selectOne(any()))
+            .willReturn(null)
+            .willReturn(buildUser(2L, "bob", UserRole.USER));
+
+        RegisterRequest request = new RegisterRequest();
+        request.setUsername("new-user");
+        request.setPassword("password123");
+        request.setEmail("used@test.com");
+
+        assertThatThrownBy(() -> authService.register(request))
+            .isInstanceOf(ConflictException.class)
+            .hasMessage("邮箱已被使用");
+
+        verify(sysUserMapper, never()).insert(any(SysUser.class));
+    }
 
     // ---- getProfile ----
 
