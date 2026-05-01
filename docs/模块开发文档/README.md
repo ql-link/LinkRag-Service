@@ -2,7 +2,7 @@
 
 ## 1. 目录定位
 
-`docs/module-development-files/` 用于按模块归档需求、设计、实现与测试交付文档。
+`docs/模块开发文档/` 用于按模块归档需求、设计、实现与测试交付文档。
 
 这里的归档单位是“模块开发过程”，每个模块下再按 `一期 / 二期 / 三期` 拆分阶段文件夹。
 
@@ -11,20 +11,20 @@
 模块目录命名格式：
 
 ```text
-<domain>-<module-name>
+<模块名称>
 ```
 
 示例：
 
 ```text
-user-management
-llm-config-management
-storage-file-management
+文件上传与解析
+用户管理
+LLM配置管理
 ```
 
 说明：
 
-- 使用稳定英文短词，直接表达模块名称
+- 使用中文命名，直接表达模块业务含义
 
 阶段子目录命名：
 
@@ -41,8 +41,8 @@ storage-file-management
 推荐结构如下：
 
 ```text
-docs/module-development-files/
-└── <domain>-<module-name>/
+docs/模块开发文档/
+└── <模块名称>/
     ├── 一期/
     │   ├── feature_info.md
     │   ├── requirement.md

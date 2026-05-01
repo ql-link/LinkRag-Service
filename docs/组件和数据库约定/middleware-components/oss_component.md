@@ -167,6 +167,6 @@ OSS 组件是项目的文件存储 framework，负责提供：
 当 AI 要使用 OSS 组件时，推荐顺序：
 
 1. 先读本文件
-2. 再读 `docs/architecture/middleware_contract.md` 中的 OSS 约定
+2. 再读 `docs/组件和数据库约定/middleware_contract.md` 中的 OSS 约定
 3. 再看现有业务 service 怎么生成 object key、怎么写元数据
 4. 最后在 `technical_design.md` 中写本次业务接法

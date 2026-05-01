@@ -175,6 +175,6 @@ MQ 组件是项目的异步消息 framework，负责提供：
 当 AI 要使用 MQ 组件时，推荐顺序：
 
 1. 先读本文件
-2. 再读 `docs/architecture/middleware_contract.md` 中的 MQ 约定
+2. 再读 `docs/组件和数据库约定/middleware_contract.md` 中的 MQ 约定
 3. 再看当前业务模块是否已有消息模型和消费者写法
 4. 最后在 `technical_design.md` 中写本次业务接入方式

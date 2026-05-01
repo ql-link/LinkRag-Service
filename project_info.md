@@ -436,9 +436,9 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 | `AGENTS.md` | AI 协作开发宪法 |
 | `project_info.md` | 项目现状总介绍 |
 | `.agents/skills/middleware-contracts/SKILL.md` | 中间件契约 skill 入口 |
-| `docs/architecture/middleware_contract.md` | 跨模块公共契约规则文档 |
-| `docs/architecture/middleware-components/*.md` | 中间件组件说明书 |
-| `docs/module-development-files/` | 按每次模块开发归档的需求、设计、实现、测试交付文档 |
+| `docs/组件和数据库约定/middleware_contract.md` | 跨模块公共契约规则文档 |
+| `docs/组件和数据库约定/middleware-components/*.md` | 中间件组件说明书 |
+| `docs/模块开发文档/` | 按每次模块开发归档的需求、设计、实现、测试交付文档 |
 | `docs/db/schema.sql` | 数据库结构定义 |
 | `docs/db/init.sql` | 初始化数据脚本 |
 
@@ -452,8 +452,8 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 ### 12.2 涉及中间件或跨模块约定
 
 3. `.agents/skills/middleware-contracts/SKILL.md`
-4. `docs/architecture/middleware_contract.md`
-4. 对应 `docs/architecture/middleware-components/*.md`
+4. `docs/组件和数据库约定/middleware_contract.md`
+4. 对应 `docs/组件和数据库约定/middleware-components/*.md`
 
 ### 12.3 已进入某次模块期次目录
 
