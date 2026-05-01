@@ -10,6 +10,7 @@ import com.qingluo.link.model.dto.request.KnowledgeParseCallbackRequest;
 import com.qingluo.link.model.dto.response.FileParseEventDTO;
 import com.qingluo.link.service.KnowledgeParseSseService;
 import com.qingluo.link.service.config.KnowledgeFileProperties;
+import com.qingluo.link.service.mq.KnowledgeParseResultMQ;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,32 @@ public class KnowledgeParseSseServiceImpl implements KnowledgeParseSseService {
         event.setParseStatus(resolveParseStatus(request.getEventType(), task.getTaskStatus()));
         event.setFrontendStatus(frontendStatus(event.getParseStatus()));
         event.setFailureReason(request.getFailureReason());
+        sendToFile(file.getId(), event);
+    }
+
+    @Override
+    public void publishResultEvent(KnowledgeParseResultMQ.MsgPayload payload) {
+        KnowledgeParseTask task = knowledgeParseTaskMapper.selectById(payload.getDocumentParseLogId());
+        if (task == null || !payload.getTaskId().equals(task.getTaskId())) {
+            throw new BusinessException(404, "解析任务不存在", 404);
+        }
+        KnowledgeOriginalFile file = knowledgeOriginalFileMapper.selectById(payload.getOriginalFileId());
+        if (file == null) {
+            throw new BusinessException(404, "文件不存在或无权访问", 404);
+        }
+        if (!payload.getDatasetId().equals(task.getDatasetId()) || !payload.getUserId().equals(task.getUserId())) {
+            throw new BusinessException(400, "解析结果消息归属信息不匹配", 400);
+        }
+        if (!payload.getOriginalFileId().equals(task.getDocumentOriginalFileId())) {
+            throw new BusinessException(400, "解析结果消息中的文件标识不匹配", 400);
+        }
+
+        FileParseEventDTO event = new FileParseEventDTO();
+        event.setFileId(file.getId());
+        event.setOriginalFilename(file.getOriginalFilename());
+        event.setParseStatus(payload.getTaskStatus());
+        event.setFrontendStatus(frontendStatus(payload.getTaskStatus()));
+        event.setFailureReason(payload.getFailureReason());
         sendToFile(file.getId(), event);
     }
 

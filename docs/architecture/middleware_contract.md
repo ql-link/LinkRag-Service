@@ -191,7 +191,7 @@ MQ 约定主要负责跨模块异步协作，不负责替代 API 调用做同步
   - `tolink.rag.parse_task`
   - `tolink.rag.parse_result`
 - 当前 Kafka 消费组默认值：
-  - `tolink-java-parse-result-worker`
+  - `tolink-document-prase`
 - 新增命名建议继续沿用 `tolink.<domain>.<action>` 风格
 
 ### 6.3 MQ 名称与业务责任映射
@@ -199,27 +199,22 @@ MQ 约定主要负责跨模块异步协作，不负责替代 API 调用做同步
 | MQ 名称 / Group | 负责的业务功能 | 说明 |
 | --- | --- | --- |
 | `tolink.rag.parse_task` | 投递原始知识文件解析任务 | 上传重构一期不投递；二期解析入口创建任务后发送给 Python 解析侧 |
-| `tolink.rag.parse_result` | 回传解析结果 | 历史结果回传 topic；当前只做兼容校验与日志记录，不再作为 Java 写解析产物主链路 |
-| `tolink-java-parse-result-worker` | 解析结果消费组 | Kafka 默认消费者组 |
+| `tolink.rag.parse_result` | 回传解析终态结果 | 三期由 Python 在写库终态后发送给 Java，Java 只做结果校验和 SSE 转发 |
+| `tolink-document-prase` | 解析结果消费组 | 三期 Kafka 默认消费者组 |
 
 ### 6.4 消息结构
 
 - 消息体必须具备可追踪业务主键
-- 历史 `parse_result` 消息体曾采用 envelope + payload 结构
-- 历史 envelope 字段：
-  - `mq_type`
-  - `mq_name`
-  - `payload`
-- 当前解析结果消息 `parse_result` 的 payload 字段包括：
+- 历史 `parse_result` 消息体曾采用 envelope + payload 结构，三期后不再沿用
+- 三期解析结果消息 `parse_result` 采用扁平 JSON，字段包括：
   - `task_id`
-  - `document_id`
-  - `success`
-  - `status`
-  - `parsed_bucket_name`
-  - `parsed_object_key`
-  - `parsed_file_url`
+  - `original_file_id`
+  - `document_parse_log_id`
+  - `dataset_id`
+  - `user_id`
+  - `task_status`
   - `failure_reason`
-  - `time_cost_ms`
+  - `parse_finished_at`
 - 二期目标解析任务消息 `parse_task` 采用扁平 JSON，字段包括：
   - `task_id`
   - `original_file_id`
@@ -233,6 +228,9 @@ MQ 约定主要负责跨模块异步协作，不负责替代 API 调用做同步
   - `md_bucket`
   - `md_object_key`
 - 必须说明异常重试、重复消费与幂等处理策略
+- `parse_result.task_status` 只允许 `success` / `failed`
+- `parse_result.failure_reason` 在 `success` 时必须为 `null`，在 `failed` 时必填
+- `parse_result.parse_finished_at` 必须为带时区的 ISO 8601 字符串
 
 ### 6.5 消费约束
 
@@ -240,7 +238,7 @@ MQ 约定主要负责跨模块异步协作，不负责替代 API 调用做同步
 - 必须说明失败处理、重试、补偿或死信策略
 - 当前代码现状：
   - MQ 发送通过 `MQSend` 抽象适配 Kafka/RabbitMQ
-  - 解析结果消费通过 `KnowledgeParseResultKafkaReceiver` 进入 `KnowledgeParseResultService`，仅保留旧消息兼容校验和日志，不再写 `document_parsed_file`
+  - 解析结果消费通过 `KnowledgeParseResultKafkaReceiver` 进入 `KnowledgeParseResultService`，按 `document_parse_log_id + task_id` 校验后转发 SSE，不写 `document_parsed_file`
   - 新链路若接入 MQ，必须说明是否沿用现有抽象和自动装配方式
 - Kafka 当前仅支持普通发送，不支持模板级延迟消息
 

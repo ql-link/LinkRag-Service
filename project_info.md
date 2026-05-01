@@ -155,13 +155,13 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - `AbstractMQ`、`MQSend`、`MQMsgReceiver`
   - Kafka / RabbitMQ 适配
   - 已落地解析任务投递链路
-  - 旧解析结果消费链路保留但默认关闭，二期解析结果由 Python 端直接写库并通过 Java 回调接口向前端转发进度事件
+  - 已落地解析结果终态回传链路，Python 在写库终态后通过 `parse_result` MQ 通知 Java，`processing/progress` 仍通过 Java 回调接口向前端转发
 - 关键入口：
   - `link-components/toLink-components-mq`
   - `KnowledgeParseTaskMQ`
   - `KnowledgeParseTaskService`
   - `KnowledgeParseSseService`
-  - `KnowledgeParseResultMQ`（旧链路，默认关闭）
+  - `KnowledgeParseResultMQ`
 - 什么时候优先复用：
   - 跨模块异步协作
   - 需要解耦、削峰或外部系统回传

@@ -22,7 +22,7 @@ public class KnowledgeParseResultKafkaReceiver implements MQMsgReceiver {
     @Override
     @KafkaListener(
         topics = KnowledgeParseResultMQ.MQ_NAME,
-        groupId = "${tolink.mq.parse-result.group-id:tolink-java-parse-result-worker}"
+        groupId = "${tolink.mq.parse-result.group-id:tolink-document-prase}"
     )
     public void receive(String msg) {
         log.info("Receive parse result MQ message");

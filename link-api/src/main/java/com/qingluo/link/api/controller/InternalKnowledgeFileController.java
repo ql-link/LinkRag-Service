@@ -79,8 +79,14 @@ public class InternalKnowledgeFileController {
         if (!isServiceTokenValid(authorization)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Result.error(401, "服务鉴权失败"));
         }
+        if (!"processing".equals(request.getEventType()) && !"progress".equals(request.getEventType())) {
+            return ResponseEntity.badRequest().body(Result.error(400, "解析回调事件类型仅支持 processing 或 progress"));
+        }
         if (request.getProgress() != null && (request.getProgress() < 0 || request.getProgress() > 100)) {
             return ResponseEntity.badRequest().body(Result.error(400, "解析进度必须在 0 到 100 之间"));
+        }
+        if ("progress".equals(request.getEventType()) && request.getProgress() == null) {
+            return ResponseEntity.badRequest().body(Result.error(400, "progress 事件必须携带解析进度"));
         }
         knowledgeParseSseService.publishTaskEvent(taskId, request);
         return ResponseEntity.ok(Result.ok(null));

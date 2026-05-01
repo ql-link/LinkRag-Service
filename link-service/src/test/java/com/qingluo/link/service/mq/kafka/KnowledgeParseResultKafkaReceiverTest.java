@@ -23,19 +23,18 @@ class KnowledgeParseResultKafkaReceiverTest {
     @DisplayName("Should_ParseAndDispatchParseResultPayload_When_ReceiveKafkaMessage")
     void Should_ParseAndDispatchParseResultPayload_When_ReceiveKafkaMessage() {
         kafkaReceiver.receive("""
-            {"mq_type":"parse_result","mq_name":"tolink.rag.parse_result","payload":{"task_id":"task-1","document_id":"101","success":true,"status":"success","parsed_bucket_name":"rag-parsed","parsed_object_key":"parsed/key","parsed_file_url":"http://rag/key","failure_reason":"","time_cost_ms":123}}
+            {"task_id":"task-1","original_file_id":101,"document_parse_log_id":201,"dataset_id":301,"user_id":401,"task_status":"success","failure_reason":null,"parse_finished_at":"2026-04-28T10:00:08+08:00"}
             """);
 
         verify(receiver).receive(new KnowledgeParseResultMQ.MsgPayload(
             "task-1",
-            "101",
-            true,
+            101L,
+            201L,
+            301L,
+            401L,
             "success",
-            "rag-parsed",
-            "parsed/key",
-            "http://rag/key",
-            "",
-            123L
+            null,
+            "2026-04-28T10:00:08+08:00"
         ));
     }
 }

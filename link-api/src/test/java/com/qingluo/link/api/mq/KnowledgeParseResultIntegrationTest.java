@@ -5,16 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.service.mq.kafka.KnowledgeParseResultKafkaReceiver;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 
 /**
- * 旧 parse_result Java 写库链路默认关闭。
+ * 三期 parse_result 终态回传链路默认启用。
  *
- * <p>二期由 Python 直接写解析任务和最新解析产物，Java 旧消费者如果默认启动会造成双写。
+ * <p>当 MQ vendor 为 Kafka 且业务 Receiver Bean 存在时，结果消费者应作为正式链路挂载。
  */
 @SpringBootTest(properties = {
     "qingluopay.mq.vender=kafka",
@@ -29,13 +28,7 @@ class KnowledgeParseResultIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void Should_NotCreateLegacyParseResultKafkaReceiver_When_LegacySwitchDisabled() {
-        assertThat(applicationContext.getBeansOfType(KnowledgeParseResultKafkaReceiver.class)).isEmpty();
-        try {
-            applicationContext.getBean(KnowledgeParseResultKafkaReceiver.class);
-        } catch (NoSuchBeanDefinitionException expected) {
-            return;
-        }
-        throw new AssertionError("legacy parse result receiver should be disabled by default");
+    void Should_CreateParseResultKafkaReceiver_When_KafkaVendorEnabled() {
+        assertThat(applicationContext.getBeansOfType(KnowledgeParseResultKafkaReceiver.class)).hasSize(1);
     }
 }
