@@ -146,6 +146,6 @@ Redis 组件是项目的缓存 framework，负责提供：
 当 AI 要使用 Redis 组件时，推荐顺序：
 
 1. 先读本文件
-2. 再读 `docs/architecture/middleware_contract.md` 中的 Redis 约定
+2. 再读 `docs/组件和数据库约定/middleware_contract.md` 中的 Redis 约定
 3. 再去看相关业务代码是否已有缓存 service
 4. 最后在 `technical_design.md` 中落具体方案

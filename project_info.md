@@ -434,9 +434,9 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 | `AGENTS.md` | AI 协作开发宪法 |
 | `project_info.md` | 项目现状总介绍 |
 | `.agents/skills/middleware-contracts/SKILL.md` | 中间件契约 skill 入口 |
-| `docs/architecture/middleware_contract.md` | 跨模块公共契约规则文档 |
-| `docs/architecture/middleware-components/*.md` | 中间件组件说明书 |
-| `docs/module-development-files/` | 按每次模块开发归档的需求、设计、实现、测试交付文档 |
+| `docs/组件和数据库约定/middleware_contract.md` | 跨模块公共契约规则文档 |
+| `docs/组件和数据库约定/middleware-components/*.md` | 中间件组件说明书 |
+| `docs/模块开发文档/` | 按每次模块开发归档的需求、设计、实现、测试交付文档 |
 | `docs/db/schema.sql` | 数据库结构定义 |
 | `docs/db/init.sql` | 初始化数据脚本 |
 
@@ -450,8 +450,8 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 ### 12.2 涉及中间件或跨模块约定
 
 3. `.agents/skills/middleware-contracts/SKILL.md`
-4. `docs/architecture/middleware_contract.md`
-4. 对应 `docs/architecture/middleware-components/*.md`
+4. `docs/组件和数据库约定/middleware_contract.md`
+4. 对应 `docs/组件和数据库约定/middleware-components/*.md`
 
 ### 12.3 已进入某次模块期次目录
 
@@ -472,7 +472,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 已完成数据集、知识原始文件、解析文件相关能力
 - 2026-04-26：文件上传与解析协同重构一期已完成测试交付文档。当前一期只交付原文件上传链路：原文件上传到 `rag-raw`、原文件表记录上传事实、同名同后缀唯一约束、失败重试复用 `object_key`、上传中 1 分钟超时补偿、列表/详情/删除接口；MQ、Python 解析、解析进度和解析产物进入二期。
 - 2026-04-26：文件上传与解析协同重构二期已完成 Java 端代码实现与目标自动化测试。当前二期交付解析任务创建、上传后自动解析、手动解析、防重复点击、解析任务 MQ 投递、MQ 投递失败内部补偿、Python 进度回调转 SSE、按文件列表查询解析结果；Python 端真实解析、写库和真实 MQ 消费仍需联调确认。
-- 2026-04-29：文件上传表结构与业务流程重构一期已完成代码实现与测试交付，阶段目录为 `docs/module-development-files/文件上传与解析重构/一期/`。当前上传成功后由 Java 初始化一对一 `document_parsed_file`，上传阶段不创建 `document_parse_log`、不投递解析 MQ；上传配置切换为 Redis key `knowledge:file-upload:config` + YAML fallback；原文件失败原因改为稳定编码，前端响应不暴露 OSS 内部定位字段。
+- 2026-04-29：文件上传表结构与业务流程重构一期已完成代码实现与测试交付，阶段目录为 `docs/模块开发文档/文件上传与解析重构/一期/`。当前上传成功后由 Java 初始化一对一 `document_parsed_file`，上传阶段不创建 `document_parse_log`、不投递解析 MQ；上传配置切换为 Redis key `knowledge:file-upload:config` + YAML fallback；原文件失败原因改为稳定编码，前端响应不暴露 OSS 内部定位字段。
 - 已落地 Redis、OSS、MQ 三类中间件组件
 
 ## 15. 维护要求

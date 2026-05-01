@@ -218,7 +218,7 @@ MQ 约定主要负责跨模块异步协作，不负责替代 API 调用做同步
 - 二期目标解析任务消息 `parse_task` 采用扁平 JSON，字段包括：
   - `task_id`
   - `original_file_id`
-  - `document_parsed_file_id`
+  - `parsed_file_id`
   - `user_id`
   - `dataset_id`
   - `file_type`
