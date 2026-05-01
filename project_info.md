@@ -161,6 +161,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - `AbstractMQ`、`MQSend`、`MQMsgReceiver`
   - Kafka / RabbitMQ 适配
   - 已落地解析任务与解析结果两条链路
+  - 解析结果终态回传由 Python 写库后通过 `parse_result` MQ 通知 Java，`processing/progress` 通过内部回调接口转发 SSE
   - 已新增缓存补偿主题 `tolink.cache.evict` 与 Java 消费入口
 - 关键入口：
   - `link-components/toLink-components-mq`

@@ -1,15 +1,16 @@
 package com.qingluo.link.service.impl.know;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.KnowledgeParseTaskMapper;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
+import com.qingluo.link.model.dto.entity.KnowledgeParseTask;
+import com.qingluo.link.service.KnowledgeParseSseService;
 import com.qingluo.link.service.KnowledgeParseResultService;
 import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -17,38 +18,46 @@ import org.springframework.transaction.annotation.Transactional;
 public class KnowledgeParseResultServiceImpl implements KnowledgeParseResultService {
 
     private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final KnowledgeParseTaskMapper knowledgeParseTaskMapper;
+    private final KnowledgeParseSseService knowledgeParseSseService;
 
     @Override
-    @Transactional
     public void handleParseResult(KnowledgeParseResultMQ.MsgPayload payload) {
-        KnowledgeOriginalFile record = knowledgeOriginalFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeOriginalFile>()
-            .eq(KnowledgeOriginalFile::getParseTaskId, payload.getTaskId()));
+        KnowledgeParseTask task = knowledgeParseTaskMapper.selectById(payload.getDocumentParseLogId());
+        if (task == null) {
+            log.warn("Ignore parse result because task log is missing, taskId={}, parseLogId={}",
+                payload.getTaskId(), payload.getDocumentParseLogId());
+            throw new BusinessException(404, "解析任务不存在", 404);
+        }
+        if (!payload.getTaskId().equals(task.getTaskId())) {
+            log.error("Reject parse result because task id mismatched, parseLogId={}, expectedTaskId={}, actualTaskId={}",
+                payload.getDocumentParseLogId(), task.getTaskId(), payload.getTaskId());
+            throw new BusinessException(400, "解析结果消息中的任务标识不匹配", 400);
+        }
+
+        KnowledgeOriginalFile record = knowledgeOriginalFileMapper.selectById(payload.getOriginalFileId());
         if (record == null) {
-            log.warn("Ignore parse result because task record is missing, taskId={}, documentId={}",
-                payload.getTaskId(), payload.getDocumentId());
-            return;
+            log.warn("Ignore parse result because file record is missing, taskId={}, originalFileId={}",
+                payload.getTaskId(), payload.getOriginalFileId());
+            throw new BusinessException(404, "文件不存在或无权访问", 404);
         }
-        if (!record.getId().toString().equals(payload.getDocumentId())) {
-            log.error("Reject parse result because document id mismatched, taskId={}, expectedDocumentId={}, actualDocumentId={}",
-                payload.getTaskId(), record.getId(), payload.getDocumentId());
-            throw new BusinessException(400, "解析结果消息中的文档标识不匹配", 400);
+        if (!record.getId().equals(payload.getOriginalFileId())
+            || !record.getDatasetId().equals(payload.getDatasetId())
+            || !record.getUserId().equals(payload.getUserId())
+            || !record.getId().equals(task.getDocumentOriginalFileId())) {
+            log.error("Reject parse result because ownership mismatched, taskId={}, fileId={}, datasetId={}, userId={}",
+                payload.getTaskId(), payload.getOriginalFileId(), payload.getDatasetId(), payload.getUserId());
+            throw new BusinessException(400, "解析结果消息归属信息不匹配", 400);
         }
-        if (Boolean.TRUE.equals(payload.getSuccess())) {
-            handleSuccess(record, payload);
-            return;
-        }
-        handleFailure(record, payload);
-    }
 
-    private void handleSuccess(KnowledgeOriginalFile record, KnowledgeParseResultMQ.MsgPayload payload) {
-        // 一期重构后 document_parsed_file 只保存解析业务记录，不再由 Java 写解析产物。
-        // 旧 parse_result MQ 仅保留日志兼容，二期由 Python 写 document_parse_log。
-        log.info("Handle parse result success, taskId={}, documentId={}, datasetId={}, parsedObjectKey={}",
-            payload.getTaskId(), payload.getDocumentId(), record.getDatasetId(), payload.getParsedObjectKey());
-    }
-
-    private void handleFailure(KnowledgeOriginalFile record, KnowledgeParseResultMQ.MsgPayload payload) {
-        log.warn("Handle parse result failure, taskId={}, documentId={}, datasetId={}, failureReason={}",
-            payload.getTaskId(), payload.getDocumentId(), record.getDatasetId(), payload.getFailureReason());
+        if ("success".equals(payload.getTaskStatus())) {
+            log.info("Handle parse result success, taskId={}, fileId={}, parseLogId={}, datasetId={}",
+                payload.getTaskId(), payload.getOriginalFileId(), payload.getDocumentParseLogId(), record.getDatasetId());
+        } else {
+            log.warn("Handle parse result failure, taskId={}, fileId={}, parseLogId={}, datasetId={}, failureReason={}",
+                payload.getTaskId(), payload.getOriginalFileId(), payload.getDocumentParseLogId(),
+                record.getDatasetId(), payload.getFailureReason());
+        }
+        knowledgeParseSseService.publishResultEvent(payload);
     }
 }

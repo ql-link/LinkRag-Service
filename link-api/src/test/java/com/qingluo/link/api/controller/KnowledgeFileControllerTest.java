@@ -32,6 +32,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import com.qingluo.link.service.KnowledgeFileService;
@@ -377,6 +378,46 @@ class KnowledgeFileControllerTest {
             .andExpect(jsonPath("$.data[1].fileId").value(failedFileId))
             .andExpect(jsonPath("$.data[1].frontendStatus").value("parse_failed"))
             .andExpect(jsonPath("$.data[1].failureReason").value("格式暂不支持"));
+    }
+
+    @Test
+    void Should_AcceptProcessingCallback_When_ServiceTokenAndTaskExist() throws Exception {
+        Long fileId = insertOriginalFile("callback.pdf", "pdf", "success", true,
+            "original/user-%d/dataset-%d/2026/04/26/123/callback.pdf".formatted(userId, datasetId));
+        insertParseTask(fileId, "callback-task", "created", null);
+
+        mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "callback-task")
+                .header("Authorization", "Bearer test-service-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"eventType":"processing"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    void Should_RejectTerminalCallbackEvent_When_EventTypeIsSuccess() throws Exception {
+        mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "callback-task")
+                .header("Authorization", "Bearer test-service-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"eventType":"success"}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("解析回调事件类型仅支持 processing 或 progress"));
+    }
+
+    @Test
+    void Should_RejectProgressCallback_When_ProgressMissing() throws Exception {
+        mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "callback-task")
+                .header("Authorization", "Bearer test-service-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"eventType":"progress"}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("progress 事件必须携带解析进度"));
     }
 
     private Long insertOriginalFile(String filename, String suffix, String status, boolean success, String objectKey) {
