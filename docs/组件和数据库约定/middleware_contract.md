@@ -89,7 +89,33 @@ MySQL 约定主要负责以下业务数据的持久化边界：
 - `document_parse_log` 记录每一次解析任务日志，按 `task_id` 保持业务唯一；Java 只负责生成 `task_id` 并投递 MQ，Python 消费后创建日志、推进状态并写入解析产物定位。
 - `knowledge_file_config` 不再作为知识文件上传配置来源；上传配置默认值来自 YAML，运行时覆盖来自 Redis。
 
-### 4.5 数据约束
+### 4.5 持久层查询规范
+
+所有数据库查询必须通过 MyBatis XML Mapper 文件定义，**禁止在 Service 层直接使用 `QueryWrapper` / `LambdaQueryWrapper` / `LambdaUpdateWrapper` 构造查询条件**。
+
+核心原则：
+
+- **Mapper 接口只声明方法签名**，查询逻辑全部下沉到 XML
+- **Service 层只调用 Mapper 方法**，不允许侵入持久层的 SQL 构造细节
+- 复杂查询（多表 JOIN、子查询、动态条件）必须写 XML `<select>` / `<update>` / `<delete>`
+- 简单查询（按 ID、按唯一键）同样写 XML，保持持久层入口统一
+- XML Mapper 文件统一放在 `link-mapper/src/main/resources/mapper/`
+
+判断标准：
+
+- 如果 Service 里出现了 `new LambdaQueryWrapper<>()` 或 `QueryWrapper`，说明持久层边界已被侵入，应重构为 XML
+- 如果查询逻辑随着业务变更越来越复杂，应在 XML 中通过 `<if>` / `<where>` / `<foreach>` 管理动态条件，而不是在 Java 里堆 Wrapper 链
+
+异常情况：
+
+- MyBatis-Plus 内置的 `selectById`、`insert`、`updateById`、`deleteById` 等单表基础方法可直接使用，无需为每个实体写对应的 XML
+- 分页查询的 Page 参数构造仍保留在 Service 层，但查询条件本身必须通过 XML 定义
+
+历史债务说明：
+
+- 当前代码中已存在的 `LambdaQueryWrapper` 用法属于历史债务，新代码不允许继续使用，存量代码逐步迁移
+
+### 4.6 数据约束
 
 - 需求文档只说明数据要求，表结构细节写入 `technical_design.md`
 - 技术方案必须明确新增字段是否允许为空、默认值、索引与唯一约束
