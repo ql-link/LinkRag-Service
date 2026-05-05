@@ -1,7 +1,6 @@
 package com.qingluo.link.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.core.exception.ConflictException;
 import com.qingluo.link.mapper.SysUserMapper;
@@ -21,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 认证服务实现
@@ -33,15 +33,17 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final UserCacheService userCacheService;
 
+    /**
+     * 认证链路同时承接注册、登录和资料修改，因此把账号归一化和默认昵称生成集中在这里，
+     * 避免不同入口各自维护一套规则后再次出现字段语义漂移。
+     */
     @Override
     /**
      * 校验账号密码并创建登录态。
      */
     public AuthResult login(LoginRequest request) {
-        String username = normalizeUsername(request.getUsername());
-        SysUser user = sysUserMapper.selectOne(
-            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)
-        );
+        String account = normalizeRequired(request.getAccount());
+        SysUser user = sysUserMapper.selectByAccount(account);
 
         if (user == null) {
             throw AuthException.userNotFound();
@@ -66,28 +68,22 @@ public class AuthServiceImpl implements AuthService {
      * 注册新用户并自动登录。
      */
     public AuthResult register(RegisterRequest request) {
-        String username = normalizeUsername(request.getUsername());
-        SysUser existUser = sysUserMapper.selectOne(
-            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)
-        );
+        String username = normalizeRequired(request.getUsername());
+        SysUser existUser = sysUserMapper.selectByUsername(username);
         if (existUser != null) {
             throw new ConflictException(ErrorCode.DUPLICATE_USERNAME);
         }
 
-        String email = normalizeOptional(request.getEmail());
-        if (email != null) {
-            SysUser existEmailUser = sysUserMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getEmail, email)
-            );
-            if (existEmailUser != null) {
-                throw new ConflictException(ErrorCode.DUPLICATE_EMAIL);
-            }
+        String email = normalizeRequired(request.getEmail());
+        SysUser existEmailUser = sysUserMapper.selectByEmail(email);
+        if (existEmailUser != null) {
+            throw new ConflictException(ErrorCode.DUPLICATE_EMAIL);
         }
 
         SysUser user = new SysUser();
         user.setUsername(username);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setNickname(resolveNickname(request.getNickname(), username));
+        user.setNickname(generateDefaultNickname());
         user.setEmail(email);
         user.setRole(UserRole.USER.name());
         user.setStatus(1);
@@ -136,7 +132,14 @@ public class AuthServiceImpl implements AuthService {
             user.setNickname(request.getNickname());
         }
         if (request.getEmail() != null) {
-            user.setEmail(request.getEmail());
+            String email = normalizeOptional(request.getEmail());
+            if (email != null && !email.equals(user.getEmail())) {
+                SysUser conflictUser = sysUserMapper.selectByEmailExcludingUserId(email, userId);
+                if (conflictUser != null) {
+                    throw new ConflictException(ErrorCode.DUPLICATE_EMAIL);
+                }
+            }
+            user.setEmail(email);
         }
         if (request.getPhone() != null) {
             user.setPhone(request.getPhone());
@@ -165,8 +168,12 @@ public class AuthServiceImpl implements AuthService {
         return dto;
     }
 
-    private String normalizeUsername(String username) {
-        return username == null ? null : username.trim();
+    /**
+     * 登录账号和注册主标识必须以去首尾空格后的值参与唯一性判断，
+     * 否则同一个业务身份会因为前后空格出现伪差异。
+     */
+    private String normalizeRequired(String value) {
+        return value == null ? null : value.trim();
     }
 
     private String normalizeOptional(String value) {
@@ -176,8 +183,21 @@ public class AuthServiceImpl implements AuthService {
         return value.trim();
     }
 
-    private String resolveNickname(String nickname, String username) {
-        String normalizedNickname = normalizeOptional(nickname);
-        return normalizedNickname != null ? normalizedNickname : username;
+    /**
+     * 默认昵称只承担展示职责，不要求和用户名或邮箱建立映射关系，
+     * 这样后续即使产品调整展示策略，也不会反向影响稳定登录标识。
+     */
+    private String generateDefaultNickname() {
+        return "用户" + randomAlphaNumeric(7);
+    }
+
+    private String randomAlphaNumeric(int length) {
+        final char[] chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray();
+        StringBuilder builder = new StringBuilder(length);
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        for (int i = 0; i < length; i++) {
+            builder.append(chars[random.nextInt(chars.length)]);
+        }
+        return builder.toString();
     }
 }

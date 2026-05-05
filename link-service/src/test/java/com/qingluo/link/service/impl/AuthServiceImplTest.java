@@ -1,8 +1,10 @@
 package com.qingluo.link.service.impl;
 
+import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.core.exception.ConflictException;
 import com.qingluo.link.model.dto.entity.SysUser;
+import com.qingluo.link.model.dto.request.LoginRequest;
 import com.qingluo.link.model.dto.request.RegisterRequest;
 import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
@@ -39,8 +41,8 @@ class AuthServiceImplTest {
     @Test
     @DisplayName("Should_RejectDuplicateEmail_When_Register")
     void Should_RejectDuplicateEmail_When_Register() {
-        given(sysUserMapper.selectOne(any()))
-            .willReturn(null)
+        given(sysUserMapper.selectByUsername("new-user")).willReturn(null);
+        given(sysUserMapper.selectByEmail("used@test.com"))
             .willReturn(buildUser(2L, "bob", UserRole.USER));
 
         RegisterRequest request = new RegisterRequest();
@@ -53,6 +55,26 @@ class AuthServiceImplTest {
             .hasMessage("邮箱已被使用");
 
         verify(sysUserMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
+    @DisplayName("Should_QueryByAccountAndRejectPassword_When_LoginWithEmail")
+    void Should_QueryByAccountAndRejectPassword_When_LoginWithEmail() {
+        SysUser user = buildUser(3L, "alice", UserRole.USER);
+        user.setEmail("alice@test.com");
+        user.setPasswordHash("encoded-password");
+        given(sysUserMapper.selectByAccount("alice@test.com")).willReturn(user);
+        given(passwordEncoder.matches("wrongpassword", "encoded-password")).willReturn(false);
+
+        LoginRequest request = new LoginRequest();
+        request.setAccount(" alice@test.com ");
+        request.setPassword("wrongpassword");
+
+        assertThatThrownBy(() -> authService.login(request))
+            .isInstanceOf(AuthException.class)
+            .hasMessage("密码错误");
+
+        verify(sysUserMapper).selectByAccount("alice@test.com");
     }
 
     // ---- getProfile ----
@@ -93,6 +115,7 @@ class AuthServiceImplTest {
     void Should_UpdateFieldsAndEvictCache_When_UserExists() {
         SysUser user = buildUser(1L, "alice", UserRole.USER);
         given(sysUserMapper.selectById(1L)).willReturn(user);
+        given(sysUserMapper.selectByEmailExcludingUserId("new@test.com", 1L)).willReturn(null);
 
         UpdateProfileRequest request = new UpdateProfileRequest();
         request.setNickname("newNick");
@@ -101,6 +124,26 @@ class AuthServiceImplTest {
 
         verify(sysUserMapper).updateById(any(SysUser.class));
         verify(userCacheService).evict(1L);
+    }
+
+    @Test
+    @DisplayName("Should_RejectDuplicateEmail_When_UpdateProfile")
+    void Should_RejectDuplicateEmail_When_UpdateProfile() {
+        SysUser user = buildUser(1L, "alice", UserRole.USER);
+        user.setEmail("alice@test.com");
+        given(sysUserMapper.selectById(1L)).willReturn(user);
+        given(sysUserMapper.selectByEmailExcludingUserId("used@test.com", 1L))
+            .willReturn(buildUser(2L, "bob", UserRole.USER));
+
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setEmail("used@test.com");
+
+        assertThatThrownBy(() -> authService.updateProfile(1L, request))
+            .isInstanceOf(ConflictException.class)
+            .hasMessage("邮箱已被使用");
+
+        verify(sysUserMapper, never()).updateById(any(SysUser.class));
+        verify(userCacheService, never()).evict(anyLong());
     }
 
     // ---- helpers ----
