@@ -114,7 +114,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
   - 提供 `CacheKeyRouter` 与 `CacheEvictTarget`
   - 提供 `CacheReadProtectionService`
   - 已落地用户信息读链路的空值缓存、回源合并与 TTL 抖动保护
-  - 已落地 `user`、`provider`、`llm-config` 写路径同步删缓存入口
+- 已落地 `user` 读写链路缓存治理，以及 `provider`、`llm-config` 写路径同步删缓存入口
 - 关键入口：
   - `link-components/toLink-components-redis`
   - `CacheConsistencyService`

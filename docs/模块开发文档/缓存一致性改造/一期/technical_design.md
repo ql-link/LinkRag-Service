@@ -1,6 +1,6 @@
 # ToLink Service 缓存一致性改造一期技术实现文档
 
-> **文档状态：** 技术方案待审核
+> **文档状态：** 技术方案已落地，待最终审核确认
 > **项目名称：** ToLink Service
 > **模块名称：** 缓存一致性改造（一期）
 > **需求文档：** [requirement.md](/Users/fang/Developer/Projects/toLink/toLink-Service/docs/模块开发文档/缓存一致性改造/一期/requirement.md)
@@ -15,6 +15,7 @@
 | 版本号 | 修改日期 | 修改内容简述 | 修改人 | 审核人 |
 | :--- | :--- | :--- | :--- | :--- |
 | v1.0 | 2026-05-06 | 初始化一期技术方案，明确 Canal + MQ + Redis 二次删除补偿链路及框架边界 | Fang / Codex | Fang |
+| v1.1 | 2026-05-06 | 根据实际代码落地与测试交付进度回填文档状态，进入最终审核前确认 | Fang / Codex | Fang |
 
 ---
 

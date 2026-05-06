@@ -5,7 +5,7 @@
 - 模块名称：缓存一致性改造
 - 当前期次：一期
 - 业务域：platform / user / llm-config
-- 当前状态：测试与交付中
+- 当前状态：评审与质量门禁中
 - 复杂度等级：L3
 - 当前分支：refactor/cache-consistency-cdc
 
@@ -82,12 +82,13 @@
   - 统一 key 路由 `CacheEvictTarget` + `CacheKeyRouter`
   - 缓存补偿消息模型与 Kafka 消费者
   - `user` 读链路读保护能力接入
+  - `provider`、`llm-config` 写链路同步删缓存接入
   - 旧 `DoubleDeleteCacheService` 删除
   - Redis / MQ 公共契约改写
 - 当前待完成：
-  - 真实 Redis / Kafka 环境联调
-  - `project_info.md` 阶段性回填
+  - `provider`、`llm-config` 读链路治理投入二期
+  - 最终审核与发布前联调证据补齐
 - 当前测试结论：
-  - 代码级主流程已完成验证
+  - 一期已验证 `user` 读写链路与 `provider`、`llm-config` 写链路
   - 文档与公共契约已完成回填
   - 全量集成验证受本地 Redis / Kafka 环境限制，当前结论为“有条件可交付”

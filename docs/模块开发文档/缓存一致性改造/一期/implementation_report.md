@@ -1,6 +1,6 @@
 # ToLink Service 缓存一致性改造一期改造报告
 
-> **文档状态：** 草稿
+> **文档状态：** 已完成，待最终审核确认
 > **项目名称**：ToLink Service
 > **模块名称**：缓存一致性改造（一期）
 > **需求文档**：[requirement.md](/Users/fang/Developer/Projects/toLink/toLink-Service/docs/模块开发文档/缓存一致性改造/一期/requirement.md)
@@ -16,6 +16,8 @@
 | 版本号 | 修改日期 | 修改内容简述 | 修改人 | 审核人 |
 | :--- | :--- | :--- | :--- | :--- |
 | v1.0 | 2026-05-06 | 记录一期实际落地代码、公共契约变化与测试边界 | Fang / Codex | Fang |
+| v1.1 | 2026-05-06 | 统一回写状态，确认项目现状文档已同步更新 | Fang / Codex | Fang |
+| v1.2 | 2026-05-06 | 补记真实联调期间发现并修复 `llm_user_config.capability` 字段映射问题 | Fang / Codex | Fang |
 
 ## 2. 改造背景与目标 (Overview)
 
@@ -29,7 +31,7 @@
 - 建立 `CacheEvictTarget -> CacheKeyRouter -> CacheConsistencyService` 的项目级删缓存入口。
 - 新增 `CacheReadProtectionService`，把空值缓存、单 key 回源合并、TTL 抖动沉到 framework。
 - 新增缓存补偿 MQ 模型与 Kafka 消费者，承接 Canal -> MQ -> Redis 的二次删除链路。
-- 完成 `user`、`provider`、`llm-config` 首批写路径接入。
+- 完成 `user` 读写链路首批接入，以及 `provider`、`llm-config` 首批写路径接入。
 
 ## 3. 实际改造清单 (Implementation Inventory)
 
@@ -37,8 +39,8 @@
 
 | 模块 | 改动类型 | 实际改动内容 | 备注 |
 | :--- | :--- | :--- | :--- |
-| `link-api` | 修改 | `StpInterfaceImpl` 改为走读保护缓存接口；测试环境补充缓存一致性配置 | 只改读链路与测试配置 |
-| `link-service` | 新增/修改 | 改造 `UserCacheServiceImpl`、`AuthServiceImpl`、`AdminProviderServiceImpl`、`UserLLMConfigServiceImpl`；新增缓存补偿 MQ 模型与接收器 | 业务写路径统一接入 |
+| `link-api` | 修改 | `StpInterfaceImpl` 改为走读保护缓存接口；测试环境补充缓存一致性配置 | 一期仅改 `user` 读链路与测试配置 |
+| `link-service` | 新增/修改 | 改造 `UserCacheServiceImpl`、`AuthServiceImpl`、`AdminProviderServiceImpl`、`UserLLMConfigServiceImpl`；新增缓存补偿 MQ 模型与接收器 | `user` 完成读写接入，`provider` / `llm-config` 完成写路径接入 |
 | `link-model` | 修改 | 新增 `CACHE_DELETE_FAILED` 错误码 | 统一主请求失败口径 |
 | `link-components` | 新增/修改/删除 | 新增缓存一致性配置、路由、执行器、读保护；删除旧双删服务 | 一期核心落地点 |
 
@@ -54,6 +56,7 @@
 | `DoubleDeleteCacheService` | 删除 | 旧“同步删 + 延迟第二删”实现废弃 | 与方案一致 |
 | `CacheCompensationMQ` | 新增 | 定义缓存补偿消息体 `event_id/cache_target/route_id/...` | 扁平 JSON |
 | `CacheCompensationKafkaReceiver` | 新增 | Kafka 侧接入缓存补偿消费者 | group 默认 `tolink-cache-evict` |
+| `UserLLMConfig` | 修复 | 把 `capabilities` 属性显式映射到真实列 `capability` | 修复 LLM 配置读写链路 SQL 报错 |
 
 ### 3.3 接口与配置改动清单
 
@@ -87,6 +90,7 @@
 | 读保护 | `CacheReadProtectionService` | 已用于用户资料与角色读取链路 |
 | provider key 统一 | `AdminProviderServiceImpl` | 更新/删除/启停全部按 `providerType` 删除 `llm:pvd` |
 | llm-config 驱逐联动 | `UserLLMConfigServiceImpl` | 配置更新/删除同时驱逐 `llm:cfg` 与 `llm:u_def` |
+| LLM 配置字段映射修复 | `UserLLMConfig` | 运行期库表实际列名为 `capability`，补充 `@TableField("capability")` 后恢复配置查询、更新与删除链路 |
 
 ### 4.3 未纳入实现的部分
 
@@ -115,11 +119,12 @@
 ### 6.1 当前已知风险
 
 - `link-api` 现有全量测试依赖本地 Redis/Kafka，当前沙箱下无法稳定跑完整套件。
-- `CacheReadProtectionService` 当前只在 `user` 域形成真实接入，其他缓存 owner service 还需二期迁移。
+- `CacheReadProtectionService` 当前只在 `user` 域形成真实接入，`provider` / `llm-config` 读链路仍需二期迁移。
+- `link-api` 的 `spring-boot:run` 默认优先从本地 `~/.m2` 解析模块依赖；联调时如只改源码未重新 `install`，运行实例可能继续吃旧 jar。
 
 ### 6.2 后续建议动作
 
-- 二期继续迁移 `llm-config` 读链路，补齐 owner service 闭环。
+- 二期继续迁移 `provider`、`llm-config` 读链路，补齐 owner service 闭环。
 - 为 Canal -> MQ 桥增加部署文档和验收脚本。
 - 在测试阶段补齐 Redis/Kafka 测试替身或测试容器方案。
 
@@ -129,5 +134,5 @@
 | :--- | :--- | :--- |
 | `feature_info.md` 已回填实现摘要 | 是 | 已更新当前状态与本期结果 |
 | `middleware_contract.md` 已按需更新 | 是 | Redis / MQ 契约已改写 |
-| `project_info.md` 已按需更新 | 否 | 待测试与交付阶段统一更新 |
+| `project_info.md` 已按需更新 | 是 | Redis / MQ 能力现状已同步回写 |
 | 已通知测试阶段关注实现差异 | 是 | 本报告已记录验证边界 |
