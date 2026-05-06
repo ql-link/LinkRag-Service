@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     timeout_ms          INT DEFAULT 60000,
     max_retries         INT DEFAULT 3,
     stream_enabled      BOOLEAN DEFAULT TRUE,
-    capabilities        JSON,
+    capability          VARCHAR(32) NOT NULL DEFAULT 'CHAT',
     extra_config        JSON,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -115,6 +115,10 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
 CREATE INDEX IF NOT EXISTS idx_sys_user_username ON sys_user(username);
 CREATE INDEX IF NOT EXISTS idx_sys_user_email ON sys_user(email);
 CREATE INDEX IF NOT EXISTS idx_llm_user_config_user_id ON llm_user_config(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_provider_model_capability
+    ON llm_user_config(user_id, provider_id, model_name, capability);
+CREATE INDEX IF NOT EXISTS idx_user_capability_default
+    ON llm_user_config(user_id, capability, is_active, is_default);
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_user_pinned_updated ON chat_conversation(user_id, is_pinned, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_dataset_updated ON chat_conversation(dataset_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_message_conversation_id ON chat_message(conversation_id);

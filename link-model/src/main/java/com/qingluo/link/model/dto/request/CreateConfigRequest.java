@@ -27,6 +27,9 @@ public class CreateConfigRequest {
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
 
+    @Schema(description = "入口能力筛选值。创建时后端仍会按模型支持的全部能力展开", example = "CHAT")
+    private String capability;
+
     @Schema(description = "优先级", example = "50")
     private Integer priority = 50;
 
@@ -41,6 +44,9 @@ public class CreateConfigRequest {
 
     @Schema(description = "是否启用流式响应", example = "true")
     private Boolean streamEnabled = true;
+
+    @Schema(description = "自定义API地址", example = "https://proxy.example.com/v1")
+    private String customApiBaseUrl;
 
     @Schema(description = "额外配置(JSON格式)")
     private String extraConfig;

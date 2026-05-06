@@ -205,8 +205,10 @@ class ConfigControllerTest {
                 .content(requestJson))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
-            .andExpect(jsonPath("$.data.configName").value("我的GPT-4"))
-            .andExpect(jsonPath("$.data.providerType").value("openai_config"))
+            .andExpect(jsonPath("$.data").isArray())
+            .andExpect(jsonPath("$.data[0].configName").value("我的GPT-4"))
+            .andExpect(jsonPath("$.data[0].providerType").value("openai_config"))
+            .andExpect(jsonPath("$.data[0].capability").value("CHAT"))
             .andReturn();
     }
 

@@ -43,9 +43,10 @@ public class ConfigController {
     @Operation(summary = "获取LLM配置列表", description = "获取当前用户配置的所有LLM API信息，包含已禁用的配置")
     public Result<List<UserLLMConfigDTO>> getConfigs(
             @Parameter(description = "厂商类型，如openai") @RequestParam(required = false) String providerType,
+            @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam(required = false) String capability,
             @Parameter(description = "启用状态") @RequestParam(required = false) Boolean isActive) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(userLLMConfigService.getConfigs(userId, providerType, isActive));
+        return Result.success(userLLMConfigService.getConfigs(userId, providerType, capability, isActive));
     }
 
     /**
@@ -57,10 +58,43 @@ public class ConfigController {
     @PostMapping
     @SaCheckLogin
     @Operation(summary = "创建LLM配置", description = "新增一个LLM API配置，API Key会自动加密存储")
-    public Result<UserLLMConfigDTO> createConfig(
+    public Result<List<UserLLMConfigDTO>> createConfig(
             @Valid @RequestBody CreateConfigRequest request) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         return Result.success(userLLMConfigService.createConfig(userId, request));
+    }
+
+    /**
+     * 查询某能力默认配置。
+     *
+     * @param capability 模型能力
+     * @return 当前用户该能力的默认配置
+     */
+    @GetMapping("/default")
+    @SaCheckLogin
+    @Operation(summary = "查询某能力默认配置", description = "按能力查询当前用户默认LLM配置")
+    public Result<UserLLMConfigDTO> getDefaultConfig(
+            @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam String capability) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(userLLMConfigService.getDefaultConfig(userId, capability));
+    }
+
+    /**
+     * 设置某能力默认配置。
+     *
+     * @param id         配置ID
+     * @param capability 模型能力
+     * @return 无返回内容
+     */
+    @PatchMapping("/{id}/default")
+    @SaCheckLogin
+    @Operation(summary = "设置某能力默认配置", description = "将当前用户的一条能力配置设置为该能力默认")
+    public Result<Void> setDefaultConfig(
+            @Parameter(description = "配置ID") @PathVariable Long id,
+            @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam String capability) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        userLLMConfigService.setDefaultConfig(userId, id, capability);
+        return Result.ok(null);
     }
 
     /**

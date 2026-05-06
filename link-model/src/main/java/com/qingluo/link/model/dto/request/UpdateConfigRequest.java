@@ -31,6 +31,9 @@ public class UpdateConfigRequest {
     @Schema(description = "是否启用流式响应", example = "true")
     private Boolean streamEnabled;
 
+    @Schema(description = "自定义API地址", example = "https://proxy.example.com/v1")
+    private String customApiBaseUrl;
+
     @Schema(description = "额外配置(JSON格式)")
     private String extraConfig;
 }

@@ -225,7 +225,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 | 业务域 | 负责的业务 | 当前能力 | 依赖的中间件/能力 |
 | --- | --- | --- | --- |
 | `user` | 用户身份与后台用户管理 | 注册、登录、个人信息、后台用户管理 | MySQL、Redis、sa-token |
-| `llm-config` | 厂商配置与用户模型配置 | 系统厂商管理、用户级 LLM 配置、默认配置切换 | MySQL、Redis、API Key 加密 |
+| `llm-config` | 厂商配置与用户模型配置 | 系统厂商管理、按能力查询模型、用户级 LLM 配置、每能力默认配置切换 | MySQL、Redis、API Key 加密 |
 | `chat` | 对话与消息历史 | 对话创建、列表查询、消息历史查询、删除 | MySQL |
 | `dataset` | 数据集管理 | 数据集创建、列表、详情、删除 | MySQL |
 | `storage` | 文件上传与对象存储协同 | 原始知识文件上传、文件记录管理、OSS 上传下载、公私有文件访问 | MySQL、OSS、MQ |
@@ -258,16 +258,21 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 
 - 负责内容：
   - 系统级厂商维护
+  - 用户侧按能力查询可用厂商和模型
   - 用户级 API Key / 模型配置维护
-  - 默认配置切换与配置启停
+  - 按能力默认配置切换与配置启停
 - 当前能力：
   - 系统厂商配置查询与维护
-  - 用户级模型配置增删改查
+  - 用户级模型配置增删改查，`llm_user_config` 一条记录对应一个模型能力
+  - 创建用户配置时按系统厂商模型能力拆分多条能力配置
+  - 支持同一用户每种能力一个默认配置
   - API Key 加密存储
-  - 配置变更后的缓存失效
+  - 配置变更后的缓存失效，默认配置缓存 `llm:u_def:{userId}` 语义为能力默认映射
 - 关键入口：
   - `ConfigController`
+  - `ProviderController`
   - `AdminController`
+  - `LLMCapabilityService`
   - `UserLLMConfigService`
   - `SystemProviderService`
   - `AdminProviderService`
@@ -466,6 +471,10 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 
 - 已完成用户、LLM 配置、对话、用量统计等基础管理能力
 - 已完成数据集、知识原始文件、解析文件相关能力
+- 2026-04-26：文件上传与解析协同重构一期已完成测试交付文档。当前一期只交付原文件上传链路：原文件上传到 `rag-raw`、原文件表记录上传事实、同名同后缀唯一约束、失败重试复用 `object_key`、上传中 1 分钟超时补偿、列表/详情/删除接口；MQ、Python 解析、解析进度和解析产物进入二期。
+- 2026-04-26：文件上传与解析协同重构二期已完成 Java 端代码实现与目标自动化测试。当前二期交付解析任务创建、上传后自动解析、手动解析、防重复点击、解析任务 MQ 投递、MQ 投递失败内部补偿、Python 进度回调转 SSE、按文件列表查询解析结果；Python 端真实解析、写库和真实 MQ 消费仍需联调确认。
+- 2026-04-29：文件上传表结构与业务流程重构一期已完成代码实现与测试交付，阶段目录为 `docs/模块开发文档/文件上传与解析重构/一期/`。当前上传成功后由 Java 初始化一对一 `document_parsed_file`，上传阶段不创建 `document_parse_log`、不投递解析 MQ；上传配置切换为 Redis key `knowledge:file-upload:config` + YAML fallback；原文件失败原因改为稳定编码，前端响应不暴露 OSS 内部定位字段。
+- 2026-05-06：LLM 能力与默认配置一期已完成 Java 侧代码实现与测试交付，阶段目录为 `docs/模块开发文档/LLM能力与默认配置/一期/`。当前系统厂商侧 `supported_models` 承载模型到能力列表映射，用户配置表收敛为 `capability` 单能力字段，创建配置会按模型能力拆分多条记录；用户默认配置作用域调整为 `user_id + capability`，Redis `llm:u_def:{userId}` 缓存用户能力默认映射，`llm:cfg:{configId}` 缓存单条配置详情。
 - 已落地 Redis、OSS、MQ 三类中间件组件
 
 ## 15. 维护要求

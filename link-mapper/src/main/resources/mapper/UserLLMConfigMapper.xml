@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qingluo.link.mapper.UserLLMConfigMapper">
+
+    <resultMap id="UserLLMConfigResultMap" type="com.qingluo.link.model.dto.entity.UserLLMConfig">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="providerId" column="provider_id"/>
+        <result property="providerType" column="provider_type"/>
+        <result property="providerName" column="provider_name"/>
+        <result property="configName" column="config_name"/>
+        <result property="apiKey" column="api_key"/>
+        <result property="customApiBaseUrl" column="custom_api_base_url"/>
+        <result property="modelName" column="model_name"/>
+        <result property="priority" column="priority"/>
+        <result property="isActive" column="is_active"/>
+        <result property="isDefault" column="is_default"/>
+        <result property="timeoutMs" column="timeout_ms"/>
+        <result property="maxRetries" column="max_retries"/>
+        <result property="streamEnabled" column="stream_enabled"/>
+        <result property="capability" column="capability"/>
+        <result property="extraConfig" column="extra_config"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, user_id, provider_id, provider_type, provider_name, config_name, api_key,
+        custom_api_base_url, model_name, priority, is_active, is_default, timeout_ms,
+        max_retries, stream_enabled, capability, extra_config, created_at, updated_at
+    </sql>
+
+    <select id="selectByUserConditions" resultMap="UserLLMConfigResultMap">
+        select
+        <include refid="BaseColumns"/>
+        from llm_user_config
+        <where>
+            user_id = #{userId}
+            <if test="providerType != null and providerType != ''">
+                and provider_type = #{providerType}
+            </if>
+            <if test="capability != null and capability != ''">
+                and capability = #{capability}
+            </if>
+            <if test="isActive != null">
+                and is_active = #{isActive}
+            </if>
+        </where>
+        order by priority desc, id asc
+    </select>
+
+    <select id="selectByIdAndUserId" resultMap="UserLLMConfigResultMap">
+        select
+        <include refid="BaseColumns"/>
+        from llm_user_config
+        where id = #{id}
+          and user_id = #{userId}
+        limit 1
+    </select>
+
+    <select id="selectDefaultByUserIdAndCapability" resultMap="UserLLMConfigResultMap">
+        select
+        <include refid="BaseColumns"/>
+        from llm_user_config
+        where user_id = #{userId}
+          and capability = #{capability}
+          and is_active = true
+          and is_default = true
+        order by priority desc, id asc
+        limit 1
+    </select>
+
+    <select id="selectDefaultsByUserId" resultMap="UserLLMConfigResultMap">
+        select
+        <include refid="BaseColumns"/>
+        from llm_user_config
+        where user_id = #{userId}
+          and is_active = true
+          and is_default = true
+        order by capability asc, priority desc, id asc
+    </select>
+
+    <select id="countByUserModelCapability" resultType="long">
+        select count(1)
+        from llm_user_config
+        where user_id = #{userId}
+          and provider_id = #{providerId}
+          and model_name = #{modelName}
+          and capability = #{capability}
+    </select>
+
+    <update id="clearDefaultByUserIdAndCapability">
+        update llm_user_config
+        set is_default = false
+        where user_id = #{userId}
+          and capability = #{capability}
+          <if test="excludeConfigId != null">
+              and id != #{excludeConfigId}
+          </if>
+    </update>
+
+</mapper>
