@@ -36,7 +36,7 @@ class StpInterfaceImplTest {
     @DisplayName("Should_ReturnRoleFromCache_When_CacheHit")
     void Should_ReturnRoleFromCache_When_CacheHit() {
         UserProfileDTO cached = buildDto(1L, UserRole.ADMIN);
-        given(userCacheService.get(1L)).willReturn(cached);
+        given(userCacheService.getOrLoad(eq(1L), any())).willReturn(cached);
 
         List<String> roles = stpInterface.getRoleList(1L, "login");
 
@@ -48,26 +48,30 @@ class StpInterfaceImplTest {
     @DisplayName("Should_QueryDbAndWriteCache_When_CacheMiss")
     void Should_QueryDbAndWriteCache_When_CacheMiss() {
         SysUser user = buildUser(2L, UserRole.USER);
-        given(userCacheService.get(2L)).willReturn(null);
         given(sysUserMapper.selectById(2L)).willReturn(user);
+        given(userCacheService.getOrLoad(eq(2L), any())).willAnswer(invocation -> {
+            Object loaded = invocation.getArgument(1, java.util.function.Supplier.class).get();
+            return loaded;
+        });
 
         List<String> roles = stpInterface.getRoleList(2L, "login");
 
         assertThat(roles).containsExactly("USER");
         verify(sysUserMapper).selectById(2L);
-        verify(userCacheService).put(eq(2L), any(UserProfileDTO.class));
     }
 
     @Test
     @DisplayName("Should_ReturnEmpty_When_CacheMissAndUserNotFound")
     void Should_ReturnEmpty_When_CacheMissAndUserNotFound() {
-        given(userCacheService.get(99L)).willReturn(null);
         given(sysUserMapper.selectById(99L)).willReturn(null);
+        given(userCacheService.getOrLoad(eq(99L), any())).willAnswer(invocation -> {
+            Object loaded = invocation.getArgument(1, java.util.function.Supplier.class).get();
+            return loaded;
+        });
 
         List<String> roles = stpInterface.getRoleList(99L, "login");
 
         assertThat(roles).isEmpty();
-        verify(userCacheService, never()).put(any(), any());
     }
 
     @Test

@@ -25,29 +25,27 @@ public class StpInterfaceImpl implements StpInterface {
     @Override
     public List<String> getRoleList(Object loginId, String loginType) {
         Long userId = (Long) loginId;
+        UserProfileDTO cached = userCacheService.getOrLoad(userId, () -> {
+            SysUser user = sysUserMapper.selectById(userId);
+            if (user == null || user.getRole() == null) {
+                return null;
+            }
+            UserProfileDTO dto = new UserProfileDTO();
+            dto.setId(user.getId());
+            dto.setUsername(user.getUsername());
+            dto.setNickname(user.getNickname());
+            dto.setEmail(user.getEmail());
+            dto.setPhone(user.getPhone());
+            dto.setAvatarUrl(user.getAvatarUrl());
+            dto.setRole(user.getRole());
+            dto.setStatus(user.getStatus());
+            return dto;
+        });
 
-        UserProfileDTO cached = userCacheService.get(userId);
-        if (cached != null) {
-            return List.of(cached.getRole());
-        }
-
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null || user.getRole() == null) {
+        if (cached == null || cached.getRole() == null) {
             return Collections.emptyList();
         }
-
-        UserProfileDTO dto = new UserProfileDTO();
-        dto.setId(user.getId());
-        dto.setUsername(user.getUsername());
-        dto.setNickname(user.getNickname());
-        dto.setEmail(user.getEmail());
-        dto.setPhone(user.getPhone());
-        dto.setAvatarUrl(user.getAvatarUrl());
-        dto.setRole(user.getRole());
-        dto.setStatus(user.getStatus());
-        userCacheService.put(userId, dto);
-
-        return List.of(user.getRole());
+        return List.of(cached.getRole());
     }
 
     @Override

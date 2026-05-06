@@ -2,6 +2,8 @@ package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.qingluo.link.components.redis.service.CacheConsistencyService;
+import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.SystemProviderMapper;
@@ -9,7 +11,6 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.response.PageResult;
-import com.qingluo.link.components.redis.service.DoubleDeleteCacheService;
 import com.qingluo.link.service.impl.admin.AdminProviderServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ class AdminProviderServiceImplTest {
     private SystemProviderMapper systemProviderMapper;
 
     @Mock
-    private DoubleDeleteCacheService doubleDeleteCacheService;
+    private CacheConsistencyService cacheConsistencyService;
 
     @InjectMocks
     private AdminProviderServiceImpl adminProviderService;
@@ -71,7 +72,7 @@ class AdminProviderServiceImplTest {
         adminProviderService.createProvider(request);
 
         verify(systemProviderMapper).insert(any(SystemProvider.class));
-        verify(doubleDeleteCacheService).evictProviderCache("openai");
+        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -99,7 +100,7 @@ class AdminProviderServiceImplTest {
         adminProviderService.updateProvider(1L, request);
 
         verify(systemProviderMapper).updateById(any(SystemProvider.class));
-        verify(doubleDeleteCacheService).evictProviderCache("1");
+        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -125,7 +126,7 @@ class AdminProviderServiceImplTest {
         adminProviderService.deleteProvider(1L);
 
         verify(systemProviderMapper).deleteById(1L);
-        verify(doubleDeleteCacheService).evictProviderCache("1");
+        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -148,7 +149,7 @@ class AdminProviderServiceImplTest {
         adminProviderService.toggleActive(1L, false);
 
         verify(systemProviderMapper).updateById(any(SystemProvider.class));
-        verify(doubleDeleteCacheService).evictProviderCache("1");
+        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     // ---- helpers ----

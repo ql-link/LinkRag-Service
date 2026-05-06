@@ -90,7 +90,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 
 | 通用能力 | 负责的功能 | 当前服务的业务域 | 关键入口 |
 | --- | --- | --- | --- |
-| Redis 缓存能力 | 缓存读优化、缓存失效、双删一致性 | `user`、`llm-config` | `DoubleDeleteCacheService`、`UserCacheService` |
+| Redis 缓存能力 | 缓存读优化、缓存失效、同步删缓存 + CDC 二次删除补偿 | `user`、`llm-config` | `CacheConsistencyService`、`CacheReadProtectionService`、`UserCacheService` |
 | OSS 文件存储能力 | 文件上传、对象存储、公私有访问、私有文件本地解析 | `storage` | `IOssService`、`PrivateFileResolver`、`OssApplicationService` |
 | MQ 异步协作能力 | 异步任务投递、结果回传、多厂商 MQ 适配 | `mq`、`storage` | `MQSend`、`KnowledgeParseResultMQ` |
 | 鉴权与用户上下文能力 | 登录校验、角色鉴权、当前用户识别 | `user`、`llm-config`、`chat`、`dataset`、`storage` | `sa-token`、`AuthContext`、`StpInterfaceImpl` |
@@ -103,21 +103,26 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 负责内容：
   - 高读频数据的缓存读优化
   - 配置与用户信息相关缓存失效
-  - 双删缓存一致性保障
+  - 同步删缓存与 CDC 二次删除补偿
+  - 缓存击穿、穿透、雪崩基础防护
 - 当前服务的业务域：
   - `user`
   - `llm-config`
 - 当前能力：
   - 提供 `RedisTemplate` 与 `RedisUtils`
-  - 提供 `DoubleDeleteCacheService`
-  - 已落地用户信息缓存与配置类缓存失效能力
+  - 提供 `CacheConsistencyService`
+  - 提供 `CacheKeyRouter` 与 `CacheEvictTarget`
+  - 提供 `CacheReadProtectionService`
+  - 已落地用户信息读链路的空值缓存、回源合并与 TTL 抖动保护
+  - 已落地 `user`、`provider`、`llm-config` 写路径同步删缓存入口
 - 关键入口：
   - `link-components/toLink-components-redis`
-  - `DoubleDeleteCacheService`
+  - `CacheConsistencyService`
+  - `CacheReadProtectionService`
   - `UserCacheService` / `UserCacheServiceImpl`
 - 什么时候优先复用：
   - 读多写少、允许 DB 回源的数据
-  - 需要缓存失效或双删的配置类数据
+  - 需要统一缓存失效、补偿删除和击穿/穿透/雪崩保护的数据
 
 #### OSS 文件存储能力
 
@@ -151,12 +156,18 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 - 当前服务的业务域：
   - `mq`
   - `storage`
+  - `cache`
 - 当前能力：
   - `AbstractMQ`、`MQSend`、`MQMsgReceiver`
   - Kafka / RabbitMQ 适配
   - 已落地解析任务与解析结果两条链路
+  - 已新增缓存补偿主题 `tolink.cache.evict` 与 Java 消费入口
 - 关键入口：
   - `link-components/toLink-components-mq`
+  - `KnowledgeParseTaskMQ`
+  - `CacheCompensationMQ`
+  - `KnowledgeParseTaskService`
+  - `KnowledgeParseSseService`
   - `KnowledgeParseResultMQ`
   - `KnowledgeParseResultKafkaReceiver`
   - `KnowledgeFileServiceImpl.KnowledgeParseTaskMQ`

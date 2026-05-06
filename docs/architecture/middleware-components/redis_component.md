@@ -7,7 +7,9 @@ Redis 组件是项目的缓存 framework，负责提供：
 - Redis 基础配置
 - 统一的 `RedisTemplate<String, Object>`
 - 静态工具类 `RedisUtils`
-- 双删缓存服务 `DoubleDeleteCacheService`
+- 同步删缓存执行器 `CacheConsistencyService`
+- key 路由 `CacheKeyRouter`
+- 读保护服务 `CacheReadProtectionService`
 
 它解决的是“如何接入和使用 Redis 缓存”，不是“某个具体业务缓存怎么设计”。
 
@@ -20,10 +22,13 @@ Redis 组件是项目的缓存 framework，负责提供：
 
 | 代码 | 作用 |
 | --- | --- |
-| `RedisAutoConfiguration` | 自动装配 Redis 组件，并注册 `RedisUtils` 初始化与延迟删除线程池 |
+| `RedisAutoConfiguration` | 自动装配 Redis 组件，并注册 `RedisUtils` 初始化与缓存一致性配置 |
 | `RedisConfig` | RedisTemplate 配置 |
 | `RedisUtils` | 常用 Redis 操作工具类 |
-| `DoubleDeleteCacheService` | 提供双删缓存失效能力 |
+| `CacheConsistencyProperties` | 统一同步删预算、空值 TTL、TTL 抖动配置 |
+| `CacheEvictTarget` / `CacheKeyRouter` | 统一逻辑缓存目标与 Redis key 映射 |
+| `CacheConsistencyService` | 提供同步删缓存与补偿删缓存执行能力 |
+| `CacheReadProtectionService` | 提供空值缓存、回源合并、TTL 抖动 |
 
 ## 4. 这个组件能做什么
 
@@ -46,17 +51,31 @@ Redis 组件是项目的缓存 framework，负责提供：
 - hash 结构缓存
 - 带 TTL 的快速缓存能力
 
-### 4.2 `DoubleDeleteCacheService`
+### 4.2 `CacheConsistencyService`
 
-提供双删能力：
+提供统一删缓存能力：
 
-- 先同步删一次
-- 延迟再删一次
+- 写库成功后同步删缓存
+- 在统一时间预算内快速重试
+- 供 CDC 补偿消费者复用相同 key 路由
 
 适合场景：
 
-- 先更新数据库，再失效缓存
-- 需要降低脏缓存窗口
+- 先更新数据库，再立即删除缓存
+- 需要和 Canal / MQ 二次删除补偿共享同一套 key 契约
+
+### 4.3 `CacheReadProtectionService`
+
+提供统一读保护能力：
+
+- 空值缓存
+- 单 key 回源并发合并
+- TTL 抖动
+
+适合场景：
+
+- 高读频、可回源缓存
+- 需要统一治理击穿、穿透、雪崩
 
 ## 5. AI 什么时候应该用这个组件
 
@@ -82,6 +101,7 @@ Redis 组件是项目的缓存 framework，负责提供：
 通常写法：
 
 1. 在业务模块注入 `RedisTemplate<String, Object>` 或 `DoubleDeleteCacheService`
+1. 在业务模块优先注入 cache owner service；若必须直接驱逐，则注入 `CacheConsistencyService`
 2. 在 Service 层写缓存读写逻辑
 3. key 命名、TTL 和失效规则写进 `technical_design.md`
 4. 若新增公共 key 规则，再同步 `middleware_contract.md`
@@ -99,12 +119,13 @@ Redis 组件是项目的缓存 framework，负责提供：
 - 业务缓存封装：`link-service/.../service/cache/`
 - 通用 Redis framework 代码：`link-components/toLink-components-redis/`
 
-### 6.3 想新增双删能力
+### 6.3 想新增统一删缓存能力
 
 推荐做法：
 
-1. 如果只是新增某类 key 的双删，优先在 `DoubleDeleteCacheService` 里增加一个明确方法
-2. 不要在业务代码里到处手写两次 delete
+1. 先在 `CacheEvictTarget` 和 `CacheKeyRouter` 里补齐逻辑目标与 key 映射
+2. 业务层统一调用 `CacheConsistencyService`
+3. 不要在业务代码里散落写 `redisTemplate.delete(...)`
 
 ## 7. AI 需要写哪些代码
 
@@ -127,7 +148,7 @@ Redis 组件是项目的缓存 framework，负责提供：
 只有在下面情况才应该改 framework 模块：
 
 - 现有 `RedisUtils` 能力不够
-- 现有双删能力抽象不够
+- 现有同步删或读保护抽象不够
 - 需要统一新的 Redis 使用模式
 
 这类代码应放在：

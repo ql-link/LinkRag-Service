@@ -2,6 +2,8 @@ package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.qingluo.link.components.redis.service.CacheConsistencyService;
+import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.model.dto.request.CreateConfigRequest;
 import com.qingluo.link.model.dto.request.UpdateConfigRequest;
 import com.qingluo.link.model.dto.response.UserLLMConfigDTO;
@@ -11,7 +13,6 @@ import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.service.SystemProviderService;
 import com.qingluo.link.service.UserLLMConfigService;
-import com.qingluo.link.components.redis.service.DoubleDeleteCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +29,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     private final UserLLMConfigMapper userLLMConfigMapper;
     private final SystemProviderService systemProviderService;
     private final ApiKeyEncryptService apiKeyEncryptService;
-    private final DoubleDeleteCacheService doubleDeleteCacheService;
+    private final CacheConsistencyService cacheConsistencyService;
 
     @Override
     /**
@@ -124,7 +125,8 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         }
 
         userLLMConfigMapper.updateById(config);
-        doubleDeleteCacheService.evictConfigCache(String.valueOf(configId));
+        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, configId);
+        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
     @Override
@@ -135,7 +137,8 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     public void deleteConfig(Long userId, Long configId) {
         UserLLMConfig config = getConfigOrThrow(userId, configId);
         userLLMConfigMapper.deleteById(configId);
-        doubleDeleteCacheService.evictConfigCache(String.valueOf(configId));
+        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, configId);
+        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
     @Override

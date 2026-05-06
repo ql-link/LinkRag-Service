@@ -34,7 +34,8 @@ public enum ErrorCode {
     UNAUTHORIZED_ACCESS(20005, "无权访问该对话内容", 403),
 
     // 系统错误 (50001-59999)
-    UNKNOWN_ERROR(50001, "系统内部错误", 500);
+    UNKNOWN_ERROR(50001, "系统内部错误", 500),
+    CACHE_DELETE_FAILED(50002, "缓存删除失败", 500);
 
     private final int code;
     private final String message;

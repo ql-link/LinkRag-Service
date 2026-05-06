@@ -95,19 +95,13 @@ public class AuthServiceImpl implements AuthService {
      * 获取当前用户资料，优先走缓存。
      */
     public UserProfileDTO getProfile(Long userId) {
-        UserProfileDTO cached = userCacheService.get(userId);
-        if (cached != null) {
-            return cached;
-        }
-
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null) {
-            throw AuthException.userNotFound();
-        }
-
-        UserProfileDTO dto = toDTO(user);
-        userCacheService.put(userId, dto);
-        return dto;
+        return userCacheService.getOrLoad(userId, () -> {
+            SysUser user = sysUserMapper.selectById(userId);
+            if (user == null) {
+                throw AuthException.userNotFound();
+            }
+            return toDTO(user);
+        });
     }
 
     @Override
