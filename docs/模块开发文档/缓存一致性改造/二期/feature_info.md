@@ -5,7 +5,7 @@
 - 模块名称：缓存一致性改造
 - 当前期次：二期
 - 业务域：platform / llm-config / provider
-- 当前状态：技术方案待审核
+- 当前状态：测试交付完成，待远端部署联调
 - 复杂度等级：L3
 - 当前分支：refactor/cache-consistency-cdc
 
@@ -67,6 +67,7 @@
   - `provider`、`llm-config` 读链路尚未形成 owner service 闭环
   - 空值缓存、击穿保护、TTL 抖动仍偏向单业务实现
   - 未来新增缓存业务缺少统一复用模板
+  - 远端 `llm_user_config` 仍需发布前迁移唯一索引，才能完整支持同模型多能力拆行
 
 ## 6. 推荐阅读顺序
 
@@ -86,7 +87,7 @@
   - `provider`、`llm-config` 各自的 owner service 与批量补详情实现
   - 空值缓存、回源合并与 TTL 策略的统一参数口径
 - 实现完成后回填：
-  - 实际落地的共享模块范围
-  - 首批接入读接口清单
+  - 实际落地的共享模块范围：复用 `CacheReadProtectionService`，新增 `UserLLMConfigCacheService` 接入 `llm:cfg` 与 `llm:u_def`
+  - 首批接入读接口清单：`UserLLMConfigService#getDefaultConfig(userId, capability)`、配置详情缓存读取
   - Canal 文档完成情况：已新增 `canal_deployment.md`，覆盖 MySQL binlog、Canal、CDC 转换桥、Kafka、Java 消费端、验证与回滚方案
-  - 测试与遗留风险结论
+  - 测试与遗留风险结论：`mvn -pl link-api -am test` 通过；远端 Canal / CDC 部署联调与 `llm_user_config` 索引迁移仍为发布前置项
