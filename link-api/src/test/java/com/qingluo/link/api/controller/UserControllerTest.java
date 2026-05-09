@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.mapper.SysUserMapper;
+import com.qingluo.link.service.cache.UserCacheService;
 import org.junit.jupiter.api.*;
 import org.mockito.invocation.InvocationOnMock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -79,6 +81,9 @@ class UserControllerTest {
      */
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @MockBean
+    private UserCacheService userCacheService;
 
     /**
      * 测试用户 ID
