@@ -439,6 +439,7 @@ link-components (toLink-components-redis, toLink-components-mq, toLink-component
 | `docs/组件和数据库约定/middleware_contract.md` | 跨模块公共契约规则文档 |
 | `docs/组件和数据库约定/middleware-components/*.md` | 中间件组件说明书 |
 | `docs/模块开发文档/` | 按每次模块开发归档的需求、设计、实现、测试交付文档 |
+| `.agents/skills/lark-sync/lark_resources.md` | Lark / 飞书固定资源入口，记录组织文档、Wiki、共享文件夹与多维表格访问入口 |
 | `docs/db/schema.sql` | 数据库结构定义 |
 | `docs/db/init.sql` | 初始化数据脚本 |
 
