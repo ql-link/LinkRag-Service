@@ -3,7 +3,7 @@ package com.qingluo.link.service.mq;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.qingluo.link.components.mq.AbstractMQ;
-import com.qingluo.link.components.mq.MQSendType;
+import com.qingluo.link.components.mq.constant.MQSendType;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import lombok.AllArgsConstructor;
 import lombok.Data;
