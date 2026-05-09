@@ -31,7 +31,7 @@ public class ThreadPoolConfig {
     @Value("${thread-pool.thread-name-prefix}")
     private String threadNamePrefix;
 
-    @Bean("customThreadPool")
+    @Bean({"customThreadPool", "knowledgeFileUploadExecutor"})
     public Executor customThreadPool() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         // 1. 核心线程数

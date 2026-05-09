@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     timeout_ms          INT DEFAULT 60000,
     max_retries         INT DEFAULT 3,
     stream_enabled      BOOLEAN DEFAULT TRUE,
-    capabilities        JSON,
+    capability          VARCHAR(32) NOT NULL DEFAULT 'CHAT',
     extra_config        JSON,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
     last_model_name VARCHAR(128),
     title           VARCHAR(255),
     is_pinned       BOOLEAN DEFAULT FALSE,
+    is_deleted      BOOLEAN DEFAULT FALSE,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -133,7 +134,18 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     file_url                   VARCHAR(1024),
     upload_status              VARCHAR(20) NOT NULL DEFAULT 'uploading',
     is_upload_success          BOOLEAN NOT NULL DEFAULT FALSE,
+    parse_notice_status        VARCHAR(20),
+    parse_task_id              VARCHAR(64),
+    parse_status               VARCHAR(20),
+    is_parse_success           BOOLEAN,
+    parsed_bucket_name         VARCHAR(64),
+    parsed_object_key          VARCHAR(512),
+    parsed_file_url            VARCHAR(1024),
+    parsed_at                  DATETIME,
+    parse_failure_reason       VARCHAR(512),
     failure_reason             VARCHAR(512),
+    parse_notice_retry_count   INT NOT NULL DEFAULT 0,
+    last_parse_notice_at       DATETIME,
     created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
