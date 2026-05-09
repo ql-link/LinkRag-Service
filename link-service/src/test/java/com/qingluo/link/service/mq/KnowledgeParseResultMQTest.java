@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

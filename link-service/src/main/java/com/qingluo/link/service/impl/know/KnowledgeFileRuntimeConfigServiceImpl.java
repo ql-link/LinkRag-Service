@@ -7,6 +7,7 @@ import com.qingluo.link.service.config.KnowledgeFileConfigNormalizer;
 import com.qingluo.link.service.config.KnowledgeFileProperties;
 import com.qingluo.link.service.config.KnowledgeFileRuntimeConfig;
 import java.util.LinkedHashSet;
+import java.util.Set;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
