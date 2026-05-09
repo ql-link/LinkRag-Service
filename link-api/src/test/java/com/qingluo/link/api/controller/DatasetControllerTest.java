@@ -166,8 +166,10 @@ class DatasetControllerTest {
 
         Integer datasetCount = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM dataset WHERE id = ?", Integer.class, datasetId);
-        Integer conversationCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM chat_conversation WHERE dataset_id = ?", Integer.class, datasetId);
+        Integer activeConversationCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM chat_conversation WHERE dataset_id = ? AND is_deleted = false",
+            Integer.class,
+            datasetId);
         Integer fileCount = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ?", Integer.class, datasetId);
         Integer parsedFileCount = jdbcTemplate.queryForObject(
@@ -176,7 +178,7 @@ class DatasetControllerTest {
             "SELECT COUNT(*) FROM chat_message WHERE conversation_id = ?", Integer.class, conversationId);
 
         assertThat(datasetCount).isEqualTo(0);
-        assertThat(conversationCount).isEqualTo(0);
+        assertThat(activeConversationCount).isEqualTo(0);
         assertThat(fileCount).isEqualTo(0);
         assertThat(parsedFileCount).isEqualTo(0);
         assertThat(messageCount).isEqualTo(0);

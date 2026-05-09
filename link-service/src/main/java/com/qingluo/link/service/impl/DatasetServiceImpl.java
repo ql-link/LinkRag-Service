@@ -11,9 +11,13 @@ import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.KnowledgeParsedFileMapper;
+import com.qingluo.link.mapper.KnowledgeParseTaskMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
+import com.qingluo.link.model.dto.entity.KnowledgeParsedFile;
+import com.qingluo.link.model.dto.entity.KnowledgeParseTask;
 import com.qingluo.link.model.dto.request.CreateDatasetRequest;
 import com.qingluo.link.model.dto.response.DatasetDTO;
 import com.qingluo.link.model.dto.response.PageResult;
@@ -40,6 +44,8 @@ public class DatasetServiceImpl implements DatasetService {
     private final ChatConversationMapper chatConversationMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final KnowledgeParsedFileMapper knowledgeParsedFileMapper;
+    private final KnowledgeParseTaskMapper knowledgeParseTaskMapper;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
 
@@ -120,6 +126,10 @@ public class DatasetServiceImpl implements DatasetService {
 
             knowledgeOriginalFileMapper.delete(new LambdaQueryWrapper<KnowledgeOriginalFile>()
                 .eq(KnowledgeOriginalFile::getDatasetId, dataset.getId()));
+            knowledgeParsedFileMapper.delete(new LambdaQueryWrapper<KnowledgeParsedFile>()
+                .eq(KnowledgeParsedFile::getDatasetId, dataset.getId()));
+            knowledgeParseTaskMapper.delete(new LambdaQueryWrapper<KnowledgeParseTask>()
+                .eq(KnowledgeParseTask::getDatasetId, dataset.getId()));
             chatConversationMapper.delete(new LambdaQueryWrapper<ChatConversation>()
                 .eq(ChatConversation::getDatasetId, dataset.getId()));
             datasetMapper.deleteById(dataset.getId());

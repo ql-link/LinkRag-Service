@@ -122,4 +122,4 @@ thread-pool:
   # 存活时间
   keep-alive-seconds: 60
   # 线程名称前缀
-  thread-name-prefix: custom-thread-
+  thread-name-prefix: knowledge-file-upload-

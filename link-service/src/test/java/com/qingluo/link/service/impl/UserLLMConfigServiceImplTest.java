@@ -8,6 +8,7 @@ import com.qingluo.link.model.dto.request.UpdateConfigRequest;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.SystemProviderService;
 import com.qingluo.link.service.cache.UserLLMConfigCacheService;
+import com.qingluo.link.service.impl.llm.UserLLMConfigServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
