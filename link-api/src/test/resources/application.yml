@@ -43,6 +43,10 @@ logging:
   level:
     com.qingluo.link: debug
 
+tolink:
+  cache-consistency:
+    sync-delete-required: false
+
 ############## 线程池配置 ##############
 thread-pool:
   core-pool-size: 5

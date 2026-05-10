@@ -2,12 +2,15 @@ package com.qingluo.link.service.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.qingluo.link.components.redis.service.DoubleDeleteCacheService;
+import com.qingluo.link.components.redis.service.CacheConsistencyService;
+import com.qingluo.link.components.redis.service.CacheEvictTarget;
+import com.qingluo.link.components.redis.service.CacheReadProtectionService;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.function.Supplier;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -21,7 +24,8 @@ public class UserCacheServiceImpl implements UserCacheService {
             new ObjectMapper().registerModule(new JavaTimeModule());
 
     private final RedisTemplate<String, Object> redisTemplate;
-    private final DoubleDeleteCacheService doubleDeleteCacheService;
+    private final CacheConsistencyService cacheConsistencyService;
+    private final CacheReadProtectionService cacheReadProtectionService;
 
     @Override
     public void put(Long userId, UserProfileDTO dto) {
@@ -41,7 +45,18 @@ public class UserCacheServiceImpl implements UserCacheService {
     }
 
     @Override
+    public UserProfileDTO getOrLoad(Long userId, Supplier<UserProfileDTO> loader) {
+        return cacheReadProtectionService.getOrLoad(
+                KEY_PREFIX + userId,
+                UserProfileDTO.class,
+                TTL_DAYS,
+                TimeUnit.DAYS,
+                loader
+        );
+    }
+
+    @Override
     public void evict(Long userId) {
-        doubleDeleteCacheService.evictUserInfoCache(String.valueOf(userId));
+        cacheConsistencyService.evict(CacheEvictTarget.USER, userId);
     }
 }

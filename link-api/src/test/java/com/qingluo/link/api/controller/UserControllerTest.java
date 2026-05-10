@@ -6,6 +6,7 @@ import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.mapper.SysUserMapper;
 import org.junit.jupiter.api.*;
+import org.mockito.invocation.InvocationOnMock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +17,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import com.qingluo.link.service.cache.UserCacheService;
 
+import java.util.function.Supplier;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -137,6 +143,16 @@ class UserControllerTest {
         // 编程式登录
         StpUtil.login(TEST_USER_ID);
         token = StpUtil.getTokenValue();
+    }
+
+    @BeforeEach
+    void setupUserCacheMock() {
+        given(userCacheService.getOrLoad(anyLong(), any())).willAnswer(this::loadFromSupplier);
+    }
+
+    private Object loadFromSupplier(InvocationOnMock invocation) {
+        Supplier<?> loader = invocation.getArgument(1);
+        return loader.get();
     }
 
     /**

@@ -1,6 +1,8 @@
 package com.qingluo.link.service.cache;
 
-import com.qingluo.link.components.redis.service.DoubleDeleteCacheService;
+import com.qingluo.link.components.redis.service.CacheConsistencyService;
+import com.qingluo.link.components.redis.service.CacheEvictTarget;
+import com.qingluo.link.components.redis.service.CacheReadProtectionService;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.util.function.Supplier;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,7 +31,10 @@ class UserCacheServiceImplTest {
     private ValueOperations<String, Object> valueOperations;
 
     @Mock
-    private DoubleDeleteCacheService doubleDeleteCacheService;
+    private CacheConsistencyService cacheConsistencyService;
+
+    @Mock
+    private CacheReadProtectionService cacheReadProtectionService;
 
     @InjectMocks
     private UserCacheServiceImpl userCacheService;
@@ -69,11 +75,30 @@ class UserCacheServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_CallDoubleDelete_When_Evict")
-    void Should_CallDoubleDelete_When_Evict() {
+    @DisplayName("Should_DelegateToReadProtection_When_GetOrLoad")
+    void Should_DelegateToReadProtection_When_GetOrLoad() {
+        UserProfileDTO dto = buildDto(1L, "alice", "USER");
+        @SuppressWarnings("unchecked")
+        Supplier<UserProfileDTO> loader = org.mockito.Mockito.mock(Supplier.class);
+        given(cacheReadProtectionService.getOrLoad(
+                eq("user:info:1"),
+                eq(UserProfileDTO.class),
+                eq(7L),
+                eq(TimeUnit.DAYS),
+                eq(loader)
+        )).willReturn(dto);
+
+        UserProfileDTO result = userCacheService.getOrLoad(1L, loader);
+
+        assertThat(result).isEqualTo(dto);
+    }
+
+    @Test
+    @DisplayName("Should_CallCacheConsistency_When_Evict")
+    void Should_CallCacheConsistency_When_Evict() {
         userCacheService.evict(1L);
 
-        verify(doubleDeleteCacheService).evictUserInfoCache("1");
+        verify(cacheConsistencyService).evict(CacheEvictTarget.USER, 1L);
     }
 
     private UserProfileDTO buildDto(Long id, String username, String role) {

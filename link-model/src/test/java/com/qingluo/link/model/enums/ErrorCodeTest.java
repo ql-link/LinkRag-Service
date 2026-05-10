@@ -17,6 +17,7 @@ class ErrorCodeTest {
         assertNotNull(ErrorCode.USER_NOT_FOUND);
         assertNotNull(ErrorCode.INVALID_PASSWORD);
         assertNotNull(ErrorCode.CONVERSATION_NOT_FOUND);
+        assertNotNull(ErrorCode.CACHE_DELETE_FAILED);
     }
 
     @Test
@@ -26,6 +27,7 @@ class ErrorCodeTest {
         assertEquals(20001, ErrorCode.USER_NOT_FOUND.getCode());
         assertEquals(20002, ErrorCode.INVALID_PASSWORD.getCode());
         assertEquals(50001, ErrorCode.UNKNOWN_ERROR.getCode());
+        assertEquals(50002, ErrorCode.CACHE_DELETE_FAILED.getCode());
     }
 
     @Test
@@ -35,6 +37,7 @@ class ErrorCodeTest {
         assertEquals(401, ErrorCode.INVALID_PASSWORD.getHttpStatus());
         assertEquals(403, ErrorCode.AUTH_DISABLED.getHttpStatus());
         assertEquals(409, ErrorCode.DUPLICATE_USER_CONFIG.getHttpStatus());
+        assertEquals(500, ErrorCode.CACHE_DELETE_FAILED.getHttpStatus());
     }
 
     @Test
@@ -42,5 +45,6 @@ class ErrorCodeTest {
         assertEquals("系统厂商不存在", ErrorCode.PROVIDER_NOT_FOUND.getMessage());
         assertEquals("用户不存在", ErrorCode.USER_NOT_FOUND.getMessage());
         assertEquals("密码错误", ErrorCode.INVALID_PASSWORD.getMessage());
+        assertEquals("缓存删除失败", ErrorCode.CACHE_DELETE_FAILED.getMessage());
     }
 }

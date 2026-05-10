@@ -82,7 +82,7 @@ class AuthServiceImplTest {
     @DisplayName("Should_ReturnFromCache_When_CacheHit")
     void Should_ReturnFromCache_When_CacheHit() {
         UserProfileDTO cached = buildDto(1L, "alice", UserRole.USER);
-        given(userCacheService.get(1L)).willReturn(cached);
+        given(userCacheService.getOrLoad(eq(1L), any())).willReturn(cached);
 
         UserProfileDTO result = authService.getProfile(1L);
 
@@ -94,15 +94,17 @@ class AuthServiceImplTest {
     @DisplayName("Should_QueryDbAndWriteCache_When_CacheMiss")
     void Should_QueryDbAndWriteCache_When_CacheMiss() {
         SysUser user = buildUser(2L, "bob", UserRole.ADMIN);
-        given(userCacheService.get(2L)).willReturn(null);
         given(sysUserMapper.selectById(2L)).willReturn(user);
+        given(userCacheService.getOrLoad(eq(2L), any())).willAnswer(invocation -> {
+            Object loaded = invocation.getArgument(1, java.util.function.Supplier.class).get();
+            return loaded;
+        });
 
         UserProfileDTO result = authService.getProfile(2L);
 
         assertThat(result.getUsername()).isEqualTo("bob");
         assertThat(result.getRole()).isEqualTo("ADMIN");
         verify(sysUserMapper).selectById(2L);
-        verify(userCacheService).put(eq(2L), any(UserProfileDTO.class));
     }
 
     // ---- updateProfile ----

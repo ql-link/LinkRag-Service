@@ -2,7 +2,8 @@ package com.qingluo.link.service.impl.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.qingluo.link.components.redis.service.DoubleDeleteCacheService;
+import com.qingluo.link.components.redis.service.CacheConsistencyService;
+import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.SystemProviderMapper;
@@ -24,7 +25,7 @@ import org.springframework.util.StringUtils;
 public class AdminProviderServiceImpl implements AdminProviderService {
 
     private final SystemProviderMapper systemProviderMapper;
-    private final DoubleDeleteCacheService doubleDeleteCacheService;
+    private final CacheConsistencyService cacheConsistencyService;
 
     @Override
     /**
@@ -61,7 +62,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         provider.setPriority(request.getPriority());
 
         systemProviderMapper.insert(provider);
-        doubleDeleteCacheService.evictProviderCache(request.getProviderType());
+        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, request.getProviderType());
     }
 
     @Override
@@ -94,7 +95,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
 
         systemProviderMapper.updateById(provider);
-        doubleDeleteCacheService.evictProviderCache(String.valueOf(id));
+        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
     }
 
     @Override
@@ -108,7 +109,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
 
         systemProviderMapper.deleteById(id);
-        doubleDeleteCacheService.evictProviderCache(String.valueOf(id));
+        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
     }
 
     @Override
@@ -123,6 +124,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
         provider.setIsActive(isActive);
         systemProviderMapper.updateById(provider);
-        doubleDeleteCacheService.evictProviderCache(String.valueOf(id));
+        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
     }
 }
