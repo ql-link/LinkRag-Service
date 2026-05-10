@@ -30,11 +30,11 @@ public class AuthController {
     /**
      * 用户登录
      *
-     * @param request 登录请求（username, password）
+     * @param request 登录请求（account, password）
      * @return 认证结果（accessToken, userId）
      */
     @PostMapping("/login")
-    @Operation(summary = "用户登录", description = "使用用户名密码登录，返回访问令牌")
+    @Operation(summary = "用户登录", description = "使用用户名或邮箱加密码登录，返回访问令牌")
     public Result<AuthResult> login(@Valid @RequestBody LoginRequest request) {
         return Result.success(authService.login(request));
     }
@@ -42,11 +42,11 @@ public class AuthController {
     /**
      * 用户注册
      *
-     * @param request 注册信息（username, password, nickname, email）
+     * @param request 注册信息（username, password, email）
      * @return 注册结果（userId）
      */
     @PostMapping("/register")
-    @Operation(summary = "用户注册", description = "新用户注册，自动分配普通用户角色")
+    @Operation(summary = "用户注册", description = "新用户注册，自动生成默认昵称并分配普通用户角色")
     public Result<AuthResult> register(@Valid @RequestBody RegisterRequest request) {
         return Result.success(authService.register(request));
     }

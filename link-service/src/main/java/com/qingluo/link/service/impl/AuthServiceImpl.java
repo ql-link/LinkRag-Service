@@ -1,7 +1,6 @@
 package com.qingluo.link.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.core.exception.ConflictException;
 import com.qingluo.link.mapper.SysUserMapper;
@@ -15,9 +14,11 @@ import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
 import com.qingluo.link.service.cache.UserCacheService;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
  * 认证服务实现
@@ -35,9 +36,8 @@ public class AuthServiceImpl implements AuthService {
      * 校验账号密码并创建登录态。
      */
     public AuthResult login(LoginRequest request) {
-        SysUser user = sysUserMapper.selectOne(
-            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername())
-        );
+        String account = normalizeRequired(request.getAccount());
+        SysUser user = sysUserMapper.selectByAccount(account);
 
         if (user == null) {
             throw AuthException.userNotFound();
@@ -60,18 +60,23 @@ public class AuthServiceImpl implements AuthService {
      * 注册新用户并自动登录。
      */
     public AuthResult register(RegisterRequest request) {
-        SysUser existUser = sysUserMapper.selectOne(
-            new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername())
-        );
+        String username = normalizeRequired(request.getUsername());
+        SysUser existUser = sysUserMapper.selectByUsername(username);
         if (existUser != null) {
-            throw new ConflictException(ErrorCode.DUPLICATE_USER_CONFIG, "用户名已存在");
+            throw new ConflictException(ErrorCode.DUPLICATE_USERNAME);
+        }
+
+        String email = normalizeRequired(request.getEmail());
+        SysUser existEmailUser = sysUserMapper.selectByEmail(email);
+        if (existEmailUser != null) {
+            throw new ConflictException(ErrorCode.DUPLICATE_EMAIL);
         }
 
         SysUser user = new SysUser();
-        user.setUsername(request.getUsername());
+        user.setUsername(username);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setNickname(request.getNickname());
-        user.setEmail(request.getEmail());
+        user.setNickname(generateDefaultNickname());
+        user.setEmail(email);
         user.setRole(UserRole.USER.name());
         user.setStatus(1);
 
@@ -124,7 +129,14 @@ public class AuthServiceImpl implements AuthService {
             user.setNickname(request.getNickname());
         }
         if (request.getEmail() != null) {
-            user.setEmail(request.getEmail());
+            String email = normalizeOptional(request.getEmail());
+            if (email != null && !email.equals(user.getEmail())) {
+                SysUser conflictUser = sysUserMapper.selectByEmailExcludingUserId(email, userId);
+                if (conflictUser != null) {
+                    throw new ConflictException(ErrorCode.DUPLICATE_EMAIL);
+                }
+            }
+            user.setEmail(email);
         }
         if (request.getPhone() != null) {
             user.setPhone(request.getPhone());
@@ -151,5 +163,38 @@ public class AuthServiceImpl implements AuthService {
         dto.setRole(user.getRole());
         dto.setStatus(user.getStatus());
         return dto;
+    }
+
+    /**
+     * 登录账号和注册主标识必须以去首尾空格后的值参与唯一性判断，
+     * 否则同一个业务身份会因为前后空格出现伪差异。
+     */
+    private String normalizeRequired(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    private String normalizeOptional(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    /**
+     * 默认昵称只承担展示职责，不要求和用户名或邮箱建立映射关系，
+     * 这样后续即使产品调整展示策略，也不会反向影响稳定登录标识。
+     */
+    private String generateDefaultNickname() {
+        return "用户" + randomAlphaNumeric(7);
+    }
+
+    private String randomAlphaNumeric(int length) {
+        final char[] chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray();
+        StringBuilder builder = new StringBuilder(length);
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        for (int i = 0; i < length; i++) {
+            builder.append(chars[random.nextInt(chars.length)]);
+        }
+        return builder.toString();
     }
 }

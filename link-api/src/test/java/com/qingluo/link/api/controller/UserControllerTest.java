@@ -9,10 +9,12 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import com.qingluo.link.service.cache.UserCacheService;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -74,10 +76,14 @@ class UserControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @MockBean
+    private UserCacheService userCacheService;
+
     /**
      * 测试用户 ID
      */
     private static final Long TEST_USER_ID = 99998L;
+    private static final Long CONFLICT_USER_ID = 99997L;
 
     /**
      * 测试用户名
@@ -117,6 +123,16 @@ class UserControllerTest {
         user.setRole("USER");
         user.setStatus(1);
         sysUserMapper.insert(user);
+
+        SysUser conflictUser = new SysUser();
+        conflictUser.setId(CONFLICT_USER_ID);
+        conflictUser.setUsername("userconflict");
+        conflictUser.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
+        conflictUser.setNickname("冲突用户");
+        conflictUser.setEmail("conflict@test.com");
+        conflictUser.setRole("USER");
+        conflictUser.setStatus(1);
+        sysUserMapper.insert(conflictUser);
 
         // 编程式登录
         StpUtil.login(TEST_USER_ID);
@@ -217,5 +233,22 @@ class UserControllerTest {
     void Should_Return401_When_NotLoggedIn() throws Exception {
         mockMvc.perform(get("/api/v1/user/profile"))
             .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * 测试用例 4：修改邮箱与其他用户冲突时应返回 409
+     */
+    @Test
+    @Order(4)
+    @DisplayName("修改邮箱冲突应返回 409 - PATCH /api/v1/user/profile")
+    void Should_ReturnConflict_When_UpdateEmailDuplicated() throws Exception {
+        String requestJson = "{\"email\":\"conflict@test.com\"}";
+
+        mockMvc.perform(patch("/api/v1/user/profile")
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value(20007));
     }
 }

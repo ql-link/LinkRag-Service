@@ -23,9 +23,7 @@ public class RegisterRequest {
     @Schema(description = "密码", example = "123456")
     private String password;
 
-    @Schema(description = "昵称", example = "用户01")
-    private String nickname;
-
+    @NotBlank(message = "邮箱不能为空")
     @Email(message = "邮箱格式不正确")
     @Schema(description = "邮箱", example = "user@example.com")
     private String email;
