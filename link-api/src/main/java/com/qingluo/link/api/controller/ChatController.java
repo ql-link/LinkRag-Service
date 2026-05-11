@@ -90,7 +90,7 @@ public class ChatController {
      */
     @DeleteMapping("/{id}")
     @SaCheckLogin
-    @Operation(summary = "删除对话", description = "软删除对话，标记is_deleted=true，对话内容保留但列表中不显示")
+    @Operation(summary = "删除对话", description = "删除对话及其消息")
     public Result<Void> deleteConversation(@Parameter(description = "对话ID") @PathVariable Long id) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         chatService.deleteConversation(userId, id);

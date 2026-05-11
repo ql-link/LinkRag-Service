@@ -26,7 +26,7 @@ public interface ChatService {
     PageResult<MessageDTO> getMessages(Long userId, Long conversationId, int page, int pageSize);
 
     /**
-     * 删除对话（软删除）
+     * 删除对话
      */
     void deleteConversation(Long userId, Long conversationId);
 }

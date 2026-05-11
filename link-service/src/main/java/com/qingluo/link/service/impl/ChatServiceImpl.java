@@ -1,7 +1,6 @@
 package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import com.qingluo.link.core.exception.BusinessException;
@@ -48,7 +47,6 @@ public class ChatServiceImpl implements ChatService {
         conversation.setTitle(request.getTitle() != null ? request.getTitle() : "新对话");
         conversation.setLastConfigId(request.getLastConfigId());
         conversation.setIsPinned(false);
-        conversation.setIsDeleted(false);
 
         conversationMapper.insert(conversation);
 
@@ -64,7 +62,6 @@ public class ChatServiceImpl implements ChatService {
         List<ChatConversation> conversations = conversationMapper.selectList(
             new LambdaQueryWrapper<ChatConversation>()
                 .eq(ChatConversation::getUserId, userId)
-                .eq(ChatConversation::getIsDeleted, false)
                 .orderByDesc(ChatConversation::getIsPinned)
                 .orderByDesc(ChatConversation::getUpdatedAt)
         );
@@ -86,7 +83,6 @@ public class ChatServiceImpl implements ChatService {
             new LambdaQueryWrapper<ChatConversation>()
                 .eq(ChatConversation::getId, conversationId)
                 .eq(ChatConversation::getUserId, userId)
-                .eq(ChatConversation::getIsDeleted, false)
         );
 
         if (conversation == null) {
@@ -110,7 +106,7 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional
     /**
-     * 逻辑删除用户会话。
+     * 删除用户会话及其消息。
      */
     public void deleteConversation(Long userId, Long conversationId) {
         // 验证对话归属
@@ -118,16 +114,15 @@ public class ChatServiceImpl implements ChatService {
             new LambdaQueryWrapper<ChatConversation>()
                 .eq(ChatConversation::getId, conversationId)
                 .eq(ChatConversation::getUserId, userId)
-                .eq(ChatConversation::getIsDeleted, false)
         );
 
         if (conversation == null) {
             throw NotFoundException.conversationNotFound();
         }
 
-        conversationMapper.update(null, new LambdaUpdateWrapper<ChatConversation>()
-            .eq(ChatConversation::getId, conversationId)
-            .set(ChatConversation::getIsDeleted, true));
+        messageMapper.delete(new LambdaQueryWrapper<ChatMessage>()
+            .eq(ChatMessage::getConversationId, conversationId));
+        conversationMapper.deleteById(conversationId);
     }
 
     /**

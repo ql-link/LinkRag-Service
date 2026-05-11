@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -127,6 +128,48 @@ class DatasetControllerTest {
 
     @Test
     @Order(4)
+    @DisplayName("更新数据集信息")
+    void Should_UpdateDataset_When_RequestValid() throws Exception {
+        String requestJson = """
+            {"name":"更新后的数据集","description":"更新后的描述"}
+            """;
+
+        mockMvc.perform(patch("/api/v1/datasets/{datasetId}", datasetId)
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.id").value(datasetId))
+            .andExpect(jsonPath("$.data.name").value("更新后的数据集"))
+            .andExpect(jsonPath("$.data.description").value("更新后的描述"));
+
+        String datasetName = jdbcTemplate.queryForObject(
+            "SELECT name FROM dataset WHERE id = ?",
+            String.class,
+            datasetId
+        );
+        assertThat(datasetName).isEqualTo("更新后的数据集");
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("拒绝空名称更新数据集")
+    void Should_RejectUpdateDataset_When_NameBlank() throws Exception {
+        String requestJson = """
+            {"name":"   "}
+            """;
+
+        mockMvc.perform(patch("/api/v1/datasets/{datasetId}", datasetId)
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    @Order(6)
     @DisplayName("删除数据集")
     void Should_DeleteDataset_When_DatasetOwnedByCurrentUser() throws Exception {
         jdbcTemplate.update("""
