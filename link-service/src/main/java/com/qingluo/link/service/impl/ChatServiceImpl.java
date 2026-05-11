@@ -6,6 +6,8 @@ import com.github.pagehelper.PageInfo;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.model.dto.request.CreateConversationRequest;
+import com.qingluo.link.model.dto.request.SendMessageRequest;
+import com.qingluo.link.model.dto.request.UpdateConversationRequest;
 import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.response.MessageDTO;
 import com.qingluo.link.model.dto.response.PageResult;
@@ -19,6 +21,7 @@ import com.qingluo.link.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -79,15 +82,7 @@ public class ChatServiceImpl implements ChatService {
      */
     public PageResult<MessageDTO> getMessages(Long userId, Long conversationId, int page, int pageSize) {
         // 验证对话归属
-        ChatConversation conversation = conversationMapper.selectOne(
-            new LambdaQueryWrapper<ChatConversation>()
-                .eq(ChatConversation::getId, conversationId)
-                .eq(ChatConversation::getUserId, userId)
-        );
-
-        if (conversation == null) {
-            throw NotFoundException.conversationNotFound();
-        }
+        getOwnedConversation(userId, conversationId);
 
         PageHelper.startPage(page, pageSize);
         List<ChatMessage> messages = messageMapper.selectList(
@@ -106,19 +101,64 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional
     /**
+     * 更新会话标题、置顶状态等基础信息。
+     */
+    public ConversationDTO updateConversation(Long userId, Long conversationId, UpdateConversationRequest request) {
+        ChatConversation conversation = getOwnedConversation(userId, conversationId);
+
+        boolean changed = false;
+        if (request.getTitle() != null) {
+            String title = request.getTitle().trim();
+            if (!StringUtils.hasText(title)) {
+                throw new BusinessException(400, "对话标题不能为空", 400);
+            }
+            conversation.setTitle(title);
+            changed = true;
+        }
+
+        if (request.getIsPinned() != null) {
+            conversation.setIsPinned(request.getIsPinned());
+            changed = true;
+        }
+
+        if (!changed) {
+            throw new BusinessException(400, "请至少提供一个需要更新的字段", 400);
+        }
+
+        conversationMapper.updateById(conversation);
+        return toDTO(conversation);
+    }
+
+    @Override
+    @Transactional
+    /**
+     * 向指定会话追加一条用户消息。
+     */
+    public MessageDTO sendMessage(Long userId, Long conversationId, SendMessageRequest request) {
+        ChatConversation conversation = getOwnedConversation(userId, conversationId);
+
+        ChatMessage message = new ChatMessage();
+        message.setConversationId(conversationId);
+        message.setRole("user");
+        message.setContent(request.getContent().trim());
+        message.setConfigId(request.getConfigId());
+        message.setTokenCount(0);
+        messageMapper.insert(message);
+
+        // 维护会话元信息，确保列表按最近活跃时间排序。
+        conversation.setLastConfigId(request.getConfigId());
+        conversationMapper.updateById(conversation);
+
+        return toDTO(message);
+    }
+
+    @Override
+    @Transactional
+    /**
      * 删除用户会话及其消息。
      */
     public void deleteConversation(Long userId, Long conversationId) {
-        // 验证对话归属
-        ChatConversation conversation = conversationMapper.selectOne(
-            new LambdaQueryWrapper<ChatConversation>()
-                .eq(ChatConversation::getId, conversationId)
-                .eq(ChatConversation::getUserId, userId)
-        );
-
-        if (conversation == null) {
-            throw NotFoundException.conversationNotFound();
-        }
+        getOwnedConversation(userId, conversationId);
 
         messageMapper.delete(new LambdaQueryWrapper<ChatMessage>()
             .eq(ChatMessage::getConversationId, conversationId));
@@ -155,6 +195,21 @@ public class ChatServiceImpl implements ChatService {
         dto.setTokenCount(message.getTokenCount());
         dto.setCreatedAt(message.getCreatedAt());
         return dto;
+    }
+
+    /**
+     * 校验并返回当前用户拥有的会话。
+     */
+    private ChatConversation getOwnedConversation(Long userId, Long conversationId) {
+        ChatConversation conversation = conversationMapper.selectOne(
+            new LambdaQueryWrapper<ChatConversation>()
+                .eq(ChatConversation::getId, conversationId)
+                .eq(ChatConversation::getUserId, userId)
+        );
+        if (conversation == null) {
+            throw NotFoundException.conversationNotFound();
+        }
+        return conversation;
     }
 
     /**
