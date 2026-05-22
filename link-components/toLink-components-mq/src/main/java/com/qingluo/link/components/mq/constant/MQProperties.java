@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * MQ component configuration.
  */
-@ConfigurationProperties(prefix = "qingluopay.mq")
+@ConfigurationProperties(prefix = "tolink.mq")
 public class MQProperties {
 
     /**

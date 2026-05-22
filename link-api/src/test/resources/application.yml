@@ -1,20 +1,16 @@
 spring:
   main:
     allow-bean-definition-overriding: true
-
   application:
     name: tolink-service-test
-
   datasource:
     url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_UPPER=false
     username: sa
     password:
     driver-class-name: org.h2.Driver
-
   redis:
     host: 127.0.0.1
     port: 6379
-
   h2:
     console:
       enabled: true
@@ -39,18 +35,33 @@ llm:
   api-key:
     secret: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
+tolink:
+  mq:
+    vender: none
+  oss:
+    service-type: local
+    file-root-path: ${java.io.tmpdir}/tolink-test-oss
+    public-base-url: /api/v1/oss-files/public
+  knowledge-file:
+    max-size-bytes: 20971520
+    internal-base-url: http://localhost:8080
+    service-token: test-token
+    allowed-suffixes:
+      - md
+      - markdown
+      - pdf
+      - docx
+      - txt
+  cache-consistency:
+    sync-delete-required: false
+
 logging:
   level:
     com.qingluo.link: debug
 
-tolink:
-  cache-consistency:
-    sync-delete-required: false
-
-############## 线程池配置 ##############
 thread-pool:
   core-pool-size: 5
   max-pool-size: 10
   queue-capacity: 50
   keep-alive-seconds: 60
-  thread-name-prefix: custom-thread-
+  thread-name-prefix: knowledge-file-upload-
