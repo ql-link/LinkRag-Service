@@ -12,10 +12,15 @@
 ## 命令
 
 ```bash
-mvn test
+mvn clean test
 mvn -pl link-api test
 mvn -pl link-service test
 ```
+
+## 执行约定
+
+- 根 `pom.xml` 固定 Maven Surefire `2.22.2`，确保各模块的 JUnit 5 测试都会执行。
+- 提交前使用 `mvn clean test`；删除或移动 Java 类后，干净构建可避免旧 `target/classes` 影响结果。
 
 ## Spec-as-Test 要求
 

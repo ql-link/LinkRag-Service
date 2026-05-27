@@ -80,7 +80,7 @@ mvn spring-boot:run -pl link-api
 ### 4. 运行测试
 
 ```bash
-mvn test
+mvn clean test
 mvn -pl link-api test
 mvn -pl link-service test
 ```
