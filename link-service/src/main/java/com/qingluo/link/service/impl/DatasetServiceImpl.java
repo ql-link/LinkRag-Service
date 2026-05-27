@@ -15,6 +15,7 @@ import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.model.dto.request.CreateDatasetRequest;
+import com.qingluo.link.model.dto.request.UpdateDatasetRequest;
 import com.qingluo.link.model.dto.response.DatasetDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.DatasetService;
@@ -80,6 +81,41 @@ public class DatasetServiceImpl implements DatasetService {
      * 查询指定数据集详情。
      */
     public DatasetDTO detail(Long userId, Long datasetId) {
+        return toDTO(getOwnedDataset(userId, datasetId));
+    }
+
+    @Override
+    @Transactional
+    /**
+     * 更新当前用户拥有的数据集基础信息。
+     */
+    public DatasetDTO update(Long userId, Long datasetId, UpdateDatasetRequest request) {
+        getOwnedDataset(userId, datasetId);
+        Dataset update = new Dataset();
+        update.setId(datasetId);
+        boolean changed = false;
+
+        if (request.getName() != null) {
+            String name = request.getName().trim();
+            if (!StringUtils.hasText(name)) {
+                throw new BusinessException(400, "数据集名称不能为空", 400);
+            }
+            update.setName(name);
+            changed = true;
+        }
+        if (request.getDescription() != null) {
+            update.setDescription(request.getDescription().trim());
+            changed = true;
+        }
+        if (!changed) {
+            throw new BusinessException(400, "请至少提供一个需要更新的字段", 400);
+        }
+
+        try {
+            datasetMapper.updateById(update);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(400, "当前用户下已存在同名数据集", 400);
+        }
         return toDTO(getOwnedDataset(userId, datasetId));
     }
 

@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -257,6 +258,57 @@ class ChatControllerTest {
     }
 
     /**
+     * 测试用例 4：发送消息
+     *
+     * <h3>测试步骤：</h3>
+     * <ol>
+     *   <li>向已创建对话发送一条用户消息</li>
+     *   <li>验证响应中的 role/content/conversationId</li>
+     * </ol>
+     */
+    @Test
+    @Order(4)
+    @DisplayName("发送消息 - POST /api/v1/chat/conversations/{id}/messages")
+    void Should_SendMessage_When_ConversationExists() throws Exception {
+        String requestJson = "{\"content\":\"你好，这是测试消息\",\"configId\":1}";
+
+        mockMvc.perform(post("/api/v1/chat/conversations/" + createdConversationId + "/messages")
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.conversationId").value(createdConversationId))
+            .andExpect(jsonPath("$.data.role").value("user"))
+            .andExpect(jsonPath("$.data.content").value("你好，这是测试消息"));
+    }
+
+    /**
+     * 测试用例 5：更新对话（置顶）
+     *
+     * <h3>测试步骤：</h3>
+     * <ol>
+     *   <li>更新对话置顶状态为 true</li>
+     *   <li>验证响应中的 isPinned 字段</li>
+     * </ol>
+     */
+    @Test
+    @Order(5)
+    @DisplayName("更新对话 - PATCH /api/v1/chat/conversations/{id}")
+    void Should_UpdateConversation_When_DataValid() throws Exception {
+        String requestJson = "{\"isPinned\":true}";
+
+        mockMvc.perform(patch("/api/v1/chat/conversations/" + createdConversationId)
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.id").value(createdConversationId))
+            .andExpect(jsonPath("$.data.isPinned").value(true));
+    }
+
+    /**
      * 测试用例 4：删除对话
      *
      * <h3>测试步骤：</h3>
@@ -274,7 +326,7 @@ class ChatControllerTest {
      * <p>依赖测试用例 1 创建的 conversationId</p>
      */
     @Test
-    @Order(4)
+    @Order(6)
     @DisplayName("删除对话 - DELETE /api/v1/chat/conversations/{id}")
     void Should_DeleteConversation_When_ConversationExists() throws Exception {
         mockMvc.perform(delete("/api/v1/chat/conversations/" + createdConversationId)
@@ -296,7 +348,7 @@ class ChatControllerTest {
      * <p>验证 sa-token 认证拦截器正常工作</p>
      */
     @Test
-    @Order(5)
+    @Order(7)
     @DisplayName("未登录访问应返回 401")
     void Should_Return401_When_NotLoggedIn() throws Exception {
         // 不携带 satoken header

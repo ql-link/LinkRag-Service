@@ -2,6 +2,8 @@ package com.qingluo.link.api.controller;
 
 import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.request.CreateConversationRequest;
+import com.qingluo.link.model.dto.request.SendMessageRequest;
+import com.qingluo.link.model.dto.request.UpdateConversationRequest;
 import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.response.MessageDTO;
 import com.qingluo.link.model.dto.response.PageResult;
@@ -83,6 +85,40 @@ public class ChatController {
     }
 
     /**
+     * 更新对话信息
+     *
+     * @param id      对话ID
+     * @param request 更新内容（title, isPinned）
+     * @return 更新后的对话信息
+     */
+    @PatchMapping("/{id}")
+    @SaCheckLogin
+    @Operation(summary = "更新对话信息", description = "支持更新对话标题与置顶状态")
+    public Result<ConversationDTO> updateConversation(
+            @Parameter(description = "对话ID") @PathVariable Long id,
+            @Valid @RequestBody UpdateConversationRequest request) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(chatService.updateConversation(userId, id, request));
+    }
+
+    /**
+     * 发送消息
+     *
+     * @param id      对话ID
+     * @param request 消息内容
+     * @return 新增的消息信息
+     */
+    @PostMapping("/{id}/messages")
+    @SaCheckLogin
+    @Operation(summary = "发送消息", description = "向指定对话追加一条用户消息")
+    public Result<MessageDTO> sendMessage(
+            @Parameter(description = "对话ID") @PathVariable Long id,
+            @Valid @RequestBody SendMessageRequest request) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(chatService.sendMessage(userId, id, request));
+    }
+
+    /**
      * 删除对话
      *
      * @param id 对话ID
@@ -90,7 +126,7 @@ public class ChatController {
      */
     @DeleteMapping("/{id}")
     @SaCheckLogin
-    @Operation(summary = "删除对话", description = "软删除对话，标记is_deleted=true，对话内容保留但列表中不显示")
+    @Operation(summary = "删除对话", description = "删除对话及其消息")
     public Result<Void> deleteConversation(@Parameter(description = "对话ID") @PathVariable Long id) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         chatService.deleteConversation(userId, id);

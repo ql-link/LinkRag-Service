@@ -1,6 +1,8 @@
 package com.qingluo.link.service;
 
 import com.qingluo.link.model.dto.request.CreateConversationRequest;
+import com.qingluo.link.model.dto.request.SendMessageRequest;
+import com.qingluo.link.model.dto.request.UpdateConversationRequest;
 import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.response.MessageDTO;
 import com.qingluo.link.model.dto.response.PageResult;
@@ -26,7 +28,17 @@ public interface ChatService {
     PageResult<MessageDTO> getMessages(Long userId, Long conversationId, int page, int pageSize);
 
     /**
-     * 删除对话（软删除）
+     * 更新对话信息
+     */
+    ConversationDTO updateConversation(Long userId, Long conversationId, UpdateConversationRequest request);
+
+    /**
+     * 发送消息
+     */
+    MessageDTO sendMessage(Long userId, Long conversationId, SendMessageRequest request);
+
+    /**
+     * 删除对话
      */
     void deleteConversation(Long userId, Long conversationId);
 }
