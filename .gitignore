@@ -1,7 +1,10 @@
 llm_module_java_api_design.md
 /.idea/
 /.vscode/
-/.claude/
+/.claude/*
+!/.claude/doc-sync-rules.yaml
+!/.claude/skills
+/.claude/worktrees/
 
 # Maven
 target/

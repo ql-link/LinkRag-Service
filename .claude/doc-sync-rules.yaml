@@ -1,0 +1,152 @@
+# 文档同步规则（机器可读版）
+#
+# 修改本文件后运行：
+#   python scripts/check_docs_sync.py --self-check
+
+version: 1
+
+defaults:
+  severity: warning
+
+rules:
+  - id: ai-workflow-docs
+    description: AI 工作体系或入口文档变更
+    when_changed:
+      - .ai/**/*.md
+      - .ai/**/*.feature
+      - AGENTS.md
+      - CLAUDE.md
+      - scripts/setup_ai_links.py
+      - scripts/check_ai_links.py
+    must_update:
+      - docs/development/spec_as_test_handbook.md
+      - docs/development/documentation_architecture.md
+    severity: warning
+    rationale: AI 入口和 skill 变化需要同步开发流程说明，避免 Agent 使用过期流程。
+
+  - id: doc-sync-rule-docs
+    description: 文档同步脚本或规则变更
+    when_changed:
+      - .claude/doc-sync-rules.yaml
+      - scripts/check_docs_sync.py
+      - .pre-commit-config.yaml
+      - .github/workflows/docs-sync.yml
+    must_update:
+      - docs/development/doc_sync.md
+    severity: warning
+    rationale: 机器规则或执行方式变化需要让贡献者知道。
+
+  - id: api-contracts
+    description: Controller 或接口请求响应 DTO 变更
+    when_changed:
+      - link-api/src/main/java/**/controller/**/*.java
+      - link-model/src/main/java/**/dto/request/**/*.java
+      - link-model/src/main/java/**/dto/response/**/*.java
+    must_update:
+      - docs/reference/api_contracts.md
+    severity: warning
+    rationale: API 路由、入参、出参变化影响前端和外部调用方。
+
+  - id: mysql-schema
+    description: Entity 或数据库脚本变更
+    when_changed:
+      - link-model/src/main/java/**/dto/entity/**/*.java
+      - docs/db/schema.sql
+      - docs/db/init.sql
+    must_update:
+      - docs/reference/mysql_schema.md
+    severity: error
+    rationale: MySQL schema 是 Java/Python 协作和数据持久化契约。
+
+  - id: error-codes
+    description: 错误码或统一异常响应变更
+    when_changed:
+      - link-model/src/main/java/**/enums/ErrorCode.java
+      - link-core/src/main/java/**/exception/**/*.java
+      - link-core/src/main/java/**/handler/**/*.java
+    must_update:
+      - docs/reference/error_codes.md
+      - docs/reference/api_contracts.md
+    severity: warning
+    rationale: 错误语义变化会影响接口调用方。
+
+  - id: mq-contracts
+    description: MQ 消息模型、生产者、消费者或组件变更
+    when_changed:
+      - link-components/toLink-components-mq/**/*.java
+      - link-service/src/main/java/**/mq/**/*.java
+      - link-components/toLink-components-mq/src/main/java/**/model/**/*.java
+    must_update:
+      - docs/reference/mq_contracts.md
+      - docs/architecture/mq_module.md
+    severity: error
+    rationale: MQ 是 Java/Python 和缓存补偿链路的重要契约。
+
+  - id: cache-module
+    description: Redis 缓存组件或业务缓存封装变更
+    when_changed:
+      - link-components/toLink-components-redis/**/*.java
+      - link-service/src/main/java/**/cache/**/*.java
+    must_update:
+      - docs/architecture/cache_module.md
+    severity: warning
+    rationale: 缓存 key、TTL、删除策略变化需要同步说明。
+
+  - id: oss-module
+    description: OSS 组件、对象 key、上传规则或文件读取能力变更
+    when_changed:
+      - link-components/toLink-components-oss/**/*.java
+      - link-service/src/main/java/**/oss/**/*.java
+      - link-service/src/main/java/**/OssApplicationService*.java
+    must_update:
+      - docs/architecture/object_storage_module.md
+      - docs/guides/configuration.md
+    severity: warning
+    rationale: OSS 公私有边界和配置变化影响文件访问。
+
+  - id: knowledge-file-module
+    description: 知识文件、解析任务、结果回传或 SSE 变更
+    when_changed:
+      - link-api/src/main/java/**/KnowledgeFileController.java
+      - link-api/src/main/java/**/InternalKnowledgeFileController.java
+      - link-service/src/main/java/**/KnowledgeFile*.java
+      - link-service/src/main/java/**/KnowledgeParse*.java
+      - link-model/src/main/java/**/Knowledge*.java
+    must_update:
+      - docs/architecture/knowledge_file_module.md
+      - docs/guides/integration.md
+    severity: warning
+    rationale: 文件解析链路横跨 Java、Python、MQ、OSS，需要保持说明同步。
+
+  - id: runtime-config
+    description: 运行时配置变更
+    when_changed:
+      - link-api/src/main/resources/application*.yml
+      - link-service/src/main/java/**/config/**/*.java
+      - link-components/**/config/**/*.java
+    must_update:
+      - docs/guides/configuration.md
+    severity: warning
+    rationale: 配置项变化影响部署和本地启动。
+
+  - id: project-layout
+    description: Maven 模块、启动入口或项目结构变化
+    when_changed:
+      - pom.xml
+      - link-*/pom.xml
+      - link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
+    must_update:
+      - docs/architecture/project_structure.md
+      - README.md
+    severity: warning
+    rationale: 项目结构变化需要同步入口文档。
+
+  - id: tests-docs
+    description: 测试结构或测试约定变化
+    when_changed:
+      - link-*/src/test/**/*.java
+      - link-components/**/src/test/**/*.java
+    must_update:
+      - docs/development/testing.md
+    severity: warning
+    rationale: 测试结构变化应同步测试规范。
