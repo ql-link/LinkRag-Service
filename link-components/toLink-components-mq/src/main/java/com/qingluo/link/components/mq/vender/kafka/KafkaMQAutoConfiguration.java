@@ -21,7 +21,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.util.StringUtils;
 
 /**
- * Kafka auto configuration for the QingLuoPay-style MQ component.
+ * Kafka auto configuration for the toLink MQ component.
  */
 @Configuration
 @ConditionalOnClass(KafkaTemplate.class)

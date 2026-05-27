@@ -12,8 +12,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest(properties = {
-    "qingluopay.mq.vender=kafka",
-    "qingluopay.mq.kafka-auto-create-topics=false",
+    "tolink.mq.vender=kafka",
+    "tolink.mq.kafka-auto-create-topics=false",
     "spring.kafka.bootstrap-servers=127.0.0.1:19092",
     "spring.kafka.listener.auto-startup=false"
 })

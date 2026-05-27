@@ -5,7 +5,6 @@ import com.qingluo.link.components.mq.constant.MQVenderChoose;
 import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -13,7 +12,6 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = MQVenderChoose.YML_VENDER_KEY, havingValue = MQVenderChoose.KAFKA)
-@ConditionalOnBean(KnowledgeParseResultMQ.MQReceiver.class)
 @Slf4j
 public class KnowledgeParseResultKafkaReceiver implements MQMsgReceiver {
 

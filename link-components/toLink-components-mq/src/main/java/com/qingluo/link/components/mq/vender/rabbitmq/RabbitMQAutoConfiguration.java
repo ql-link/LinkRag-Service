@@ -29,7 +29,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.util.StringUtils;
 
 /**
- * RabbitMQ auto configuration for the QingLuoPay-style MQ component.
+ * RabbitMQ auto configuration for the toLink MQ component.
  */
 @Configuration
 @ConditionalOnClass(RabbitTemplate.class)
