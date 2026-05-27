@@ -14,10 +14,12 @@ import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.KnowledgeParseFileMapper;
+import com.qingluo.link.mapper.KnowledgeParsedLogMapper;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
 import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
 import com.qingluo.link.service.config.KnowledgeFileProperties;
-import java.lang.reflect.Constructor;
+import com.qingluo.link.service.mq.KnowledgeParseTaskMQ;
 
 import com.qingluo.link.service.impl.know.KnowledgeFileServiceImpl;
 import org.junit.jupiter.api.DisplayName;
@@ -26,7 +28,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.ObjectProvider;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +38,12 @@ class KnowledgeFileServiceImplTest {
 
     @Mock
     private KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+
+    @Mock
+    private KnowledgeParseFileMapper knowledgeParseFileMapper;
+
+    @Mock
+    private KnowledgeParsedLogMapper knowledgeParsedLogMapper;
 
     @Mock
     private IOssService ossService;
@@ -58,12 +65,8 @@ class KnowledgeFileServiceImplTest {
 
     @Test
     @DisplayName("Should_CreateParseTaskMq_When_NoArgConstructor")
-    void Should_CreateParseTaskMq_When_NoArgConstructor() throws Exception {
-        Class<?> mqClass = Class.forName("com.qingluo.link.service.impl.know.KnowledgeFileServiceImpl$KnowledgeParseTaskMQ");
-        Constructor<?> constructor = mqClass.getDeclaredConstructor();
-        constructor.setAccessible(true);
-
-        AbstractMQ mq = (AbstractMQ) BeanUtils.instantiateClass(constructor);
+    void Should_CreateParseTaskMq_When_NoArgConstructor() {
+        AbstractMQ mq = new KnowledgeParseTaskMQ();
 
         assertEquals("tolink.rag.parse_task", mq.getMQName());
     }

@@ -150,28 +150,59 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     file_url                   VARCHAR(1024) DEFAULT NULL COMMENT 'Python/RAG内部下载URL，不含服务间鉴权Token',
     upload_status              VARCHAR(20) NOT NULL DEFAULT 'uploading' COMMENT '上传状态: uploading/success/failed',
     is_upload_success          TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否上传成功',
-    parse_notice_status        VARCHAR(24) NOT NULL DEFAULT 'pending' COMMENT '解析任务MQ投递状态: pending/sent/failed',
-    parse_task_id              VARCHAR(36) NOT NULL COMMENT '解析任务业务唯一标识(UUID)',
-    parse_status               VARCHAR(16) NOT NULL DEFAULT 'not_started' COMMENT 'Python/RAG解析状态',
-    is_parse_success           TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否解析成功',
-    parsed_bucket_name         VARCHAR(64) DEFAULT NULL COMMENT '解析结果文件存储桶',
-    parsed_object_key          VARCHAR(512) DEFAULT NULL COMMENT '解析结果文件对象Key',
-    parsed_file_url            VARCHAR(1024) DEFAULT NULL COMMENT '解析结果文件访问或内部下载地址',
-    parsed_at                  DATETIME DEFAULT NULL COMMENT '解析成功时间',
-    parse_failure_reason       VARCHAR(512) DEFAULT NULL COMMENT '解析失败原因',
-    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '上传失败或解析任务MQ投递失败原因',
-    parse_notice_retry_count   INT NOT NULL DEFAULT 0 COMMENT '解析任务MQ投递重试次数',
-    last_parse_notice_at       DATETIME DEFAULT NULL COMMENT '最近一次解析任务MQ投递时间',
+    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '上传失败原因',
     created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    UNIQUE KEY uk_parse_task_id (parse_task_id),
-    UNIQUE KEY uk_dataset_filename (dataset_id, original_filename),
+    UNIQUE KEY uk_dataset_user_name_suffix (dataset_id, user_id, original_filename, file_suffix),
     INDEX idx_document_original_dataset_created (dataset_id, created_at),
-    INDEX idx_document_original_user_created (user_id, created_at)
+    INDEX idx_document_original_user_created (user_id, created_at),
+    INDEX idx_document_original_upload_status (upload_status, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '知识库原始文档上传记录表';
 
--- 9. 知识文件上传配置表
+-- 9. 文件解析聚合表
+CREATE TABLE IF NOT EXISTS document_parse_file (
+    id                         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '文件解析表主键',
+    document_original_file_id  BIGINT UNSIGNED NOT NULL COMMENT '原文件主键，对应 document_original_file.id',
+    dataset_id                 BIGINT UNSIGNED NOT NULL COMMENT '所属数据集ID',
+    user_id                    BIGINT UNSIGNED NOT NULL COMMENT '所属用户ID',
+    latest_parse_task_id       VARCHAR(36) DEFAULT NULL COMMENT '最新解析任务业务ID，对应 document_parsed_log.task_id',
+    original_filename          VARCHAR(255) NOT NULL COMMENT '原文件名快照',
+    parse_count                INT NOT NULL DEFAULT 0 COMMENT '累计成功解析次数',
+    created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_parse_file_original_file (document_original_file_id),
+    INDEX idx_parse_file_dataset_user (dataset_id, user_id, updated_at),
+    INDEX idx_parse_file_latest_task (latest_parse_task_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件解析聚合表';
+
+-- 10. 文件解析日志表
+CREATE TABLE IF NOT EXISTS document_parsed_log (
+    id                         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '解析任务记录主键',
+    task_id                    VARCHAR(36) NOT NULL COMMENT '解析任务业务唯一标识(UUID)',
+    document_original_file_id  BIGINT UNSIGNED NOT NULL COMMENT '原文件主键，对应 document_original_file.id',
+    document_parse_file_id     BIGINT UNSIGNED DEFAULT NULL COMMENT '文件解析聚合表主键',
+    trigger_mode               VARCHAR(20) NOT NULL COMMENT '触发方式: upload_auto/manual_retry',
+    task_status                VARCHAR(16) NOT NULL DEFAULT 'created' COMMENT '任务状态: created/success/failed',
+    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '解析失败原因',
+    parsed_filename            VARCHAR(255) DEFAULT NULL COMMENT '解析后文件名',
+    parsed_bucket_name         VARCHAR(64) DEFAULT NULL COMMENT '解析结果文件桶名',
+    parsed_object_key          VARCHAR(512) DEFAULT NULL COMMENT '解析结果文件对象Key',
+    parsed_file_url            VARCHAR(1024) DEFAULT NULL COMMENT '解析结果文件内部定位地址',
+    parsed_at                  DATETIME DEFAULT NULL COMMENT '解析产物写入时间',
+    parse_started_at           DATETIME DEFAULT NULL COMMENT 'Python开始解析时间',
+    parse_finished_at          DATETIME DEFAULT NULL COMMENT 'Python结束解析时间',
+    parse_duration_ms          BIGINT DEFAULT NULL COMMENT '解析耗时，单位毫秒',
+    created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_parsed_log_task_id (task_id),
+    INDEX idx_parsed_log_original_status (document_original_file_id, task_status, updated_at),
+    INDEX idx_parsed_log_parse_file_status (document_parse_file_id, task_status, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件解析任务日志表';
+
+-- 11. 知识文件上传配置表
 CREATE TABLE IF NOT EXISTS knowledge_file_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置记录ID',
     max_size_bytes      BIGINT UNSIGNED NOT NULL COMMENT '单文件大小上限，单位字节',
@@ -190,4 +221,6 @@ ALTER TABLE chat_conversation AUTO_INCREMENT = 10000;
 ALTER TABLE chat_message AUTO_INCREMENT = 10000;
 ALTER TABLE llm_usage_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
+ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
+ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
 ALTER TABLE knowledge_file_config AUTO_INCREMENT = 10000;

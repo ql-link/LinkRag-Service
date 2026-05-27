@@ -8,9 +8,9 @@
 
 - Controller：`KnowledgeFileController`、`InternalKnowledgeFileController`
 - Service：`KnowledgeFileService`、`KnowledgeParseTaskService`、`KnowledgeParseResultService`、`KnowledgeParseSseService`
-- Entity：`KnowledgeOriginalFile`、`KnowledgeParsedFile`、`KnowledgeParseTask`
+- Entity：`KnowledgeOriginalFile`、`KnowledgeParseFile`、`KnowledgeParsedLog`
 - MQ：`KnowledgeParseTaskMQ`、`KnowledgeParseResultMQ`
 
 ## 链路摘要
 
-Java 端保存文件和元数据后发送解析任务 MQ。Python 端执行解析并回传结果。Java 消费结果后更新状态并推送前端事件。
+Java 端保存原文件与 `document_parse_file` 聚合记录，触发解析时更新最新任务指针并发送扁平任务 MQ。Python 端执行解析，将终态与 Markdown 产物位置写入 `document_parsed_log` 并维护聚合表，再发送终态结果 MQ。Java 消费结果后只校验关联关系并推送前端 SSE 事件。

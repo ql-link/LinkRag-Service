@@ -80,6 +80,7 @@ tolink:
     max-size-bytes: 20971520
     internal-base-url: ${KNOWLEDGE_FILE_INTERNAL_BASE_URL:http://tolink-service:8080}
     service-token: ${KNOWLEDGE_FILE_SERVICE_TOKEN:}
+    sse-timeout-ms: ${KNOWLEDGE_FILE_SSE_TIMEOUT_MS:300000}
 
 llm:
   api-key:

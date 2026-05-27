@@ -7,12 +7,18 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/**
+ * 文件级解析聚合记录，与 Python 端 document_parse_file 契约一致。
+ */
 @Data
-@TableName("document_original_file")
-public class KnowledgeOriginalFile {
+@TableName("document_parse_file")
+public class KnowledgeParseFile {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+
+    @TableField("document_original_file_id")
+    private Long documentOriginalFileId;
 
     @TableField("dataset_id")
     private Long datasetId;
@@ -20,35 +26,14 @@ public class KnowledgeOriginalFile {
     @TableField("user_id")
     private Long userId;
 
+    @TableField("latest_parse_task_id")
+    private String latestParseTaskId;
+
     @TableField("original_filename")
     private String originalFilename;
 
-    @TableField("file_suffix")
-    private String fileSuffix;
-
-    @TableField("file_size")
-    private Long fileSize;
-
-    @TableField("content_type")
-    private String contentType;
-
-    @TableField("bucket_name")
-    private String bucketName;
-
-    @TableField("object_key")
-    private String objectKey;
-
-    @TableField("file_url")
-    private String fileUrl;
-
-    @TableField("upload_status")
-    private String uploadStatus;
-
-    @TableField("is_upload_success")
-    private Boolean isUploadSuccess;
-
-    @TableField("failure_reason")
-    private String failureReason;
+    @TableField("parse_count")
+    private Integer parseCount;
 
     @TableField("created_at")
     private LocalDateTime createdAt;

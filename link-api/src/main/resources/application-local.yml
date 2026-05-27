@@ -45,6 +45,7 @@ tolink:
     max-size-bytes: 20971520
     internal-base-url: http://localhost:8080
     service-token:
+    sse-timeout-ms: 300000
 
 llm:
   api-key:

@@ -20,90 +20,63 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @Import(TestSecurityConfig.class)
 class KnowledgeParseResultIntegrationTest {
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @Autowired
-    private KnowledgeParseResultKafkaReceiver knowledgeParseResultKafkaReceiver;
+    @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private KnowledgeParseResultKafkaReceiver receiver;
 
     private Long userId;
     private Long datasetId;
-    private Long documentId;
+    private Long originalFileId;
+    private Long parsedLogId;
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM document_parsed_log");
+        jdbcTemplate.update("DELETE FROM document_parse_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM dataset");
         jdbcTemplate.update("DELETE FROM sys_user");
 
-        String username = "mq_user_" + System.nanoTime();
         jdbcTemplate.update("""
-                INSERT INTO sys_user (username, password_hash, nickname, email, role, status)
-                VALUES (?, 'password', 'MQ测试用户', ?, 'USER', 1)
-                """, username, username + "@test.com");
-        userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE username = ?", Long.class, username);
-
-        String datasetName = "mq_dataset_" + System.nanoTime();
+            INSERT INTO sys_user (username, password_hash, nickname, email, role, status)
+            VALUES ('mq_user', 'password', 'MQ用户', 'mq@test.com', 'USER', 1)
+            """);
+        userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE username = 'mq_user'", Long.class);
+        jdbcTemplate.update("INSERT INTO dataset (user_id, name, status) VALUES (?, 'mq_dataset', 'ACTIVE')", userId);
+        datasetId = jdbcTemplate.queryForObject("SELECT id FROM dataset WHERE name = 'mq_dataset'", Long.class);
         jdbcTemplate.update("""
-                INSERT INTO dataset (user_id, name, description, status)
-                VALUES (?, ?, 'MQ解析结果测试数据集', 'ACTIVE')
-                """, userId, datasetName);
-        datasetId = jdbcTemplate.queryForObject("SELECT id FROM dataset WHERE user_id = ? AND name = ?",
-            Long.class, userId, datasetName);
-
+            INSERT INTO document_original_file (
+                dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
+                object_key, upload_status, is_upload_success
+            ) VALUES (?, ?, 'guide.md', 'md', 128, 'rag-raw', 'raw/guide.md', 'success', TRUE)
+            """, datasetId, userId);
+        originalFileId = jdbcTemplate.queryForObject("SELECT id FROM document_original_file", Long.class);
         jdbcTemplate.update("""
-                INSERT INTO document_original_file (
-                    dataset_id, user_id, original_filename, file_suffix, file_size, content_type,
-                    bucket_name, object_key, file_url, upload_status, is_upload_success,
-                    parse_notice_status, parse_task_id, parse_status, is_parse_success,
-                    parse_notice_retry_count
-                ) VALUES (?, ?, 'guide.md', 'md', 128, 'text/markdown',
-                    'rag-raw', '1/1/2026/04/21/guide.md', 'http://tolink-service:8080/internal/file',
-                    'success', TRUE, 'sent', 'task-integration-1', 'pending', FALSE, 0)
-                """, datasetId, userId);
-        documentId = jdbcTemplate.queryForObject(
-            "SELECT id FROM document_original_file WHERE parse_task_id = 'task-integration-1'", Long.class);
+            INSERT INTO document_parse_file (
+                document_original_file_id, dataset_id, user_id, latest_parse_task_id, original_filename, parse_count
+            ) VALUES (?, ?, ?, 'task-integration-1', 'guide.md', 1)
+            """, originalFileId, datasetId, userId);
+        Long parseFileId = jdbcTemplate.queryForObject("SELECT id FROM document_parse_file", Long.class);
+        jdbcTemplate.update("""
+            INSERT INTO document_parsed_log (
+                task_id, document_original_file_id, document_parse_file_id, trigger_mode, task_status,
+                parsed_filename, parsed_bucket_name, parsed_object_key, parse_finished_at
+            ) VALUES ('task-integration-1', ?, ?, 'upload_auto', 'success',
+                'guide.md', 'rag-md', 'parsed/guide.md', CURRENT_TIMESTAMP)
+            """, originalFileId, parseFileId);
+        parsedLogId = jdbcTemplate.queryForObject("SELECT id FROM document_parsed_log", Long.class);
     }
 
     @Test
-    void Should_UpdateDatabase_When_ParseResultReceiverConsumesSuccessMessage() {
-        knowledgeParseResultKafkaReceiver.receive("""
-            {"mq_type":"parse_result","mq_name":"tolink.rag.parse_result","payload":{"task_id":"task-integration-1","document_id":"%d","success":true,"status":"success","parsed_bucket_name":"rag-parsed","parsed_object_key":"parsed/2026/04/21/%d.md","parsed_file_url":"http://rag/%d.md","failure_reason":"","time_cost_ms":123}}
-            """.formatted(documentId, documentId, documentId));
+    void Should_AcceptTerminalResultWithoutRewritingPythonPersistedState() {
+        receiver.receive("""
+            {"task_id":"task-integration-1","original_file_id":%d,"document_parsed_log_id":%d,"dataset_id":%d,"user_id":%d,"task_status":"success","failure_reason":null,"parse_finished_at":"2026-05-27T10:00:08+08:00"}
+            """.formatted(originalFileId, parsedLogId, datasetId, userId));
 
-        String parseStatus = jdbcTemplate.queryForObject(
-            "SELECT parse_status FROM document_original_file WHERE id = ?", String.class, documentId);
-        Boolean isParseSuccess = jdbcTemplate.queryForObject(
-            "SELECT is_parse_success FROM document_original_file WHERE id = ?", Boolean.class, documentId);
-        String parsedBucketName = jdbcTemplate.queryForObject(
-            "SELECT parsed_bucket_name FROM document_original_file WHERE id = ?", String.class, documentId);
-        String parsedObjectKey = jdbcTemplate.queryForObject(
-            "SELECT parsed_object_key FROM document_original_file WHERE id = ?", String.class, documentId);
-        String parsedFileUrl = jdbcTemplate.queryForObject(
-            "SELECT parsed_file_url FROM document_original_file WHERE id = ?", String.class, documentId);
-
-        assertThat(parseStatus).isEqualTo("success");
-        assertThat(isParseSuccess).isTrue();
-        assertThat(parsedBucketName).isEqualTo("rag-parsed");
-        assertThat(parsedObjectKey).isEqualTo("parsed/2026/04/21/%d.md".formatted(documentId));
-        assertThat(parsedFileUrl).isEqualTo("http://rag/%d.md".formatted(documentId));
-    }
-
-    @Test
-    void Should_UpdateFailureReason_When_ParseResultReceiverConsumesFailedMessage() {
-        knowledgeParseResultKafkaReceiver.receive("""
-            {"mq_type":"parse_result","mq_name":"tolink.rag.parse_result","payload":{"task_id":"task-integration-1","document_id":"%d","success":false,"status":"failed","parsed_bucket_name":"","parsed_object_key":"","parsed_file_url":"","failure_reason":"vectorize failed","time_cost_ms":321}}
-            """.formatted(documentId));
-
-        String parseStatus = jdbcTemplate.queryForObject(
-            "SELECT parse_status FROM document_original_file WHERE id = ?", String.class, documentId);
-        Boolean isParseSuccess = jdbcTemplate.queryForObject(
-            "SELECT is_parse_success FROM document_original_file WHERE id = ?", Boolean.class, documentId);
-        String parseFailureReason = jdbcTemplate.queryForObject(
-            "SELECT parse_failure_reason FROM document_original_file WHERE id = ?", String.class, documentId);
-
-        assertThat(parseStatus).isEqualTo("failed");
-        assertThat(isParseSuccess).isFalse();
-        assertThat(parseFailureReason).isEqualTo("vectorize failed");
+        String status = jdbcTemplate.queryForObject(
+            "SELECT task_status FROM document_parsed_log WHERE id = ?", String.class, parsedLogId);
+        String objectKey = jdbcTemplate.queryForObject(
+            "SELECT parsed_object_key FROM document_parsed_log WHERE id = ?", String.class, parsedLogId);
+        assertThat(status).isEqualTo("success");
+        assertThat(objectKey).isEqualTo("parsed/guide.md");
     }
 }
