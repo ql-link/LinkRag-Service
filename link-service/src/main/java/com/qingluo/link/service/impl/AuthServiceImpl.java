@@ -14,11 +14,13 @@ import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
 import com.qingluo.link.service.cache.UserCacheService;
-import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+
+import java.time.LocalDateTime;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 认证服务实现
@@ -31,10 +33,10 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final UserCacheService userCacheService;
 
-    @Override
     /**
-     * 校验账号密码并创建登录态。
+     * 校验账号密码并创建登录态，成功后同步刷新最后登录时间。
      */
+    @Override
     public AuthResult login(LoginRequest request) {
         String account = normalizeRequired(request.getAccount());
         SysUser user = sysUserMapper.selectByAccount(account);
@@ -50,15 +52,17 @@ public class AuthServiceImpl implements AuthService {
         }
 
         StpUtil.login(user.getId());
+        user.setLastLoginAt(LocalDateTime.now());
+        sysUserMapper.updateById(user);
         userCacheService.put(user.getId(), toDTO(user));
 
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
     }
 
-    @Override
     /**
-     * 注册新用户并自动登录。
+     * 注册新用户并自动登录，同时初始化最后登录时间。
      */
+    @Override
     public AuthResult register(RegisterRequest request) {
         String username = normalizeRequired(request.getUsername());
         SysUser existUser = sysUserMapper.selectByUsername(username);
@@ -79,6 +83,7 @@ public class AuthServiceImpl implements AuthService {
         user.setEmail(email);
         user.setRole(UserRole.USER.name());
         user.setStatus(1);
+        user.setLastLoginAt(LocalDateTime.now());
 
         sysUserMapper.insert(user);
         StpUtil.login(user.getId());
@@ -87,18 +92,18 @@ public class AuthServiceImpl implements AuthService {
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
     }
 
-    @Override
     /**
      * 注销当前登录态。
      */
+    @Override
     public void logout() {
         StpUtil.logout();
     }
 
-    @Override
     /**
      * 获取当前用户资料，优先走缓存。
      */
+    @Override
     public UserProfileDTO getProfile(Long userId) {
         return userCacheService.getOrLoad(userId, () -> {
             SysUser user = sysUserMapper.selectById(userId);
@@ -109,10 +114,10 @@ public class AuthServiceImpl implements AuthService {
         });
     }
 
-    @Override
     /**
      * 更新用户资料并清理缓存。
      */
+    @Override
     public void updateProfile(Long userId, UpdateProfileRequest request) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) {
