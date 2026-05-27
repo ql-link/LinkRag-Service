@@ -23,13 +23,14 @@ toLink-Service 采用 **三文件分层配置架构**，将配置按职责清晰
 | `application.yml` | `link-api/src/main/resources/` | 环境无关的公共基础配置 | 所有环境始终加载 |
 | `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + localhost） | 本地开发，克隆即启动 |
 | `application-dev.yml` | `link-api/src/main/resources/` | 部署环境配置（纯环境变量引用） | 开发服务器 / 生产环境 |
+| `schema.sql` | `link-api/src/main/resources/` | local profile 的 H2 初始化表结构 | 本地启动与 local profile 测试 |
 
 ### 各文件包含内容
 
 | 文件 | 包含 | 不包含 |
 |------|------|--------|
 | `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 限制、allowed-suffixes、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
-| `application-local.yml` | H2 内存数据库、localhost Redis（无密码）、Kafka listener 禁用、MQ=none、OSS=local、固定测试密钥 | 真实服务器 IP、真实密码 |
+| `application-local.yml` | H2 内存数据库及 `classpath:schema.sql` 初始化、localhost Redis（无密码）、Kafka listener 禁用、MQ=none、OSS=local、固定测试密钥 | 真实服务器 IP、真实密码 |
 | `application-dev.yml` | 所有连接通过 `${ENV_VAR}` 引用；连接池/线程池/日志通过 `${ENV_VAR:default}` 控制 | 真实密码、真实 IP、废弃别名 |
 
 ## 3. Profile 加载优先级
@@ -185,7 +186,7 @@ mvn spring-boot:run -pl link-api
 ```
 
 无需额外配置。`local` profile 默认激活，使用：
-- H2 内存数据库（无需安装 MySQL）
+- H2 内存数据库，并从运行时资源 `schema.sql` 初始化当前本地表结构（无需安装 MySQL）
 - localhost Redis（需本地运行 Redis）
 - Kafka listener 禁用（无需安装 Kafka）
 - 本地文件系统 OSS（无需 MinIO）
