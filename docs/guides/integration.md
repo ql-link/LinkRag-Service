@@ -18,3 +18,10 @@
 - Python 访问 Java 内部文件接口时携带约定鉴权信息。
 - OSS object key 和数据库文件记录一致。
 - 解析终态结果可幂等处理。
+
+## 解析数据契约
+
+- Java 写入原文件与 `document_parse_file.latest_parse_task_id`；Python 写入 `document_parsed_log` 和解析成功次数。
+- `parse_task` 传递 `document_parse_file_id` 和 `trigger_mode`，便于 Python 创建日志记录。
+- `parse_result` 传递 `document_parsed_log_id`，Java 读取日志及聚合记录校验后只转发 SSE。
+- `processing` / `progress` 经内部 HTTP 接口上报；`success` / `failed` 只经 MQ 回传。

@@ -145,11 +145,10 @@ class DatasetControllerTest {
         jdbcTemplate.update("""
             INSERT INTO document_original_file (
                 dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
-                upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_status,
-                is_parse_success, parse_notice_retry_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                upload_status, is_upload_success
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, datasetId, TEST_USER_ID, "to-delete.txt", "txt", 1L, "local-private",
-            "success", true, "pending", "task-" + System.nanoTime(), "not_started", false, 0);
+            "success", true);
 
         mockMvc.perform(delete("/api/v1/datasets/{datasetId}", datasetId)
                 .header("satoken", token))

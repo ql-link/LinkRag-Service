@@ -72,3 +72,5 @@
 | POST | `/api/v1/internal/parse-tasks/{taskId}/events` | Python 端推送解析过程事件 |
 
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
+
+解析过程接口只接受 `processing` / `progress`；终态结果通过 `tolink.rag.parse_result` MQ 推送。解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。

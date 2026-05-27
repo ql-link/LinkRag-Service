@@ -144,6 +144,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 |------|------|----------|--------|--------|
 | `KNOWLEDGE_FILE_INTERNAL_BASE_URL` | 内部服务访问地址 | 否 | `http://tolink-service:8080` | `http://localhost:8080` |
 | `KNOWLEDGE_FILE_SERVICE_TOKEN` | 内部服务 Token | 否 | 空 | `your-service-token-here` |
+| `KNOWLEDGE_FILE_SSE_TIMEOUT_MS` | 文件解析 SSE 连接超时毫秒数 | 否 | `300000` | `300000` |
 
 ### 4.11 LLM（LLM_*）
 

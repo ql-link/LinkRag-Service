@@ -28,3 +28,4 @@ mvn -pl link-service test
 - Java 测试不必逐字使用 Gherkin 名称，但测试方法、注释或 TD 映射必须能追溯。
 - 外部 MySQL、Redis、Kafka、MinIO、第三方 API 在单元测试中默认 Mock。
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。
+- 解析链路测试需覆盖 schema 初始化、扁平 MQ 契约、上传初始化 `document_parse_file`、解析投递事务回滚、重复提交拦截、结果归属校验和 SSE 转发；Java 端不应在结果消费测试中回写 Python 负责的终态字段。

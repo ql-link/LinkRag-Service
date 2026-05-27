@@ -76,6 +76,8 @@ class KnowledgeFileControllerTest {
     @BeforeEach
     void setUp() {
         jdbcTemplate.update("DELETE FROM knowledge_file_config");
+        jdbcTemplate.update("DELETE FROM document_parsed_log");
+        jdbcTemplate.update("DELETE FROM document_parse_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM chat_conversation");
         jdbcTemplate.update("DELETE FROM dataset");
@@ -115,7 +117,6 @@ class KnowledgeFileControllerTest {
             .andExpect(jsonPath("$.data.fileSuffix").value("md"))
             .andExpect(jsonPath("$.data.uploadStatus").value("UPLOAD_SUCCESS"))
             .andExpect(jsonPath("$.data.isUploadSuccess").value(true))
-            .andExpect(jsonPath("$.data.parseNoticeStatus").value("PARSE_NOTICE_PENDING"))
             .andReturn();
 
         JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
@@ -126,6 +127,9 @@ class KnowledgeFileControllerTest {
                 WHERE id = ? AND dataset_id = ? AND user_id = ? AND upload_status = 'success'
                 """, Integer.class, fileId, datasetId, userId);
         assertThat(count).isEqualTo(1);
+        Integer parseFileCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parse_file WHERE document_original_file_id = ?", Integer.class, fileId);
+        assertThat(parseFileCount).isEqualTo(1);
 
         String objectKey = jdbcTemplate.queryForObject(
             "SELECT object_key FROM document_original_file WHERE id = ?", String.class, fileId);
@@ -288,6 +292,9 @@ class KnowledgeFileControllerTest {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM document_original_file WHERE id = ?", Integer.class, fileId);
         assertThat(count).isEqualTo(0);
+        Integer parseFileCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parse_file WHERE document_original_file_id = ?", Integer.class, fileId);
+        assertThat(parseFileCount).isEqualTo(0);
 
         mockMvc.perform(get("/api/v1/datasets/{datasetId}/knowledge-files", datasetId)
                 .header("satoken", token))
@@ -326,27 +333,25 @@ class KnowledgeFileControllerTest {
         jdbcTemplate.update("""
                 INSERT INTO document_original_file (
                     dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
-                    upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_status,
-                    is_parse_success, parse_notice_retry_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    upload_status, is_upload_success
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             datasetId, userId, "unique.txt", "txt", 1L, "local-private",
-            "success", true, "pending", "task-" + System.nanoTime(), "not_started", false, 0);
+            "success", true);
 
         assertThatThrownBy(() -> jdbcTemplate.update("""
                 INSERT INTO document_original_file (
                     dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
-                    upload_status, is_upload_success, parse_notice_status, parse_task_id, parse_status,
-                    is_parse_success, parse_notice_retry_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    upload_status, is_upload_success
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             datasetId, userId, "unique.txt", "txt", 1L, "local-private",
-            "success", true, "pending", "task-" + System.nanoTime(), "not_started", false, 0))
+            "success", true))
             .isInstanceOf(Exception.class);
     }
 
     @Test
-    void Should_DownloadOriginalFileThroughInternalEndpoint_When_ServiceTokenAndTaskMatch() throws Exception {
+    void Should_DownloadOriginalFileThroughInternalEndpoint_When_ServiceTokenMatches() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "private.txt", MediaType.TEXT_PLAIN_VALUE, "secret-content".getBytes(StandardCharsets.UTF_8));
 
@@ -356,11 +361,7 @@ class KnowledgeFileControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
-        String taskId = jdbcTemplate.queryForObject(
-            "SELECT parse_task_id FROM document_original_file WHERE id = ?", String.class, fileId);
-
         mockMvc.perform(get("/api/v1/internal/knowledge-files/{fileId}/content", fileId)
-                .param("taskId", taskId)
                 .header("Authorization", "Bearer test-service-token"))
             .andExpect(status().isOk())
             .andExpect(content().string("secret-content"));
@@ -369,7 +370,6 @@ class KnowledgeFileControllerTest {
     @Test
     void Should_RejectInternalDownload_When_ServiceTokenIsInvalid() throws Exception {
         mockMvc.perform(get("/api/v1/internal/knowledge-files/{fileId}/content", 1L)
-                .param("taskId", "wrong")
                 .header("Authorization", "Bearer wrong"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value(401));
@@ -386,17 +386,19 @@ class KnowledgeFileControllerTest {
                 .header("satoken", token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.uploadStatus").value("UPLOAD_SUCCESS"))
-            .andExpect(jsonPath("$.data.parseNoticeStatus").value("PARSE_NOTICE_SENT"))
-            .andExpect(jsonPath("$.data.parseStatus").value("PENDING"))
             .andReturn();
 
         JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
         Long fileId = data.get("id").asLong();
-        String parseTaskId = data.get("parseTaskId").asText();
+        String parseTaskId = jdbcTemplate.queryForObject(
+            "SELECT latest_parse_task_id FROM document_parse_file WHERE document_original_file_id = ?",
+            String.class, fileId);
         assertThat(parseTaskId).isNotBlank();
         assertThat(recordingMQSend.messages()).hasSize(1);
         assertThat(recordingMQSend.messages().get(0).getMQName()).isEqualTo("tolink.rag.parse_task");
-        assertThat(recordingMQSend.messages().get(0).getMessage()).contains("\"document_id\":\"" + fileId + "\"");
+        assertThat(recordingMQSend.messages().get(0).getMessage()).contains("\"original_file_id\":" + fileId)
+            .contains("\"document_parse_file_id\":")
+            .contains("\"trigger_mode\":\"upload_auto\"");
     }
 
     @Test
@@ -404,24 +406,135 @@ class KnowledgeFileControllerTest {
         MockMultipartFile file = new MockMultipartFile(
             "file", "later.txt", MediaType.TEXT_PLAIN_VALUE, "parse later".getBytes(StandardCharsets.UTF_8));
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/knowledge-files", datasetId)
-                .file(file)
-                .header("satoken", token))
+            .file(file)
+            .header("satoken", token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.parseNoticeStatus").value("PARSE_NOTICE_PENDING"))
             .andReturn();
         Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
 
-        MvcResult result = mockMvc.perform(post("/api/v1/knowledge-files/{fileId}/parse-tasks", fileId)
+        MvcResult result = mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
                 .header("satoken", token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.parseNoticeStatus").value("PARSE_NOTICE_SENT"))
-            .andExpect(jsonPath("$.data.parseStatus").value("PENDING"))
+            .andExpect(jsonPath("$.data.frontendStatus").value("parsing"))
             .andReturn();
 
-        String parseTaskId = objectMapper.readTree(result.getResponse().getContentAsString())
-            .get("data").get("parseTaskId").asText();
+        String parseTaskId = jdbcTemplate.queryForObject(
+            "SELECT latest_parse_task_id FROM document_parse_file WHERE document_original_file_id = ?",
+            String.class, fileId);
         assertThat(parseTaskId).isNotBlank();
         assertThat(recordingMQSend.messages()).hasSize(1);
+    }
+
+    @Test
+    void Should_BlockDuplicateParseSubmit_When_LatestPointerHasNoPythonLogYet() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "duplicate.txt", MediaType.TEXT_PLAIN_VALUE, "parse duplicate".getBytes(StandardCharsets.UTF_8));
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/knowledge-files", datasetId)
+                .file(file)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
+
+        mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
+                .header("satoken", token))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
+                .header("satoken", token))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value(409));
+
+        assertThat(recordingMQSend.messages()).hasSize(1);
+    }
+
+    @Test
+    void Should_RollbackLatestPointer_When_ParseTaskMqSendFails() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "rollback.txt", MediaType.TEXT_PLAIN_VALUE, "parse rollback".getBytes(StandardCharsets.UTF_8));
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/knowledge-files", datasetId)
+                .file(file)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
+        recordingMQSend.failNextSend();
+
+        mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
+                .header("satoken", token))
+            .andExpect(status().isInternalServerError())
+            .andExpect(jsonPath("$.code").value(500));
+
+        String parseTaskId = jdbcTemplate.queryForObject(
+            "SELECT latest_parse_task_id FROM document_parse_file WHERE document_original_file_id = ?",
+            String.class, fileId);
+        assertThat(parseTaskId).isNull();
+    }
+
+    @Test
+    void Should_QueryLatestParseResult_When_PythonLogExists() throws Exception {
+        Long fileId = uploadPlainFile("result.txt", "parse result");
+        Long parseFileId = jdbcTemplate.queryForObject(
+            "SELECT id FROM document_parse_file WHERE document_original_file_id = ?", Long.class, fileId);
+        jdbcTemplate.update("UPDATE document_parse_file SET latest_parse_task_id = ? WHERE id = ?",
+            "task-result-1", parseFileId);
+        jdbcTemplate.update("""
+                INSERT INTO document_parsed_log (
+                    task_id, document_original_file_id, document_parse_file_id, trigger_mode, task_status,
+                    parsed_filename, parsed_bucket_name, parsed_object_key, parsed_file_url, parsed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+            "task-result-1", fileId, parseFileId, "manual_retry", "success",
+            "result.md", "rag-md", "parsed/result.md", "internal://parsed/result.md");
+
+        mockMvc.perform(get("/api/v1/datasets/{datasetId}/files/parse-results", datasetId)
+                .param("fileIds", fileId.toString())
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].fileId").value(fileId))
+            .andExpect(jsonPath("$.data[0].parseStatus").value("success"))
+            .andExpect(jsonPath("$.data[0].frontendStatus").value("parse_success"))
+            .andExpect(jsonPath("$.data[0].parsedFilename").value("result.md"));
+    }
+
+    @Test
+    void Should_AcceptProgressCallbackAndRejectTerminalCallback_When_ServiceTokenMatches() throws Exception {
+        Long fileId = uploadPlainFile("progress.txt", "parse progress");
+        Long parseFileId = jdbcTemplate.queryForObject(
+            "SELECT id FROM document_parse_file WHERE document_original_file_id = ?", Long.class, fileId);
+        jdbcTemplate.update("UPDATE document_parse_file SET latest_parse_task_id = ? WHERE id = ?",
+            "task-progress-1", parseFileId);
+        jdbcTemplate.update("""
+                INSERT INTO document_parsed_log (
+                    task_id, document_original_file_id, document_parse_file_id, trigger_mode, task_status
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+            "task-progress-1", fileId, parseFileId, "manual_retry", "created");
+
+        mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "task-progress-1")
+                .header("Authorization", "Bearer test-service-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"progress\",\"progress\":50}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
+
+        mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "task-progress-1")
+                .header("Authorization", "Bearer test-service-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"success\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(400));
+    }
+
+    private Long uploadPlainFile(String filename, String content) throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", filename, MediaType.TEXT_PLAIN_VALUE, content.getBytes(StandardCharsets.UTF_8));
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/knowledge-files", datasetId)
+                .file(file)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andReturn();
+        return objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
     }
 
     @TestConfiguration
@@ -436,9 +549,14 @@ class KnowledgeFileControllerTest {
     static class RecordingMQSend implements MQSend {
 
         private final List<AbstractMQ> messages = new ArrayList<>();
+        private boolean failNextSend;
 
         @Override
         public void send(AbstractMQ abstractMQ) {
+            if (failNextSend) {
+                failNextSend = false;
+                throw new RuntimeException("mq send failed");
+            }
             messages.add(abstractMQ);
         }
 
@@ -453,6 +571,11 @@ class KnowledgeFileControllerTest {
 
         void clear() {
             messages.clear();
+            failNextSend = false;
+        }
+
+        void failNextSend() {
+            failNextSend = true;
         }
     }
 }

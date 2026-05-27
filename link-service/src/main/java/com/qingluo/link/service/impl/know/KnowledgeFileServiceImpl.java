@@ -4,35 +4,37 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
-import com.qingluo.link.components.mq.AbstractMQ;
-import com.qingluo.link.components.mq.MQSend;
-import com.qingluo.link.components.mq.constant.MQSendType;
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
 import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.KnowledgeParseFileMapper;
+import com.qingluo.link.mapper.KnowledgeParsedLogMapper;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
+import com.qingluo.link.model.dto.entity.KnowledgeParseFile;
+import com.qingluo.link.model.dto.entity.KnowledgeParsedLog;
 import com.qingluo.link.model.dto.response.KnowledgeFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.KnowledgeFileDownloadResource;
 import com.qingluo.link.service.KnowledgeFileService;
 import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
+import com.qingluo.link.service.KnowledgeParseTaskService;
 import com.qingluo.link.service.config.KnowledgeFileProperties;
 import com.qingluo.link.service.config.KnowledgeFileRuntimeConfig;
 import java.io.File;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -47,19 +49,15 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     private static final String UPLOADING = "uploading";
     private static final String UPLOAD_SUCCESS = "success";
     private static final String UPLOAD_FAILED = "failed";
-    private static final String PARSE_NOTICE_PENDING = "pending";
-    private static final String PARSE_NOTICE_SENT = "sent";
-    private static final String PARSE_NOTICE_FAILED = "failed";
-    private static final String PARSE_STATUS_NOT_STARTED = "not_started";
-    private static final String PARSE_STATUS_PENDING = "pending";
-
     private final DatasetMapper datasetMapper;
     private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final KnowledgeParseFileMapper knowledgeParseFileMapper;
+    private final KnowledgeParsedLogMapper knowledgeParsedLogMapper;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
-    private final ObjectProvider<MQSend> mqSendProvider;
     private final KnowledgeFileProperties properties;
     private final KnowledgeFileRuntimeConfigService knowledgeFileRuntimeConfigService;
+    private final KnowledgeParseTaskService knowledgeParseTaskService;
 
     @Override
     @Transactional(noRollbackFor = BusinessException.class)
@@ -84,11 +82,6 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         record.setBucketName(ossService.getBucketName(OssSavePlaceEnum.PRIVATE));
         record.setUploadStatus(UPLOADING);
         record.setIsUploadSuccess(false);
-        record.setParseNoticeStatus(PARSE_NOTICE_PENDING);
-        record.setParseTaskId(UUID.randomUUID().toString());
-        record.setParseStatus(PARSE_STATUS_NOT_STARTED);
-        record.setIsParseSuccess(false);
-        record.setParseNoticeRetryCount(0);
         try {
             knowledgeOriginalFileMapper.insert(record);
         } catch (DataIntegrityViolationException e) {
@@ -103,13 +96,13 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
                 .set(KnowledgeOriginalFile::getUploadStatus, UPLOAD_FAILED)
                 .set(KnowledgeOriginalFile::getIsUploadSuccess, false)
                 .set(KnowledgeOriginalFile::getFailureReason, "文件上传失败，请稍后重试"));
-            log.error("Upload knowledge file to oss failed, userId={}, datasetId={}, fileName={}, parseTaskId={}",
-                userId, datasetId, originalFilename, record.getParseTaskId());
+            log.error("Upload knowledge file to oss failed, userId={}, datasetId={}, fileName={}",
+                userId, datasetId, originalFilename);
             throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
         }
 
         String fileUrl = normalizeBaseUrl(properties.getInternalBaseUrl())
-            + "/api/v1/internal/knowledge-files/" + record.getId() + "/content?taskId=" + record.getParseTaskId();
+            + "/api/v1/internal/files/" + record.getId() + "/content";
         knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getId, record.getId())
             .set(KnowledgeOriginalFile::getObjectKey, uploadResult)
@@ -121,8 +114,10 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         record.setFileUrl(fileUrl);
         record.setUploadStatus(UPLOAD_SUCCESS);
         record.setIsUploadSuccess(true);
+        record.setFailureReason(null);
+        initializeParseFileIfAbsent(record);
         if (parseImmediately) {
-            return createParseTask(record);
+            submitAutoParseAfterCommit(userId, record);
         }
         return toDTO(record);
     }
@@ -131,8 +126,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     /**
      * 分页查询知识文件列表，并支持按状态筛选。
      */
-    public PageResult<KnowledgeFileDTO> list(Long userId, Long datasetId, String uploadStatus,
-                                             String parseNoticeStatus, String parseStatus, int page, int pageSize) {
+    public PageResult<KnowledgeFileDTO> list(Long userId, Long datasetId, String uploadStatus, int page, int pageSize) {
         assertOwnedDataset(userId, datasetId);
         PageHelper.startPage(page, pageSize);
         LambdaQueryWrapper<KnowledgeOriginalFile> wrapper = new LambdaQueryWrapper<KnowledgeOriginalFile>()
@@ -142,12 +136,6 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
             .orderByDesc(KnowledgeOriginalFile::getId);
         if (StringUtils.hasText(uploadStatus)) {
             wrapper.eq(KnowledgeOriginalFile::getUploadStatus, normalizeStatus(uploadStatus));
-        }
-        if (StringUtils.hasText(parseNoticeStatus)) {
-            wrapper.eq(KnowledgeOriginalFile::getParseNoticeStatus, normalizeStatus(parseNoticeStatus));
-        }
-        if (StringUtils.hasText(parseStatus)) {
-            wrapper.eq(KnowledgeOriginalFile::getParseStatus, normalizeStatus(parseStatus));
         }
         List<KnowledgeOriginalFile> records = knowledgeOriginalFileMapper.selectList(wrapper);
         PageInfo<KnowledgeOriginalFile> pageInfo = new PageInfo<>(records);
@@ -160,22 +148,6 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
      */
     public KnowledgeFileDTO detail(Long userId, Long fileId) {
         return toDTO(getOwnedFile(userId, fileId));
-    }
-
-    @Override
-    @Transactional
-    /**
-     * 为已上传成功的文件创建解析任务。
-     */
-    public KnowledgeFileDTO createParseTask(Long userId, Long fileId) {
-        KnowledgeOriginalFile record = getOwnedFile(userId, fileId);
-        if (!Boolean.TRUE.equals(record.getIsUploadSuccess()) || !StringUtils.hasText(record.getObjectKey())) {
-            throw new BusinessException(400, "原文件未上传成功，不能创建解析任务", 400);
-        }
-        if (PARSE_STATUS_PENDING.equals(record.getParseStatus())) {
-            return toDTO(record);
-        }
-        return createParseTask(record);
     }
 
     @Override
@@ -200,6 +172,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
             }
         }
         try {
+            deleteParseRecords(record.getId());
             knowledgeOriginalFileMapper.deleteById(record.getId());
         } catch (RuntimeException e) {
             log.error("Delete knowledge file database record failed after oss delete, userId={}, fileId={}, datasetId={}, objectKey={}",
@@ -212,14 +185,11 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
     /**
      * 按文件标识和解析任务标识打开原始文件。
      */
-    public KnowledgeFileDownloadResource openOriginalFile(Long fileId, String taskId) {
+    public KnowledgeFileDownloadResource openOriginalFile(Long fileId) {
         KnowledgeOriginalFile record = knowledgeOriginalFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeOriginalFile>()
             .eq(KnowledgeOriginalFile::getId, fileId));
         if (record == null || !Boolean.TRUE.equals(record.getIsUploadSuccess())) {
             throw new BusinessException(404, "文件不存在", 404);
-        }
-        if (!record.getParseTaskId().equals(taskId)) {
-            throw new BusinessException(403, "任务不匹配", 403);
         }
         if (!StringUtils.hasText(record.getObjectKey())) {
             throw new BusinessException(404, "文件不存在", 404);
@@ -231,36 +201,53 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         return new KnowledgeFileDownloadResource(file, record.getOriginalFilename(), record.getContentType());
     }
 
-    /**
-     * 投递解析任务并同步更新投递状态。
-     */
-    private KnowledgeFileDTO createParseTask(KnowledgeOriginalFile record) {
-        knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
-            .eq(KnowledgeOriginalFile::getId, record.getId())
-            .set(KnowledgeOriginalFile::getParseStatus, PARSE_STATUS_PENDING));
-        record.setParseStatus(PARSE_STATUS_PENDING);
-
-        try {
-            MQSend mqSend = mqSendProvider.getIfAvailable();
-            if (mqSend == null) {
-                throw new IllegalStateException("MQ sender is not configured");
-            }
-            mqSend.send(new KnowledgeParseTaskMQ(record));
-            knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
-                .eq(KnowledgeOriginalFile::getId, record.getId())
-                .set(KnowledgeOriginalFile::getParseNoticeStatus, PARSE_NOTICE_SENT)
-                .set(KnowledgeOriginalFile::getFailureReason, null));
-            record.setParseNoticeStatus(PARSE_NOTICE_SENT);
-            record.setFailureReason(null);
-        } catch (Exception e) {
-            knowledgeOriginalFileMapper.update(null, new LambdaUpdateWrapper<KnowledgeOriginalFile>()
-                .eq(KnowledgeOriginalFile::getId, record.getId())
-                .set(KnowledgeOriginalFile::getParseNoticeStatus, PARSE_NOTICE_FAILED)
-                .set(KnowledgeOriginalFile::getFailureReason, "文件已上传，解析任务投递失败"));
-            record.setParseNoticeStatus(PARSE_NOTICE_FAILED);
-            record.setFailureReason("文件已上传，解析任务投递失败");
+    private void initializeParseFileIfAbsent(KnowledgeOriginalFile file) {
+        KnowledgeParseFile existing = knowledgeParseFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeParseFile>()
+            .eq(KnowledgeParseFile::getDocumentOriginalFileId, file.getId()));
+        if (existing != null) {
+            return;
         }
-        return toDTO(record);
+        KnowledgeParseFile parseFile = new KnowledgeParseFile();
+        parseFile.setDocumentOriginalFileId(file.getId());
+        parseFile.setDatasetId(file.getDatasetId());
+        parseFile.setUserId(file.getUserId());
+        parseFile.setOriginalFilename(file.getOriginalFilename());
+        parseFile.setParseCount(0);
+        try {
+            knowledgeParseFileMapper.insert(parseFile);
+        } catch (DataIntegrityViolationException e) {
+            if (knowledgeParseFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeParseFile>()
+                .eq(KnowledgeParseFile::getDocumentOriginalFileId, file.getId())) == null) {
+                throw e;
+            }
+        }
+    }
+
+    private void deleteParseRecords(Long originalFileId) {
+        KnowledgeParseFile parseFile = knowledgeParseFileMapper.selectOne(new LambdaQueryWrapper<KnowledgeParseFile>()
+            .eq(KnowledgeParseFile::getDocumentOriginalFileId, originalFileId));
+        if (parseFile != null) {
+            knowledgeParsedLogMapper.delete(new LambdaQueryWrapper<KnowledgeParsedLog>()
+                .eq(KnowledgeParsedLog::getDocumentParseFileId, parseFile.getId()));
+            knowledgeParseFileMapper.deleteById(parseFile.getId());
+            return;
+        }
+        knowledgeParsedLogMapper.delete(new LambdaQueryWrapper<KnowledgeParsedLog>()
+            .eq(KnowledgeParsedLog::getDocumentOriginalFileId, originalFileId));
+    }
+
+    private void submitAutoParseAfterCommit(Long userId, KnowledgeOriginalFile file) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+            && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    knowledgeParseTaskService.submitAutoParseAfterUpload(userId, file);
+                }
+            });
+            return;
+        }
+        knowledgeParseTaskService.submitAutoParseAfterUpload(userId, file);
     }
 
     /**
@@ -380,8 +367,7 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
      */
     private String normalizeStatus(String status) {
         return status.toLowerCase(Locale.ROOT)
-            .replace("upload_", "")
-            .replace("parse_notice_", "");
+            .replace("upload_", "");
     }
 
     /**
@@ -396,10 +382,6 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         dto.setFileSize(record.getFileSize());
         dto.setUploadStatus(toUploadStatus(record.getUploadStatus()));
         dto.setIsUploadSuccess(Boolean.TRUE.equals(record.getIsUploadSuccess()));
-        dto.setParseNoticeStatus(toParseNoticeStatus(record.getParseNoticeStatus()));
-        dto.setParseTaskId(record.getParseTaskId());
-        dto.setParseStatus(toParseStatus(record.getParseStatus()));
-        dto.setIsParseSuccess(Boolean.TRUE.equals(record.getIsParseSuccess()));
         dto.setFailureReason(record.getFailureReason());
         dto.setCreatedAt(record.getCreatedAt());
         dto.setUpdatedAt(record.getUpdatedAt());
@@ -417,85 +399,4 @@ public class KnowledgeFileServiceImpl implements KnowledgeFileService {
         };
     }
 
-    /**
-     * 将内部通知状态转换为对外枚举。
-     */
-    private String toParseNoticeStatus(String status) {
-        return switch (status) {
-            case "sent" -> "PARSE_NOTICE_SENT";
-            case "failed" -> "PARSE_NOTICE_FAILED";
-            default -> "PARSE_NOTICE_PENDING";
-        };
-    }
-
-    /**
-     * 将内部解析状态转换为对外枚举。
-     */
-    private String toParseStatus(String status) {
-        return switch (status) {
-            case "pending" -> "PENDING";
-            case "processing" -> "PROCESSING";
-            case "success" -> "SUCCESS";
-            case "failed" -> "FAILED";
-            default -> "NOT_STARTED";
-        };
-    }
-
-    private static class KnowledgeParseTaskMQ implements AbstractMQ {
-
-        private static final String MQ_NAME = "tolink.rag.parse_task";
-
-        private final KnowledgeOriginalFile record;
-
-        /**
-         * 为序列化场景保留的空构造方法。
-         */
-        private KnowledgeParseTaskMQ() {
-            this.record = new KnowledgeOriginalFile();
-        }
-
-        /**
-         * 根据原文件记录构造解析任务消息。
-         */
-        private KnowledgeParseTaskMQ(KnowledgeOriginalFile record) {
-            this.record = record;
-        }
-
-        /**
-         * 返回解析任务消息主题名称。
-         */
-        @Override
-        public String getMQName() {
-            return MQ_NAME;
-        }
-
-        /**
-         * 声明解析任务使用队列模型投递。
-         */
-        @Override
-        public MQSendType getMQType() {
-            return MQSendType.QUEUE;
-        }
-
-        /**
-         * 构造解析任务的消息体。
-         */
-        @Override
-        public String getMessage() {
-            return """
-                {"mq_type":"parse_task","mq_name":"tolink.rag.parse_task","payload":{"task_id":"%s","document_id":"%s","file_url":"%s","file_type":"%s"}}
-                """.formatted(
-                    escape(record.getParseTaskId()),
-                    record.getId(),
-                    escape(record.getFileUrl()),
-                    escape(record.getFileSuffix())).trim();
-        }
-
-        /**
-         * 对消息内容做基础 JSON 转义。
-         */
-        private String escape(String value) {
-            return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
-        }
-    }
 }
