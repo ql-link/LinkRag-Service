@@ -1,7 +1,10 @@
 llm_module_java_api_design.md
 /.idea/
 /.vscode/
-/.claude/
+/.claude/*
+!/.claude/doc-sync-rules.yaml
+!/.claude/skills
+/.claude/worktrees/
 
 # Maven
 target/
@@ -23,6 +26,3 @@ release.properties
 /.mcp.json
 docs/ToLink-前端API文档.md
 .DS_Store
-/.agents/*
-!/.agents/skills/
-!/.agents/skills/**

@@ -1,58 +1,48 @@
 # ToLink Service
 
-多模块 Maven 项目，提供 AI LLM 代理与管理服务。
+ToLink Service 是 ToLink 的 Java 管理端后端服务，负责用户、LLM 配置、对话、数据集、知识文件、OSS 上传、解析任务投递和解析结果回传。实际文档解析、RAG 执行和 LLM 调用由 Python RAG 执行端承担。
 
 ## 技术栈
 
-| 组件 | 版本 | 说明 |
-|------|------|------|
-| Java | 17 | LTS 版本 |
-| Spring Boot | 2.5.3 | 核心框架 |
-| MyBatis-Plus | 3.4.2 | ORM 框架 |
-| sa-token | 1.39.0 | 认证框架 |
-| MySQL | 8.0 | 主数据库 |
-| Redis | 7.x | 缓存 + Token 存储 |
+| 类别 | 技术 |
+| --- | --- |
+| 语言 | Java 17 |
+| 框架 | Spring Boot 2.5.3 |
+| 构建 | Maven 多模块 |
+| ORM | MyBatis-Plus |
+| 鉴权 | sa-token |
+| 数据库 | MySQL 8 |
+| 缓存 | Redis / Lettuce |
+| MQ | Kafka / RabbitMQ 组件抽象 |
+| 文件 | 本地存储 / MinIO OSS 组件 |
+| 文档 | Spec-as-Test：brief + acceptance.feature + technical_design |
 
-## 模块架构
+## 模块结构
 
-```
-link-model       # 数据模型层：Entity、Enum、Request/Response DTO
-link-core        # 核心层：异常体系、工具类（ApiKeyEncryptService、AuthContext）
-link-components  # 通用组件中台：Redis 组件（含双删缓存）、MQ、OSS 等
-link-mapper      # 数据访问层：MyBatis-Plus Mapper 接口
-link-api         # Controller 层 + Spring Boot 启动类
-link-service     # Service 层：核心业务逻辑
-```
-
-**模块依赖方向**：
-```
-link-model ←── link-core ←── link-api ←── link-service
-                 ↑              ↑
-                 │               └──► link-mapper ←── link-model
-                 │
-link-components
+```text
+link-model       # Entity、Request/Response DTO、Enum、Result/PageResult
+link-core        # 异常体系、全局异常处理、认证上下文、加密工具、基础配置
+link-components  # Redis、MQ、OSS 组件
+link-mapper      # MyBatis-Plus Mapper
+link-service     # 核心业务服务
+link-api         # Controller 与 Spring Boot 启动入口
 ```
 
-## 主要功能
+主要启动类：
 
-- **用户管理**：注册、登录、信息维护（BCrypt 密码加密）
-- **LLM 厂商配置**：系统级厂商管理 + 用户级 API Key 配置（AES-256-GCM 加密存储）
-- **对话管理**：创建、查询、软删除
-- **用量统计**：汇总、日度统计、明细查询
-- **RBAC 权限**：ADMIN / USER 两种角色
+```text
+link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
+```
 
-## 环境变量
+## 核心能力
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `DB_HOST` | localhost | MySQL 主机 |
-| `DB_PORT` | 3306 | MySQL 端口 |
-| `DB_USERNAME` | root | 数据库用户名 |
-| `DB_PASSWORD` | - | 数据库密码（必须配置） |
-| `REDIS_HOST` | localhost | Redis 主机 |
-| `REDIS_PORT` | 6379 | Redis 端口 |
-| `REDIS_PASSWORD` | - | Redis 密码 |
-| `LLM_SECRET` | - | AES-256-GCM 密钥（64位十六进制） |
+- 用户与权限：注册、登录、退出、用户资料、管理员用户管理，基于 sa-token 与 `ADMIN/USER` 角色。
+- LLM 配置：系统厂商、用户 API Key 配置、默认配置、模型能力展示，API Key 使用 AES-256-GCM 加密。
+- 对话与用量：会话、消息、用量汇总、日度统计、明细查询。
+- 数据集与知识文件：数据集管理、原始文件上传、解析提交、解析状态查询、SSE 事件推送。
+- OSS：本地存储和 MinIO 文件服务，区分 public/private 对象。
+- MQ：解析任务 `tolink.rag.parse_task` 投递，解析结果 `tolink.rag.parse_result` 回传，缓存补偿 `tolink.cache.evict`。
+- Redis：用户、LLM 配置、知识文件运行配置缓存，以及同步删除和补偿删除能力。
 
 ## 快速开始
 
@@ -63,24 +53,21 @@ mysql -h <DB_HOST> -u root -p < docs/db/schema.sql
 mysql -h <DB_HOST> -u root -p tolink_rag_db < docs/db/init.sql
 ```
 
-### 2. 配置环境变量或修改 application.yml
+### 2. 配置环境变量
 
-```yaml
-# link-service/src/main/resources/application.yml
-spring:
-  datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:3306/tolink_rag_db
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
-  redis:
-    host: ${REDIS_HOST:localhost}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
+常用配置在 `link-api/src/main/resources/application.yml`：
 
-llm:
-  api-key:
-    secret: ${LLM_SECRET:}  # 64位十六进制字符串
-```
+| 变量 | 说明 |
+| --- | --- |
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` | MySQL 连接 |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` / `REDIS_DB` | Redis 连接 |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka 地址 |
+| `TOLINK_MQ_VENDOR` | MQ 实现，默认 `kafka` |
+| `OSS_SERVICE_TYPE` | OSS 实现，默认 `local` |
+| `OSS_FILE_ROOT_PATH` | 本地 OSS 根目录 |
+| `OSS_MINIO_*` | MinIO 配置 |
+| `KNOWLEDGE_FILE_*` | 知识文件上传与内部访问配置 |
+| `LLM_SECRET` | API Key 加密密钥，64 位十六进制字符串 |
 
 ### 3. 启动服务
 
@@ -88,93 +75,51 @@ llm:
 mvn spring-boot:run -pl link-api
 ```
 
-服务启动后访问：`http://localhost:8080/swagger-ui.html`
+默认端口：`8080`。
 
-### 4. 默认账户
+### 4. 运行测试
 
-| 用户名 | 密码 | 角色 |
-|--------|------|------|
-| admin | admin123 | ADMIN |
-
-## 项目结构
-
-```
-tolink-service/
-├── docs/
-│   ├── ToLink-Service设计文档.md    # 完整技术设计文档
-│   └── db/
-│       ├── schema.sql              # 数据库建表脚本
-│       └── init.sql                # 初始化数据脚本
-├── link-model/                    # 数据模型层
-│   └── src/main/java/com/qingluo/link/model/
-│       ├── dto/                   # entity/request/response
-│       └── enums/
-├── link-core/                     # 核心层
-│   └── src/main/java/com/qingluo/link/core/
-│       ├── exception/             # 异常体系
-│       └── util/                  # 工具类
-├── link-components/              # 通用组件中台
-│   └── toLink-components-redis/   # Redis 组件（双删缓存）
-├── link-mapper/                   # 数据访问层
-├── link-api/                      # Controller 层
-│   └── src/main/java/com/qingluo/link/api/
-│       ├── controller/            # HTTP 接口
-│       └── stp/                   # sa-token RBAC 集成
-└── link-service/                  # Service 层
-    └── src/main/java/com/qingluo/link/service/
-        └── impl/                 # 业务实现
+```bash
+mvn test
+mvn -pl link-api test
+mvn -pl link-service test
 ```
 
 ## API 概览
 
-| 模块 | 接口 | 说明 |
-|------|------|------|
-| 认证 | `POST /api/v1/auth/login` | 用户登录 |
-| 认证 | `POST /api/v1/auth/register` | 用户注册 |
-| 认证 | `POST /api/v1/auth/logout` | 退出登录 |
-| 用户 | `GET /api/v1/user/profile` | 获取用户信息 |
-| 用户 | `PATCH /api/v1/user/profile` | 修改个人资料 |
-| 管理 | `GET /api/v1/admin/users` | 用户列表（ADMIN） |
-| 管理 | `PATCH /api/v1/admin/users/{id}/status` | 启用/禁用用户（ADMIN） |
-| 管理 | `PATCH /api/v1/admin/users/{id}/role` | 修改用户角色（ADMIN） |
-| 管理 | `GET /api/v1/admin/providers` | 厂商列表（ADMIN） |
-| 管理 | `POST /api/v1/admin/providers` | 创建厂商（ADMIN） |
-| LLM | `GET /api/v1/llm/configs` | 获取用户 LLM 配置 |
-| LLM | `POST /api/v1/llm/configs` | 创建 LLM 配置 |
-| LLM | `PATCH /api/v1/llm/configs/{id}` | 更新 LLM 配置 |
-| LLM | `DELETE /api/v1/llm/configs/{id}` | 删除 LLM 配置 |
-| 对话 | `POST /api/v1/chat/conversations` | 创建对话 |
-| 对话 | `GET /api/v1/chat/conversations` | 对话列表 |
-| 对话 | `GET /api/v1/chat/conversations/{id}/messages` | 消息历史 |
-| 对话 | `DELETE /api/v1/chat/conversations/{id}` | 删除对话 |
-| 用量 | `GET /api/v1/llm/usage/summary` | 用量汇总 |
-| 用量 | `GET /api/v1/llm/usage/daily` | 日度用量 |
-| 用量 | `GET /api/v1/llm/usage/logs` | 用量明细 |
+| 模块 | 入口 |
+| --- | --- |
+| Auth | `/api/v1/auth/login`、`/register`、`/logout` |
+| User | `/api/v1/user/profile` |
+| Admin | `/api/v1/admin/users`、`/providers`、`/knowledge-file-config` |
+| Provider | `/api/v1/llm/providers` |
+| LLM Config | `/api/v1/llm/configs` |
+| Chat | `/api/v1/chat/conversations` |
+| Usage | `/api/v1/llm/usage/*` |
+| Dataset | `/api/v1/datasets` |
+| Knowledge File | `/api/v1/datasets/{datasetId}/files`、`/api/v1/files/{fileId}` |
+| OSS File | `/api/v1/oss-files/{bizType}` |
+| Internal | `/api/v1/internal/files/{fileId}/content`、`/api/v1/internal/parse-tasks/{taskId}/events` |
 
-## 安全说明
+完整契约见 `docs/reference/api_contracts.md`。
 
-- **密码存储**：BCrypt 单向哈希，不可逆
-- **API Key 加密**：AES-256-GCM 对称加密，IV 随机生成
-- **认证方式**：sa-token Header 模式，Token 存储于 Redis，7 天有效期
-- **权限控制**：`@SaCheckRole("ADMIN")` 注解保护管理员接口
+## AI 协作流程
 
-## 数据库
+本仓库使用 Spec-as-Test：
 
-- 数据库名：`tolink_rag_db`
-- 字符集：UTF-8 MB4
-- 主键策略：`assign_id`（雪花算法）
-- 逻辑删除：MyBatis-Plus 自动处理 `is_deleted` 字段
+```text
+brief.md -> acceptance.feature -> technical_design.md -> Code + Tests
+```
 
-## 缓存策略
+入口文档为 `AGENTS.md` / `CLAUDE.md`，二者均指向 `.ai/prompts/project.md`。旧七阶段文档目录已移除，新需求统一使用 `docs/<需求名>/brief.md`、`acceptance.feature`、`technical_design.md`。
 
-采用双删延迟策略保证缓存一致性：
+常用校验：
 
-| 缓存类型 | Key 格式 | TTL |
-|---------|---------|-----|
-| 用户信息 | `user:info:{userId}` | 7 天 |
-| 用户 LLM 配置 | `llm:cfg:{configId}` | 7 天 |
-| 系统厂商信息 | `llm:pvd:{providerType}` | 30 天 |
-| 用户默认配置 ID | `llm:u_def:{userId}` | 30 天 |
+```bash
+python3 scripts/setup_ai_links.py
+python3 scripts/check_ai_links.py
+python3 scripts/check_docs_sync.py --working
+```
 
 ## License
 
