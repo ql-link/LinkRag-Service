@@ -27,3 +27,4 @@ mvn -pl link-service test
 - `acceptance.feature` 中的每个 Scenario 必须在 TD 中映射到测试。
 - Java 测试不必逐字使用 Gherkin 名称，但测试方法、注释或 TD 映射必须能追溯。
 - 外部 MySQL、Redis、Kafka、MinIO、第三方 API 在单元测试中默认 Mock。
+- 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。
