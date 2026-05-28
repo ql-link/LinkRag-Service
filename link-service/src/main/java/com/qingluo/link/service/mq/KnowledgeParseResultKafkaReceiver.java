@@ -20,7 +20,10 @@ public class KnowledgeParseResultKafkaReceiver implements MQMsgReceiver {
     @Override
     @KafkaListener(
         topics = KnowledgeParseResultMQ.MQ_NAME,
-        groupId = "${tolink.mq.parse-result.group-id:tolink-java-parse-result-worker}"
+        groupId = "${tolink.mq.parse-result.group-id:tolink-java-parse-result-worker}",
+        // 指向 parse_result 专用容器工厂（带退避重试 + 失败分类 + 告警/指标 recoverer）；
+        // 缓存补偿等其他消费者仍走 Boot 默认工厂，不受影响。
+        containerFactory = "parseResultKafkaListenerContainerFactory"
     )
     public void receive(String msg) {
         log.info("Receive parse result MQ message");
