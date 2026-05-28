@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
+import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
+import com.qingluo.link.service.cache.KnowledgeFileConfigCacheService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +24,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -33,6 +37,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.willReturn;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -69,12 +75,17 @@ class KnowledgeFileControllerTest {
     @SpyBean
     private com.qingluo.link.components.oss.service.IOssService ossService;
 
+    @MockBean
+    private KnowledgeFileConfigCacheService knowledgeFileConfigCacheService;
+
     private String token;
     private Long userId;
     private Long datasetId;
 
     @BeforeEach
     void setUp() {
+        reset(knowledgeFileConfigCacheService);
+        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.empty());
         jdbcTemplate.update("DELETE FROM knowledge_file_config");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
@@ -230,11 +241,9 @@ class KnowledgeFileControllerTest {
     }
 
     @Test
-    void Should_RejectKnowledgeFileUpload_When_DatabaseConfigOverridesMaxSize() throws Exception {
-        jdbcTemplate.update("""
-                INSERT INTO knowledge_file_config (max_size_bytes, allowed_suffixes, updated_by)
-                VALUES (?, ?, ?)
-                """, 5L, "[\"txt\"]", 99995L);
+    void Should_RejectKnowledgeFileUpload_When_RedisConfigOverridesMaxSize() throws Exception {
+        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.of(
+            new KnowledgeFileConfigDTO(5L, List.of("txt"), 99995L, null)));
         MockMultipartFile file = new MockMultipartFile(
             "file", "too-large.txt", MediaType.TEXT_PLAIN_VALUE, "123456".getBytes(StandardCharsets.UTF_8));
 
@@ -246,11 +255,9 @@ class KnowledgeFileControllerTest {
     }
 
     @Test
-    void Should_RejectKnowledgeFileUpload_When_DatabaseConfigOverridesAllowedSuffixes() throws Exception {
-        jdbcTemplate.update("""
-                INSERT INTO knowledge_file_config (max_size_bytes, allowed_suffixes, updated_by)
-                VALUES (?, ?, ?)
-                """, 1024L, "[\"pdf\"]", 99995L);
+    void Should_RejectKnowledgeFileUpload_When_RedisConfigOverridesAllowedSuffixes() throws Exception {
+        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.of(
+            new KnowledgeFileConfigDTO(1024L, List.of("pdf"), 99995L, null)));
         MockMultipartFile file = new MockMultipartFile(
             "file", "note.txt", MediaType.TEXT_PLAIN_VALUE, "ok".getBytes(StandardCharsets.UTF_8));
 
