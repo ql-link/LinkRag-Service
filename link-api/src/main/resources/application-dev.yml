@@ -81,6 +81,13 @@ tolink:
     internal-base-url: ${KNOWLEDGE_FILE_INTERNAL_BASE_URL:http://tolink-service:8080}
     service-token: ${KNOWLEDGE_FILE_SERVICE_TOKEN:}
     sse-timeout-ms: ${KNOWLEDGE_FILE_SSE_TIMEOUT_MS:300000}
+  parse-result:
+    stuck:
+      # 文件上传解析为用户在线等待场景，超过阈值仍未出终态即视为异常
+      default-threshold: ${PARSE_RESULT_STUCK_THRESHOLD:5m}
+      scan-interval-ms: ${PARSE_RESULT_STUCK_SCAN_INTERVAL_MS:60000}
+      # 按数据集覆盖阈值示例：dataset-thresholds.{datasetId}: 20m（默认空，回落 default-threshold）
+      dataset-thresholds: {}
 
 llm:
   api-key:

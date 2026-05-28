@@ -46,6 +46,11 @@ tolink:
     internal-base-url: http://localhost:8080
     service-token:
     sse-timeout-ms: 300000
+  parse-result:
+    stuck:
+      default-threshold: 5m
+      scan-interval-ms: 60000
+      dataset-thresholds: {}
 
 llm:
   api-key:

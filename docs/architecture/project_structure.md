@@ -17,7 +17,7 @@ toLink-Service/
 └── scripts          # AI/documentation validation scripts
 ```
 
-依赖方向以业务层复用模型、Mapper、组件为主：`link-api` 调用 `link-service`，`link-service` 组合 `link-mapper`、`link-components`、`link-core`、`link-model`。
+依赖方向以业务层复用模型、Mapper、组件为主：`link-api` 调用 `link-service`，`link-service` 组合 `link-mapper`、`link-components`、`link-core`、`link-model`。`link-service` 另引入 `spring-boot-starter-actuator`（Micrometer 监控指标，向上传递给 `link-api`）与测试域 `spring-kafka-test`（EmbeddedKafka 集成测试）。
 
 ## 构建与测试
 

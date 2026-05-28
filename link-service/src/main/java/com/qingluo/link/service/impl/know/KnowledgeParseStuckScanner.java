@@ -1,0 +1,130 @@
+package com.qingluo.link.service.impl.know;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.qingluo.link.components.mq.model.KnowledgeParseResultMQ;
+import com.qingluo.link.mapper.KnowledgeParseFileMapper;
+import com.qingluo.link.mapper.KnowledgeParsedLogMapper;
+import com.qingluo.link.model.dto.entity.KnowledgeParseFile;
+import com.qingluo.link.model.dto.entity.KnowledgeParsedLog;
+import com.qingluo.link.service.KnowledgeParseSseService;
+import com.qingluo.link.service.config.ParseResultStuckProperties;
+import com.qingluo.link.service.support.ParseResultMetrics;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+/**
+ * 卡住任务扫描：以 DB 为权威源的通知丢失兜底。
+ *
+ * <p>职责见 docs/parse-result-consumer-resilience：定时扫描“当前任务仍为 created 且
+ * 超过该数据集阈值”的解析日志，重读 document_parsed_log 取权威状态——</p>
+ * <ul>
+ *   <li>DB 已终态（success/failed）：说明终态已落库但 SSE 实时事件可能因消息丢失/消费失败未送达，
+ *       以 DB 为准复用 {@link KnowledgeParseSseService#publishResultEvent} 补推一次（幂等）；</li>
+ *   <li>DB 仍为 created：上游（Python）确实卡住或失败未推进，无终态可推，仅告警 + 指标。</li>
+ * </ul>
+ * <p>全程只读 DB，不回写任何业务状态。</p>
+ */
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class KnowledgeParseStuckScanner {
+
+    private static final String TASK_CREATED = "created";
+    private static final String TASK_SUCCESS = "success";
+    private static final String TASK_FAILED = "failed";
+
+    private final KnowledgeParsedLogMapper knowledgeParsedLogMapper;
+    private final KnowledgeParseFileMapper knowledgeParseFileMapper;
+    private final KnowledgeParseSseService knowledgeParseSseService;
+    private final ParseResultStuckProperties properties;
+    private final ParseResultMetrics metrics;
+
+    @Value("${spring.profiles.active:default}")
+    private String environment;
+
+    @Scheduled(fixedDelayString = "${tolink.parse-result.stuck.scan-interval-ms:60000}")
+    public void scan() {
+        LocalDateTime now = LocalDateTime.now();
+        // 粗筛：用所有阈值的最小值先捞出候选，降低扫描量；精确阈值在逐条判定。
+        LocalDateTime coarseCutoff = now.minus(properties.minThreshold());
+        List<KnowledgeParsedLog> candidates = knowledgeParsedLogMapper.selectList(
+            new LambdaQueryWrapper<KnowledgeParsedLog>()
+                .eq(KnowledgeParsedLog::getTaskStatus, TASK_CREATED)
+                .lt(KnowledgeParsedLog::getCreatedAt, coarseCutoff));
+        if (candidates == null || candidates.isEmpty()) {
+            return;
+        }
+        for (KnowledgeParsedLog candidate : candidates) {
+            // 单条隔离，避免一条异常中断整批扫描。
+            try {
+                handleCandidate(candidate, now);
+            } catch (Exception e) {
+                log.warn("Stuck scan failed for one candidate, parsedLogId={}, taskId={}",
+                    candidate.getId(), candidate.getTaskId(), e);
+            }
+        }
+    }
+
+    private void handleCandidate(KnowledgeParsedLog candidate, LocalDateTime now) {
+        KnowledgeParseFile parseFile = knowledgeParseFileMapper.selectById(candidate.getDocumentParseFileId());
+        if (parseFile == null) {
+            return;
+        }
+        // 仅处理“当前任务”，旧任务/历史任务不在兜底范围。
+        if (!candidate.getTaskId().equals(parseFile.getLatestParseTaskId())) {
+            return;
+        }
+        // 精确阈值：按数据集判定是否真的超时。
+        Duration threshold = properties.thresholdOf(parseFile.getDatasetId());
+        LocalDateTime createdAt = candidate.getCreatedAt();
+        if (createdAt == null || createdAt.isAfter(now.minus(threshold))) {
+            return;
+        }
+
+        // 重读取权威状态：扫描列表与处理之间可能已转终态。
+        KnowledgeParsedLog fresh = knowledgeParsedLogMapper.selectById(candidate.getId());
+        if (fresh == null) {
+            return;
+        }
+        long overdueSeconds = Duration.between(createdAt, now).getSeconds();
+        String status = fresh.getTaskStatus();
+        if (TASK_SUCCESS.equals(status) || TASK_FAILED.equals(status)) {
+            // 仍是当前任务才补推，避免与并发重试竞争。
+            if (!fresh.getTaskId().equals(parseFile.getLatestParseTaskId())) {
+                return;
+            }
+            knowledgeParseSseService.publishResultEvent(toPayload(fresh, parseFile));
+            metrics.recordRepushed();
+            log.info("Re-push terminal SSE from DB for stuck task, taskId={}, originalFileId={}, "
+                    + "parsedLogId={}, datasetId={}, status={}, overdueSeconds={}",
+                fresh.getTaskId(), fresh.getDocumentOriginalFileId(), fresh.getId(),
+                parseFile.getDatasetId(), status, overdueSeconds);
+        } else {
+            // 仍为 created：DB 无终态可推，仅告警 + 指标，等待人工/外部处理。
+            metrics.recordStuck();
+            log.warn("Stuck parse task detected (still created), taskId={}, originalFileId={}, "
+                    + "parsedLogId={}, datasetId={}, createdAt={}, overdueSeconds={}, env={}",
+                candidate.getTaskId(), candidate.getDocumentOriginalFileId(), candidate.getId(),
+                parseFile.getDatasetId(), createdAt, overdueSeconds, environment);
+        }
+    }
+
+    private KnowledgeParseResultMQ.MsgPayload toPayload(KnowledgeParsedLog log, KnowledgeParseFile parseFile) {
+        return new KnowledgeParseResultMQ.MsgPayload(
+            log.getTaskId(),
+            log.getDocumentOriginalFileId(),
+            log.getId(),
+            parseFile.getDatasetId(),
+            parseFile.getUserId(),
+            log.getTaskStatus(),
+            log.getFailureReason(),
+            log.getParseFinishedAt() == null ? null : log.getParseFinishedAt().toString());
+    }
+}

@@ -37,3 +37,13 @@ MQ 实现事实来源：
 - `parse_finished_at`
 
 Python 在发送结果前先写入 `document_parsed_log` 与 `document_parse_file`；Java 消费结果只校验归属并转发 SSE，不回写终态。
+
+## parse_result 消费接收兜底
+
+消息体不变，仅强化 Java 消费侧的接收健壮性（详见 `docs/parse-result-consumer-resilience/`）：
+
+- **专用容器工厂**：`parse_result` 使用专用 `ConcurrentKafkaListenerContainerFactory`（bean `parseResultKafkaListenerContainerFactory`）+ `SeekToCurrentErrorHandler`；`tolink.cache.evict` 等其他消费者仍走 Boot 默认工厂，互不影响。
+- **失败分类**：`task_id`/状态/归属不匹配（`NonRetryableParseResultException`）与坏 JSON（`IllegalArgumentException`/`DeserializationException`）判为不可重试，立即告警+提交跳过；`document_parsed_log` 暂不存在（`ParseResultPendingException`）与基础设施异常带退避重试（指数退避，最多 3 次，1s→×2→上限 10s），耗尽后告警+跳过。
+- **无 DLQ**：失败兜底为告警日志 + 监控指标（`tolink.parse_result.recover` 等），不静默丢弃、不引入死信队列。
+- **当前任务过滤**：结果消费与卡住补推前比对消息 `task_id` 与 `document_parse_file.latest_parse_task_id`，旧任务/乱序结果不推终态 SSE，指针为空时 fail-open 放行。
+- **卡住兜底**：定时扫描 `document_parsed_log` 中仍为 `created` 且超阈值的当前任务，重读 DB——已终态则以 DB 为准补推一次终态 SSE，仍 `created` 则告警。Java 全程只读，不回写终态。

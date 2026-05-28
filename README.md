@@ -41,7 +41,7 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 - 对话与用量：会话、消息、用量汇总、日度统计、明细查询。
 - 数据集与知识文件：数据集管理、原始文件上传、解析提交、解析状态查询、SSE 事件推送。
 - OSS：本地存储和 MinIO 文件服务，区分 public/private 对象。
-- MQ：解析任务 `tolink.rag.parse_task` 投递，解析结果 `tolink.rag.parse_result` 回传，缓存补偿 `tolink.cache.evict`。
+- MQ：解析任务 `tolink.rag.parse_task` 投递，解析结果 `tolink.rag.parse_result` 回传，缓存补偿 `tolink.cache.evict`；`parse_result` 消费具备接收兜底（专用容器工厂、失败分类带退避重试、当前任务过滤、卡住扫描以 DB 为准补推，监控指标经 Micrometer/Actuator）。
 - Redis：用户、LLM 配置、知识文件运行配置缓存，以及同步删除和补偿删除能力。
 
 ## 快速开始
