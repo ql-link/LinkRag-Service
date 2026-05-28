@@ -4,17 +4,25 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
+import com.qingluo.link.service.cache.KnowledgeFileConfigCacheService;
+import java.util.Optional;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -76,6 +84,9 @@ class AdminControllerTest {
 
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @MockBean
+    private KnowledgeFileConfigCacheService knowledgeFileConfigCacheService;
 
     /**
      * PasswordEncoder - BCrypt 密码加密
@@ -154,6 +165,12 @@ class AdminControllerTest {
         // ===== 步骤 4: 管理员登录 =====
         StpUtil.login(ADMIN_USER_ID);
         adminToken = StpUtil.getTokenValue();
+    }
+
+    @BeforeEach
+    void resetKnowledgeFileConfigCache() {
+        reset(knowledgeFileConfigCacheService);
+        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.empty());
     }
 
     /**
@@ -296,12 +313,12 @@ class AdminControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200));
 
-        mockMvc.perform(get("/api/v1/admin/knowledge-file-config")
-                .header("satoken", adminToken))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.maxSizeBytes").value(1024))
-            .andExpect(jsonPath("$.data.allowedSuffixes[0]").value("pdf"))
-            .andExpect(jsonPath("$.data.allowedSuffixes[1]").value("txt"));
+        org.mockito.ArgumentCaptor<KnowledgeFileConfigDTO> captor =
+            org.mockito.ArgumentCaptor.forClass(KnowledgeFileConfigDTO.class);
+        verify(knowledgeFileConfigCacheService).putConfig(captor.capture());
+        assertThat(captor.getValue().getMaxSizeBytes()).isEqualTo(1024L);
+        assertThat(captor.getValue().getAllowedSuffixes()).containsExactly("pdf", "txt");
+        assertThat(captor.getValue().getUpdatedBy()).isEqualTo(ADMIN_USER_ID);
     }
 
     // ========================================================================

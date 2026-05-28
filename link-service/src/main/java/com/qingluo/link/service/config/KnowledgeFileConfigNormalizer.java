@@ -56,11 +56,34 @@ public final class KnowledgeFileConfigNormalizer {
         }
     }
 
+    public static LinkedHashSet<String> normalizeOrFallback(List<String> suffixes, Set<String> fallback) {
+        if (!hasOnlySupportedSuffixes(suffixes, fallback)) {
+            return new LinkedHashSet<>(fallback);
+        }
+        return normalize(suffixes);
+    }
+
+    public static boolean hasOnlySupportedSuffixes(List<String> suffixes, Set<String> supportedSuffixes) {
+        if (suffixes == null || suffixes.isEmpty()) {
+            return false;
+        }
+        LinkedHashSet<String> normalized = normalize(suffixes);
+        return !normalized.isEmpty() && supportedSuffixes.containsAll(normalized);
+    }
+
     public static String writeSuffixes(Set<String> suffixes, ObjectMapper objectMapper) {
         try {
             return objectMapper.writeValueAsString(suffixes);
         } catch (JsonProcessingException e) {
             throw new BusinessException(ErrorCode.KNOWLEDGE_FILE_CONFIG_INVALID);
         }
+    }
+
+    private static LinkedHashSet<String> normalize(List<String> suffixes) {
+        return suffixes.stream()
+            .filter(StringUtils::hasText)
+            .map(String::trim)
+            .map(value -> value.toLowerCase(Locale.ROOT))
+            .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }
