@@ -8,7 +8,9 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import java.io.File;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -60,6 +62,31 @@ public class MinioFileService implements IOssService {
             return normalizeEndpoint() + "/" + bucket + "/" + saveDirAndFileName;
         } catch (Exception e) {
             log.error("Upload MinIO file failed, place={}, objectKey={}", ossSavePlaceEnum, saveDirAndFileName, e);
+            return null;
+        }
+    }
+
+    @Override
+    public String upload2PreviewUrl(
+            OssSavePlaceEnum ossSavePlaceEnum, File localFile, String contentType, String saveDirAndFileName) {
+        String bucket = resolveBucketName(ossSavePlaceEnum);
+        try (InputStream inputStream = Files.newInputStream(localFile.toPath())) {
+            ensureBucket(bucket);
+            minioClient.putObject(
+                PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(saveDirAndFileName)
+                    .stream(inputStream, localFile.length(), -1)
+                    .contentType(contentType)
+                    .build());
+
+            if (OssSavePlaceEnum.PRIVATE == ossSavePlaceEnum) {
+                return saveDirAndFileName;
+            }
+            return normalizeEndpoint() + "/" + bucket + "/" + saveDirAndFileName;
+        } catch (Exception e) {
+            log.error("Upload MinIO file (from local file) failed, place={}, objectKey={}",
+                ossSavePlaceEnum, saveDirAndFileName, e);
             return null;
         }
     }

@@ -21,10 +21,10 @@ import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.DocumentFileDownloadResource;
 import com.qingluo.link.service.DocumentFileService;
 import com.qingluo.link.service.DocumentFileRuntimeConfigService;
-import com.qingluo.link.service.DocumentParseTaskService;
 import com.qingluo.link.service.config.DocumentFileProperties;
 import com.qingluo.link.service.config.DocumentFileRuntimeConfig;
 import java.io.File;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
@@ -57,12 +57,14 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     private final PrivateFileResolver privateFileResolver;
     private final DocumentFileProperties properties;
     private final DocumentFileRuntimeConfigService documentFileRuntimeConfigService;
-    private final DocumentParseTaskService documentParseTaskService;
+    private final DocumentUploadAsyncExecutor asyncExecutor;
+    private final DocumentUploadTempStorage tempStorage;
 
     @Override
-    @Transactional(noRollbackFor = BusinessException.class)
+    @Transactional
     /**
-     * 上传原始文档文件，并在需要时立即创建解析任务。
+     * 上传原始文档文件：同步阶段（鉴权/校验/同名处理/物化临时文件/落 uploading）后立即返回 uploading；
+     * OSS 上传、终态回写与（parseImmediately 时的）解析投递在事务提交后于专用线程池异步完成。
      */
     public DocumentFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately) {
         assertOwnedDataset(userId, datasetId);
@@ -70,8 +72,92 @@ public class DocumentFileServiceImpl implements DocumentFileService {
 
         String originalFilename = normalizeOriginalFilename(file.getOriginalFilename());
         String suffix = extractSuffix(originalFilename);
-        assertNoDuplicateOriginalFilename(userId, datasetId, originalFilename);
 
+        // 同名分流：撞 failed 复用旧行重置 uploading；撞 uploading/success 拦截 400；无同名则新建。
+        DocumentOriginalFile record = resolveTargetRecord(userId, datasetId, originalFilename, suffix, file);
+
+        // 物化临时文件：趁请求期 MultipartFile 仍有效取得所有权，供请求结束后的异步线程使用（同卷 rename，≈免费）。
+        Path tempFile;
+        try {
+            tempFile = tempStorage.materialize(file);
+        } catch (Exception e) {
+            // 物化失败：抛出后事务回滚，撤销刚落库的 uploading 记录，不残留在途产物。
+            log.error("Materialize upload temp file failed, userId={}, datasetId={}, fileName={}",
+                userId, datasetId, originalFilename, e);
+            throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
+        }
+
+        String objectKey = buildObjectKey(userId, datasetId, originalFilename);
+        DocumentUploadAsyncExecutor.UploadTask task = new DocumentUploadAsyncExecutor.UploadTask(
+            record.getId(), tempFile, objectKey, file.getContentType(), parseImmediately, userId);
+
+        // 事务提交后再提交异步任务，确保池线程能看到已提交的 uploading 记录；
+        // 若事务回滚（如后续异常）则清理已物化的临时文件，避免泄漏。
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+            && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    asyncExecutor.submit(task);
+                }
+
+                @Override
+                public void afterCompletion(int status) {
+                    if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                        tempStorage.delete(tempFile);
+                    }
+                }
+            });
+        } else {
+            asyncExecutor.submit(task);
+        }
+        return toDTO(record);
+    }
+
+    /**
+     * 同名分流（受唯一约束 uk_dataset_user_name_suffix 约束，只能复用旧行、不能插新行）：
+     * <ul>
+     *   <li>撞到的同名记录为 failed → 守卫更新复用该行（failed→uploading、清空上次产物/原因、刷新元数据）；</li>
+     *   <li>撞到 uploading/success → 抛 400 拦截；</li>
+     *   <li>无同名 → 插入新的 uploading 记录（并发同名由唯一约束兜底为 400）。</li>
+     * </ul>
+     */
+    private DocumentOriginalFile resolveTargetRecord(
+            Long userId, Long datasetId, String originalFilename, String suffix, MultipartFile file) {
+        DocumentOriginalFile existing = documentOriginalFileMapper.selectOne(
+            new LambdaQueryWrapper<DocumentOriginalFile>()
+                .eq(DocumentOriginalFile::getUserId, userId)
+                .eq(DocumentOriginalFile::getDatasetId, datasetId)
+                .eq(DocumentOriginalFile::getOriginalFilename, originalFilename)
+                .eq(DocumentOriginalFile::getFileSuffix, suffix));
+        if (existing != null) {
+            if (!UPLOAD_FAILED.equals(existing.getUploadStatus())) {
+                throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
+            }
+            int reused = documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
+                .eq(DocumentOriginalFile::getId, existing.getId())
+                .eq(DocumentOriginalFile::getUploadStatus, UPLOAD_FAILED)
+                .set(DocumentOriginalFile::getUploadStatus, UPLOADING)
+                .set(DocumentOriginalFile::getIsUploadSuccess, false)
+                .set(DocumentOriginalFile::getFailureReason, null)
+                .set(DocumentOriginalFile::getObjectKey, null)
+                .set(DocumentOriginalFile::getFileUrl, null)
+                .set(DocumentOriginalFile::getFileSize, file.getSize())
+                .set(DocumentOriginalFile::getContentType, file.getContentType())
+                .set(DocumentOriginalFile::getBucketName, ossService.getBucketName(OssSavePlaceEnum.PRIVATE)));
+            if (reused == 0) {
+                // 并发：旧行已被他人复用或改状态。
+                throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
+            }
+            existing.setUploadStatus(UPLOADING);
+            existing.setIsUploadSuccess(false);
+            existing.setFailureReason(null);
+            existing.setObjectKey(null);
+            existing.setFileUrl(null);
+            existing.setFileSize(file.getSize());
+            existing.setContentType(file.getContentType());
+            return existing;
+        }
         DocumentOriginalFile record = new DocumentOriginalFile();
         record.setDatasetId(datasetId);
         record.setUserId(userId);
@@ -87,39 +173,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
         }
-
-        String objectKey = buildObjectKey(userId, datasetId, originalFilename);
-        String uploadResult = ossService.upload2PreviewUrl(OssSavePlaceEnum.PRIVATE, file, objectKey);
-        if (!StringUtils.hasText(uploadResult)) {
-            documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
-                .eq(DocumentOriginalFile::getId, record.getId())
-                .set(DocumentOriginalFile::getUploadStatus, UPLOAD_FAILED)
-                .set(DocumentOriginalFile::getIsUploadSuccess, false)
-                .set(DocumentOriginalFile::getFailureReason, "文件上传失败，请稍后重试"));
-            log.error("Upload document file to oss failed, userId={}, datasetId={}, fileName={}",
-                userId, datasetId, originalFilename);
-            throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
-        }
-
-        String fileUrl = normalizeBaseUrl(properties.getInternalBaseUrl())
-            + "/api/v1/internal/files/" + record.getId() + "/content";
-        documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
-            .eq(DocumentOriginalFile::getId, record.getId())
-            .set(DocumentOriginalFile::getObjectKey, uploadResult)
-            .set(DocumentOriginalFile::getFileUrl, fileUrl)
-            .set(DocumentOriginalFile::getUploadStatus, UPLOAD_SUCCESS)
-            .set(DocumentOriginalFile::getIsUploadSuccess, true));
-
-        record.setObjectKey(uploadResult);
-        record.setFileUrl(fileUrl);
-        record.setUploadStatus(UPLOAD_SUCCESS);
-        record.setIsUploadSuccess(true);
-        record.setFailureReason(null);
-        initializeParseFileIfAbsent(record);
-        if (parseImmediately) {
-            submitAutoParseAfterCommit(userId, record);
-        }
-        return toDTO(record);
+        return record;
     }
 
     @Override
@@ -201,28 +255,6 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         return new DocumentFileDownloadResource(file, record.getOriginalFilename(), record.getContentType());
     }
 
-    private void initializeParseFileIfAbsent(DocumentOriginalFile file) {
-        DocumentParseFile existing = documentParseFileMapper.selectOne(new LambdaQueryWrapper<DocumentParseFile>()
-            .eq(DocumentParseFile::getDocumentOriginalFileId, file.getId()));
-        if (existing != null) {
-            return;
-        }
-        DocumentParseFile parseFile = new DocumentParseFile();
-        parseFile.setDocumentOriginalFileId(file.getId());
-        parseFile.setDatasetId(file.getDatasetId());
-        parseFile.setUserId(file.getUserId());
-        parseFile.setOriginalFilename(file.getOriginalFilename());
-        parseFile.setParseCount(0);
-        try {
-            documentParseFileMapper.insert(parseFile);
-        } catch (DataIntegrityViolationException e) {
-            if (documentParseFileMapper.selectOne(new LambdaQueryWrapper<DocumentParseFile>()
-                .eq(DocumentParseFile::getDocumentOriginalFileId, file.getId())) == null) {
-                throw e;
-            }
-        }
-    }
-
     private void deleteParseRecords(Long originalFileId) {
         DocumentParseFile parseFile = documentParseFileMapper.selectOne(new LambdaQueryWrapper<DocumentParseFile>()
             .eq(DocumentParseFile::getDocumentOriginalFileId, originalFileId));
@@ -234,20 +266,6 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         }
         documentParsedLogMapper.delete(new LambdaQueryWrapper<DocumentParsedLog>()
             .eq(DocumentParsedLog::getDocumentOriginalFileId, originalFileId));
-    }
-
-    private void submitAutoParseAfterCommit(Long userId, DocumentOriginalFile file) {
-        if (TransactionSynchronizationManager.isActualTransactionActive()
-            && TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    documentParseTaskService.submitAutoParseAfterUpload(userId, file);
-                }
-            });
-            return;
-        }
-        documentParseTaskService.submitAutoParseAfterUpload(userId, file);
     }
 
     /**
@@ -304,19 +322,6 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             throw new BusinessException(400, "当前文件格式暂不支持", 400);
         }
         return filename.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * 校验同一数据集下是否已存在同名原文件。
-     */
-    private void assertNoDuplicateOriginalFilename(Long userId, Long datasetId, String originalFilename) {
-        Long count = documentOriginalFileMapper.selectCount(new LambdaQueryWrapper<DocumentOriginalFile>()
-            .eq(DocumentOriginalFile::getUserId, userId)
-            .eq(DocumentOriginalFile::getDatasetId, datasetId)
-            .eq(DocumentOriginalFile::getOriginalFilename, originalFilename));
-        if (count != null && count > 0) {
-            throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
-        }
     }
 
     /**

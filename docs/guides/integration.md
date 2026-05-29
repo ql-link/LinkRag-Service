@@ -18,6 +18,7 @@
 - Python 访问 Java 内部文件接口时携带约定鉴权信息。
 - OSS object key 和数据库文件记录一致。
 - 解析终态结果可幂等处理。
+- **上传异步化**：上传接口立即返回 `uploadStatus=UPLOADING`，OSS 上传/终态回写在 Java 侧线程池异步完成；`parseImmediately=true` 的解析任务**只在 OSS 上传成功后**才投递（不会对尚未落 OSS 的文件触发解析）。Python 侧无需改动，仍以收到 `parse_task` 为准；前端需改为按 `uploadStatus` 轮询获取上传终态。
 
 ## 解析数据契约
 

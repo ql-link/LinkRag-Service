@@ -3,6 +3,7 @@ package com.qingluo.link.components.oss.service;
 import com.qingluo.link.components.oss.config.OssProperties;
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
 import com.qingluo.link.components.oss.enums.OssServiceTypeEnum;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,6 +49,26 @@ public class LocalFileService implements IOssService {
             return normalizePublicBaseUrl() + "/" + saveDirAndFileName;
         } catch (Exception e) {
             log.error("Upload local OSS file failed, place={}, objectKey={}", ossSavePlaceEnum, saveDirAndFileName, e);
+            return null;
+        }
+    }
+
+    @Override
+    public String upload2PreviewUrl(
+            OssSavePlaceEnum ossSavePlaceEnum, File localFile, String contentType, String saveDirAndFileName) {
+        try {
+            Path target = resolveStoragePath(ossSavePlaceEnum, saveDirAndFileName);
+            Files.createDirectories(target.getParent());
+            // contentType 对本地存储无意义（仅 MinIO 用），此处按对象键落盘即可。
+            Files.copy(localFile.toPath(), target, StandardCopyOption.REPLACE_EXISTING);
+
+            if (OssSavePlaceEnum.PRIVATE == ossSavePlaceEnum) {
+                return saveDirAndFileName;
+            }
+            return normalizePublicBaseUrl() + "/" + saveDirAndFileName;
+        } catch (Exception e) {
+            log.error("Upload local OSS file (from local file) failed, place={}, objectKey={}",
+                    ossSavePlaceEnum, saveDirAndFileName, e);
             return null;
         }
     }

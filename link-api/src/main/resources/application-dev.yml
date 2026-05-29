@@ -98,11 +98,12 @@ logging:
     com.qingluo.link: ${LOG_LEVEL:debug}
 
 thread-pool:
-  core-pool-size: ${THREAD_POOL_CORE_SIZE:5}
-  max-pool-size: ${THREAD_POOL_MAX_SIZE:10}
-  queue-capacity: ${THREAD_POOL_QUEUE_CAPACITY:50}
-  keep-alive-seconds: 60
-  thread-name-prefix: document-file-upload-
+  document-upload:
+    core-pool-size: ${THREAD_POOL_CORE_SIZE:5}
+    max-pool-size: ${THREAD_POOL_MAX_SIZE:10}
+    queue-capacity: ${THREAD_POOL_QUEUE_CAPACITY:50}
+    keep-alive-seconds: ${THREAD_POOL_KEEP_ALIVE_SECONDS:60}
+    thread-name-prefix: ${THREAD_POOL_THREAD_NAME_PREFIX:document-file-upload-}
 
 management:
   health:

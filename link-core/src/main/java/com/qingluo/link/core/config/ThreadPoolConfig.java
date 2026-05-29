@@ -1,52 +1,57 @@
 package com.qingluo.link.core.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadPoolExecutor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.util.concurrent.Executor;
-import java.util.concurrent.ThreadPoolExecutor;
-
 /**
- * @Author JiXu
- * @Date 2025/1/16 下午3:30
- * @ClassName: ThreadPoolConfig
- * @Description:
+ * 线程池配置（多池就绪）。
+ *
+ * <p>每个业务一个专用池，按 {@code thread-pool.<池名>.*} 配置，经 {@link #buildExecutor} 统一构建、
+ * 各带独立拒绝策略与线程名。本次仅 {@code document-upload} 池；未来加池 = 新增一个 {@code @Bean}
+ * 调用 {@link #buildExecutor}。原 {@code customThreadPool} 通用兜底池已移除，避免不同业务共用一个池
+ * 互相拖累。</p>
  */
 @Configuration
+@EnableConfigurationProperties(ThreadPoolProperties.class)
 public class ThreadPoolConfig {
-    @Value("${thread-pool.core-pool-size}")
-    private int corePoolSize;
 
-    @Value("${thread-pool.max-pool-size}")
-    private int maxPoolSize;
+    private final ThreadPoolProperties properties;
 
-    @Value("${thread-pool.queue-capacity}")
-    private int queueCapacity;
+    public ThreadPoolConfig(ThreadPoolProperties properties) {
+        this.properties = properties;
+    }
 
-    @Value("${thread-pool.keep-alive-seconds}")
-    private int keepAliveSeconds;
+    /**
+     * 文档上传专用线程池。
+     *
+     * <p>拒绝策略用 {@link ThreadPoolExecutor.AbortPolicy}：池+队列满时抛
+     * {@link java.util.concurrent.RejectedExecutionException}，由提交方
+     * （{@code DocumentFileServiceImpl.upload} 的 afterCommit）捕获后把记录置 failed，
+     * 不沿用 CallerRunsPolicy 退回请求线程同步执行（否则过载时破坏“快速返回”保证）。</p>
+     */
+    @Bean("documentUploadExecutor")
+    public Executor documentUploadExecutor() {
+        return buildExecutor(properties.getDocumentUpload(), new ThreadPoolExecutor.AbortPolicy());
+    }
 
-    @Value("${thread-pool.thread-name-prefix}")
-    private String threadNamePrefix;
-
-    @Bean("customThreadPool")
-    public Executor customThreadPool() {
+    /**
+     * 通用线程池工厂：先 {@link PoolProperties#validate()} fail-fast，再按参数构建并初始化。
+     * 供多池复用——未来新池只需新增 {@code @Bean} 调用本方法并传入各自的拒绝策略。
+     */
+    private ThreadPoolTaskExecutor buildExecutor(PoolProperties props, RejectedExecutionHandler handler) {
+        props.validate();
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        // 1. 核心线程数
-        executor.setCorePoolSize(corePoolSize);
-        // 2. 最大线程数
-        executor.setMaxPoolSize(maxPoolSize);
-        // 3. 任务队列容量
-        executor.setQueueCapacity(queueCapacity);
-        // 4. 线程空闲时间
-        executor.setKeepAliveSeconds(keepAliveSeconds);
-        // 5. 线程名称前缀
-        executor.setThreadNamePrefix(threadNamePrefix);
-        // 6. 拒绝策略
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        // 初始化线程池
+        executor.setCorePoolSize(props.getCorePoolSize());
+        executor.setMaxPoolSize(props.getMaxPoolSize());
+        executor.setQueueCapacity(props.getQueueCapacity());
+        executor.setKeepAliveSeconds(props.getKeepAliveSeconds());
+        executor.setThreadNamePrefix(props.getThreadNamePrefix());
+        executor.setRejectedExecutionHandler(handler);
         executor.initialize();
         return executor;
     }
