@@ -199,6 +199,18 @@ class ConfigFileContentTest {
         }
 
         @Test
+        @DisplayName("包含线程池环境变量 THREAD_POOL_KEEP_ALIVE_SECONDS:60")
+        void shouldContainThreadPoolKeepAliveSeconds() {
+            assertThat(devConfigContent).contains("${THREAD_POOL_KEEP_ALIVE_SECONDS:60}");
+        }
+
+        @Test
+        @DisplayName("包含线程池环境变量 THREAD_POOL_THREAD_NAME_PREFIX:document-file-upload-")
+        void shouldContainThreadPoolThreadNamePrefix() {
+            assertThat(devConfigContent).contains("${THREAD_POOL_THREAD_NAME_PREFIX:document-file-upload-}");
+        }
+
+        @Test
         @DisplayName("包含日志级别环境变量 LOG_LEVEL:debug")
         void shouldContainLogLevel() {
             assertThat(devConfigContent).contains("${LOG_LEVEL:debug}");

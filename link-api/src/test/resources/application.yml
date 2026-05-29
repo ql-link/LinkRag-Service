@@ -60,8 +60,9 @@ logging:
     com.qingluo.link: debug
 
 thread-pool:
-  core-pool-size: 5
-  max-pool-size: 10
-  queue-capacity: 50
-  keep-alive-seconds: 60
-  thread-name-prefix: document-file-upload-
+  document-upload:
+    core-pool-size: 5
+    max-pool-size: 10
+    queue-capacity: 50
+    keep-alive-seconds: 60
+    thread-name-prefix: document-file-upload-

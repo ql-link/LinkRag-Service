@@ -6,12 +6,14 @@ OSS 组件位于 `link-components/toLink-components-oss`，业务上传入口位
 
 ## 当前能力
 
-- `IOssService`：统一对象存储接口。
-- `LocalFileService`：本地文件实现。
-- `MinioFileService`：MinIO 实现。
+- `IOssService`：统一对象存储接口，提供两种上传重载：
+  - `upload2PreviewUrl(place, MultipartFile, key)`：从请求期 `MultipartFile` 上传（同步入口）。
+  - `upload2PreviewUrl(place, File, contentType, key)`：从已物化的本地 `File` 上传，供请求外/异步场景使用（如文档上传异步化在线程池里上传）——请求期 `MultipartFile` 在请求结束后不可再读，故异步链路改传本地文件 + 显式 `contentType`。
+- `LocalFileService`：本地文件实现（`File` 重载用 `Files.copy`）。
+- `MinioFileService`：MinIO 实现（`File` 重载用 `putObject` + 本地文件流 + `localFile.length()` + `contentType`）。
 - `PrivateFileResolver`：私有对象本地解析与缓存。
 - `OssObjectKeyGenerator`、`OssUploadRuleRegistry`：业务对象 key 与上传规则。
 
 ## 约定
 
-新增上传业务需明确 public/private 边界、对象 key 规则、访问 URL 和删除策略。
+新增上传业务需明确 public/private 边界、对象 key 规则、访问 URL 和删除策略。异步/请求外上传须用 `File` 重载（不要持有请求期 `MultipartFile`）。

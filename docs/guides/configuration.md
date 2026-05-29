@@ -56,7 +56,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 ### 示例
 
-`application.yml` 中定义了 `thread-pool.core-pool-size: 5`。在 `application-dev.yml` 中引用为 `${THREAD_POOL_CORE_SIZE:5}`。如果环境变量 `THREAD_POOL_CORE_SIZE=10`，则最终生效值为 `10`。
+`application.yml` 中定义了 `thread-pool.document-upload.core-pool-size: 5`（线程池按池名嵌套，多池就绪，本次仅 `document-upload` 池）。在 `application-dev.yml` 中引用为 `${THREAD_POOL_CORE_SIZE:5}`。如果环境变量 `THREAD_POOL_CORE_SIZE=10`，则最终生效值为 `10`。
 
 ## 4. 环境变量完整列表
 
@@ -154,11 +154,25 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 ### 4.12 线程池（THREAD_POOL_*）
 
+线程池按池名嵌套配置 `thread-pool.<池名>.*`（多池就绪：每业务一个专用池，互不共用）。本次仅 `document-upload` 池（bean `documentUploadExecutor`，拒绝策略 AbortPolicy——池满拒绝并把上传记录置 `failed`，不退回请求线程同步执行）。以下环境变量映射到 `thread-pool.document-upload.*`：
+
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
 | `THREAD_POOL_CORE_SIZE` | 核心线程数 | 否 | `5` | `10`（生产） |
-| `THREAD_POOL_MAX_SIZE` | 最大线程数 | 否 | `10` | `20`（生产） |
+| `THREAD_POOL_MAX_SIZE` | 最大线程数（须 ≥ 核心数，否则启动校验失败） | 否 | `10` | `20`（生产） |
 | `THREAD_POOL_QUEUE_CAPACITY` | 队列大小 | 否 | `50` | `100`（生产） |
+| `THREAD_POOL_KEEP_ALIVE_SECONDS` | 线程空闲存活秒数 | 否 | `60` | `60` |
+| `THREAD_POOL_THREAD_NAME_PREFIX` | 线程名前缀 | 否 | `document-file-upload-` | `document-file-upload-` |
+
+### 4.12.1 文档上传异步化（tolink.document-file.upload-async.*）
+
+文档上传异步化的兜底配置（无对应 `THREAD_POOL_*` 环境变量，按需在 yml 覆盖）：
+
+| 配置项 | 用途 | 默认值 |
+|------|------|--------|
+| `tolink.document-file.upload-async.temp-dir` | 上传临时文件目录（须与容器 multipart 临时目录同卷，使 `transferTo` 走 rename） | `${java.io.tmpdir}/tolink/document-upload` |
+| `tolink.document-file.upload-async.stuck-threshold` | `uploading` 超时阈值，超过仍 uploading 即由扫描置 `failed` | `10m` |
+| `tolink.document-file.upload-async.scan-interval-ms` | 超时扫描间隔（毫秒） | `60000` |
 
 ### 4.13 日志
 
@@ -234,6 +248,8 @@ mvn spring-boot:run -pl link-api
 | `THREAD_POOL_CORE_SIZE` | `5` | `10` |
 | `THREAD_POOL_MAX_SIZE` | `10` | `20` |
 | `THREAD_POOL_QUEUE_CAPACITY` | `50` | `100` |
+| `THREAD_POOL_KEEP_ALIVE_SECONDS` | `60` | `60` |
+| `THREAD_POOL_THREAD_NAME_PREFIX` | `document-file-upload-` | `document-file-upload-` |
 | `LOG_LEVEL` | `debug` | `info` |
 | `MYBATIS_LOG_IMPL` | `StdOutImpl` | `NoLoggingImpl` |
 

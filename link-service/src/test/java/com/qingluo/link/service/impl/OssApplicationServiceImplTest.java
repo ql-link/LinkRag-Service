@@ -96,6 +96,17 @@ class OssApplicationServiceImplTest {
         }
 
         @Override
+        public String upload2PreviewUrl(
+            OssSavePlaceEnum ossSavePlaceEnum, java.io.File localFile, String contentType, String saveDirAndFileName) {
+            this.lastSavePlace = ossSavePlaceEnum;
+            this.lastObjectKey = saveDirAndFileName;
+            if (ossSavePlaceEnum == OssSavePlaceEnum.PUBLIC) {
+                return "/preview/" + saveDirAndFileName;
+            }
+            return saveDirAndFileName;
+        }
+
+        @Override
         public boolean downloadFile(OssSavePlaceEnum ossSavePlaceEnum, String source, String target) {
             return false;
         }

@@ -51,7 +51,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "tolink.oss.file-root-path=/tmp/tolink-document-file-test",
     "tolink.document-file.max-size-bytes=64",
     "tolink.document-file.internal-base-url=http://tolink-service:8080",
-    "tolink.document-file.service-token=test-service-token"
+    "tolink.document-file.service-token=test-service-token",
+    // 用同步执行器覆盖 document-upload 池，使异步上传在请求内完成，集成断言保持确定性。
+    "spring.main.allow-bean-definition-overriding=true"
 })
 @AutoConfigureMockMvc
 @Import({TestSecurityConfig.class, DocumentFileControllerTest.DocumentFileTestConfig.class})
@@ -71,6 +73,9 @@ class DocumentFileControllerTest {
 
     @Autowired
     private RecordingMQSend recordingMQSend;
+
+    @Autowired
+    private ControllableUploadExecutor uploadExecutor;
 
     @SpyBean
     private com.qingluo.link.components.oss.service.IOssService ossService;
@@ -94,6 +99,7 @@ class DocumentFileControllerTest {
         jdbcTemplate.update("DELETE FROM dataset");
         jdbcTemplate.update("DELETE FROM sys_user");
         recordingMQSend.clear();
+        uploadExecutor.reset();
 
         String username = "document_" + System.nanoTime();
         jdbcTemplate.update("""
@@ -126,8 +132,9 @@ class DocumentFileControllerTest {
             .andExpect(jsonPath("$.data.datasetId").value(datasetId))
             .andExpect(jsonPath("$.data.originalFilename").value("guide.MD"))
             .andExpect(jsonPath("$.data.fileSuffix").value("md"))
-            .andExpect(jsonPath("$.data.uploadStatus").value("UPLOAD_SUCCESS"))
-            .andExpect(jsonPath("$.data.isUploadSuccess").value(true))
+            // 上传接口立即返回 uploading；终态由异步任务回写（同步执行器下 afterCommit 已完成落库 success）。
+            .andExpect(jsonPath("$.data.uploadStatus").value("UPLOADING"))
+            .andExpect(jsonPath("$.data.isUploadSuccess").value(false))
             .andReturn();
 
         JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
@@ -208,14 +215,16 @@ class DocumentFileControllerTest {
     void Should_ThrowException_When_OssUploadFails() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "failed.txt", MediaType.TEXT_PLAIN_VALUE, "hello".getBytes(StandardCharsets.UTF_8));
-        willReturn("").given(ossService).upload2PreviewUrl(any(), any(), anyString());
+        // 异步上传走 File 重载；OSS 返回空 → 异步置 failed（同步执行器下请求返回前已完成）。
+        willReturn("").given(ossService)
+            .upload2PreviewUrl(any(), any(java.io.File.class), any(), anyString());
 
         mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
                 .header("satoken", token))
-            .andExpect(status().isInternalServerError())
-            .andExpect(jsonPath("$.code").value(500))
-            .andExpect(jsonPath("$.message").value("文件上传失败，请稍后重试"));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.uploadStatus").value("UPLOADING"));
 
         Integer count = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM document_original_file
@@ -238,6 +247,32 @@ class DocumentFileControllerTest {
         assertThat(uploadStatus).isEqualTo("failed");
         assertThat(isUploadSuccess).isFalse();
         assertThat(failureReason).isEqualTo("文件上传失败，请稍后重试");
+    }
+
+    @Test
+    void Should_MarkUploadFailed_When_PoolRejectsTask() throws Exception {
+        uploadExecutor.rejectNext();
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "rejected.txt", MediaType.TEXT_PLAIN_VALUE, "x".getBytes(StandardCharsets.UTF_8));
+
+        // 上传接口仍立即返回 uploading；池满拒绝在 upload() 事务 afterCommit 触发，
+        // 置 failed 必须以独立事务（REQUIRES_NEW）提交，否则记录会滞留 uploading。
+        mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(file)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.uploadStatus").value("UPLOADING"));
+
+        String uploadStatus = jdbcTemplate.queryForObject("""
+                SELECT upload_status FROM document_original_file
+                WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
+                """, String.class, datasetId, userId, "rejected.txt");
+        String failureReason = jdbcTemplate.queryForObject("""
+                SELECT failure_reason FROM document_original_file
+                WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
+                """, String.class, datasetId, userId, "rejected.txt");
+        assertThat(uploadStatus).isEqualTo("failed");
+        assertThat(failureReason).isEqualTo("服务繁忙，请稍后重试");
     }
 
     @Test
@@ -392,7 +427,7 @@ class DocumentFileControllerTest {
                 .param("parseImmediately", "true")
                 .header("satoken", token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.uploadStatus").value("UPLOAD_SUCCESS"))
+            .andExpect(jsonPath("$.data.uploadStatus").value("UPLOADING"))
             .andReturn();
 
         JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");
@@ -550,6 +585,46 @@ class DocumentFileControllerTest {
         @Bean
         RecordingMQSend recordingMQSend() {
             return new RecordingMQSend();
+        }
+
+        @Bean("documentUploadExecutor")
+        ControllableUploadExecutor documentUploadExecutor() {
+            return new ControllableUploadExecutor();
+        }
+    }
+
+    /**
+     * 测试用 documentUploadExecutor：默认在新线程执行并 join 等待。
+     *
+     * <p>用新线程（而非 SyncTaskExecutor 内联）让异步任务脱离 upload() 事务 afterCommit 阶段仍绑定的
+     * 事务资源，与生产环境线程池在独立线程执行一致；join 保证集成断言确定性。{@link #rejectNext()} 可模拟
+     * 池满拒绝（在 afterCommit 抛 RejectedExecutionException），用于验证拒绝路径的终态回写仍能独立提交。</p>
+     */
+    static class ControllableUploadExecutor implements java.util.concurrent.Executor {
+
+        private volatile boolean rejectNext = false;
+
+        @Override
+        public void execute(Runnable command) {
+            if (rejectNext) {
+                rejectNext = false;
+                throw new java.util.concurrent.RejectedExecutionException("pool full (test)");
+            }
+            Thread thread = new Thread(command, "test-document-upload");
+            thread.start();
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        void rejectNext() {
+            this.rejectNext = true;
+        }
+
+        void reset() {
+            this.rejectNext = false;
         }
     }
 

@@ -49,8 +49,12 @@ import static org.assertj.core.api.Assertions.assertThat;
         "LLM_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         // 覆盖连接池参数（模拟生产环境配置）
         "DRUID_INITIAL_SIZE=5",
-        // 覆盖线程池参数（模拟生产环境配置）
+        // 覆盖线程池参数（模拟生产环境配置）——多池就绪后绑定到 thread-pool.document-upload.*
         "THREAD_POOL_CORE_SIZE=10",
+        "THREAD_POOL_MAX_SIZE=20",
+        "THREAD_POOL_QUEUE_CAPACITY=100",
+        "THREAD_POOL_KEEP_ALIVE_SECONDS=120",
+        "THREAD_POOL_THREAD_NAME_PREFIX=doc-up-",
         // 覆盖日志级别（模拟生产环境配置）
         "LOG_LEVEL=info",
         // 覆盖 MyBatis 日志实现（模拟生产环境关闭 SQL 日志）
@@ -60,16 +64,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("环境变量覆盖集成测试")
 class EnvVarOverrideTest {
 
-    @Value("${thread-pool.core-pool-size}")
+    @Value("${thread-pool.document-upload.core-pool-size}")
     private int corePoolSize;
+
+    @Value("${thread-pool.document-upload.max-pool-size}")
+    private int maxPoolSize;
+
+    @Value("${thread-pool.document-upload.queue-capacity}")
+    private int queueCapacity;
+
+    @Value("${thread-pool.document-upload.keep-alive-seconds}")
+    private int keepAliveSeconds;
+
+    @Value("${thread-pool.document-upload.thread-name-prefix}")
+    private String threadNamePrefix;
 
     @Value("${logging.level.com.qingluo.link}")
     private String logLevel;
 
     @Test
-    @DisplayName("线程池核心线程数被环境变量覆盖为 10")
-    void threadPoolCorePoolSizeOverridden() {
+    @DisplayName("document-upload 线程池五项参数均被环境变量覆盖")
+    void threadPoolParamsOverridden() {
         assertThat(corePoolSize).isEqualTo(10);
+        assertThat(maxPoolSize).isEqualTo(20);
+        assertThat(queueCapacity).isEqualTo(100);
+        assertThat(keepAliveSeconds).isEqualTo(120);
+        assertThat(threadNamePrefix).isEqualTo("doc-up-");
     }
 
     @Test

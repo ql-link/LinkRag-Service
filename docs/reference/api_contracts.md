@@ -57,13 +57,15 @@
 | GET | `/api/v1/datasets/{datasetId}` | 数据集详情 |
 | PATCH | `/api/v1/datasets/{datasetId}` | 更新数据集 |
 | DELETE | `/api/v1/datasets/{datasetId}` | 删除数据集 |
-| POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件 |
-| GET | `/api/v1/datasets/{datasetId}/files` | 文件列表 |
+| POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件（异步：立即返回 `uploadStatus=UPLOADING`） |
+| GET | `/api/v1/datasets/{datasetId}/files` | 文件列表（支持按 `uploadStatus` 过滤，前端据此轮询上传终态） |
 | GET | `/api/v1/files/{fileId}` | 文件详情 |
 | DELETE | `/api/v1/files/{fileId}` | 删除文件 |
 | POST | `/api/v1/files/{fileId}/parse` | 提交解析 |
 | GET | `/api/v1/datasets/{datasetId}/files/parse-events` | SSE 解析事件 |
 | GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 解析结果列表 |
+
+> 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
 
 ## OSS / Internal
 
