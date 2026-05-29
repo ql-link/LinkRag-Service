@@ -1,0 +1,32 @@
+package com.qingluo.link.service.mq;
+
+import com.qingluo.link.components.mq.MQMsgReceiver;
+import com.qingluo.link.components.mq.constant.MQVenderChoose;
+import com.qingluo.link.components.mq.model.DocumentParseResultMQ;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
+
+@Component
+@RequiredArgsConstructor
+@ConditionalOnProperty(name = MQVenderChoose.YML_VENDER_KEY, havingValue = MQVenderChoose.KAFKA)
+@Slf4j
+public class DocumentParseResultKafkaReceiver implements MQMsgReceiver {
+
+    private final DocumentParseResultMQ.MQReceiver receiver;
+
+    @Override
+    @KafkaListener(
+        topics = DocumentParseResultMQ.MQ_NAME,
+        groupId = "${tolink.mq.parse-result.group-id:tolink-java-parse-result-worker}",
+        // 指向 parse_result 专用容器工厂（带退避重试 + 失败分类 + 告警/指标 recoverer）；
+        // 缓存补偿等其他消费者仍走 Boot 默认工厂，不受影响。
+        containerFactory = "parseResultKafkaListenerContainerFactory"
+    )
+    public void receive(String msg) {
+        log.info("Receive parse result MQ message");
+        receiver.receive(DocumentParseResultMQ.parseMsg(msg));
+    }
+}

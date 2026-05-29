@@ -13,10 +13,10 @@ import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.DatasetMapper;
-import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
-import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
+import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,7 +38,7 @@ class DatasetServiceImplTest {
     private ChatMessageMapper chatMessageMapper;
 
     @Mock
-    private KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private DocumentOriginalFileMapper documentOriginalFileMapper;
 
     @Mock
     private IOssService ossService;
@@ -53,9 +53,9 @@ class DatasetServiceImplTest {
     @DisplayName("Should_StopDatabaseDeletion_When_AnyOssFileDeleteFails")
     void Should_StopDatabaseDeletion_When_AnyOssFileDeleteFails() {
         Dataset dataset = buildDataset(10L, 100L);
-        KnowledgeOriginalFile file = buildFile("raw/100/10/a.txt");
+        DocumentOriginalFile file = buildFile("raw/100/10/a.txt");
         given(datasetMapper.selectOne(any())).willReturn(dataset);
-        given(knowledgeOriginalFileMapper.selectList(any())).willReturn(List.of(file));
+        given(documentOriginalFileMapper.selectList(any())).willReturn(List.of(file));
         given(ossService.deleteFile(any(), any())).willReturn(false);
 
         assertThatThrownBy(() -> datasetService.delete(100L, 10L))
@@ -64,7 +64,7 @@ class DatasetServiceImplTest {
 
         verify(datasetMapper).selectOne(any());
         verify(chatConversationMapper, never()).delete(any());
-        verify(knowledgeOriginalFileMapper, never()).delete(any());
+        verify(documentOriginalFileMapper, never()).delete(any());
         verifyNoMoreInteractions(datasetMapper);
     }
 
@@ -72,12 +72,12 @@ class DatasetServiceImplTest {
     @DisplayName("Should_ThrowCompensationException_When_DatabaseDeleteFailsAfterAllOssFilesDeleted")
     void Should_ThrowCompensationException_When_DatabaseDeleteFailsAfterAllOssFilesDeleted() {
         Dataset dataset = buildDataset(10L, 100L);
-        KnowledgeOriginalFile file = buildFile("raw/100/10/a.txt");
+        DocumentOriginalFile file = buildFile("raw/100/10/a.txt");
         ChatConversation conversation = new ChatConversation();
         conversation.setId(99L);
         conversation.setDatasetId(10L);
         given(datasetMapper.selectOne(any())).willReturn(dataset);
-        given(knowledgeOriginalFileMapper.selectList(any())).willReturn(List.of(file));
+        given(documentOriginalFileMapper.selectList(any())).willReturn(List.of(file));
         given(chatConversationMapper.selectList(any())).willReturn(List.of(conversation));
         given(ossService.deleteFile(any(), any())).willReturn(true);
         org.mockito.Mockito.doThrow(new RuntimeException("db delete failed"))
@@ -97,8 +97,8 @@ class DatasetServiceImplTest {
         return dataset;
     }
 
-    private KnowledgeOriginalFile buildFile(String objectKey) {
-        KnowledgeOriginalFile file = new KnowledgeOriginalFile();
+    private DocumentOriginalFile buildFile(String objectKey) {
+        DocumentOriginalFile file = new DocumentOriginalFile();
         file.setObjectKey(objectKey);
         return file;
     }

@@ -2,7 +2,7 @@
 
 ## 职责
 
-OSS 组件位于 `link-components/toLink-components-oss`，业务上传入口位于 `OssApplicationService` 和知识文件服务。
+OSS 组件位于 `link-components/toLink-components-oss`，业务上传入口位于 `OssApplicationService` 和文档文件服务。
 
 ## 当前能力
 

@@ -113,7 +113,7 @@ rules:
       - link-service/src/main/java/**/KnowledgeParse*.java
       - link-model/src/main/java/**/Knowledge*.java
     must_update:
-      - docs/architecture/knowledge_file_module.md
+      - docs/architecture/document_file_module.md
       - docs/guides/integration.md
     severity: warning
     rationale: 文件解析链路横跨 Java、Python、MQ、OSS，需要保持说明同步。
