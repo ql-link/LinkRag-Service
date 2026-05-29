@@ -288,7 +288,7 @@ services:
 
 ## parse_result 卡住扫描配置
 
-前缀 `tolink.parse-result.stuck`（`ParseResultStuckProperties`），由 `KnowledgeParseStuckScanner` 使用：
+前缀 `tolink.parse-result.stuck`（`ParseResultStuckProperties`），由 `DocumentParseStuckScanner` 使用：
 
 | 配置项 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- | --- |

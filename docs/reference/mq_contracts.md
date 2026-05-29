@@ -10,8 +10,8 @@ MQ 实现事实来源：
 
 | 消息模型 | Topic/Queue | 方向 | 说明 |
 | --- | --- | --- | --- |
-| `KnowledgeParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 知识文件解析任务 |
-| `KnowledgeParseResultMQ` | `tolink.rag.parse_result` | Python -> Java | 解析终态结果 |
+| `DocumentParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 文档解析任务 |
+| `DocumentParseResultMQ` | `tolink.rag.parse_result` | Python -> Java | 解析终态结果 |
 | `CacheCompensationMQ` | `tolink.cache.evict` | 补偿生产者 -> Java | 缓存补偿删除 |
 
 ## 契约要求
@@ -22,14 +22,14 @@ MQ 实现事实来源：
 
 ## 解析消息字段
 
-`KnowledgeParseTaskMQ` 使用扁平 JSON，字段为：
+`DocumentParseTaskMQ` 使用扁平 JSON，字段为：
 
 - `task_id`、`original_file_id`、`document_parse_file_id`、`user_id`、`dataset_id`
 - `trigger_mode`：`upload_auto` 或 `manual_retry`
 - `file_type`、`source_bucket`、`source_object_key`、`source_filename`
 - `md_bucket`、`md_object_key`
 
-`KnowledgeParseResultMQ` 使用扁平 JSON，字段为：
+`DocumentParseResultMQ` 使用扁平 JSON，字段为：
 
 - `task_id`、`original_file_id`、`document_parsed_log_id`、`dataset_id`、`user_id`
 - `task_status`：仅 `success` 或 `failed`

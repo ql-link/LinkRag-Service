@@ -10,10 +10,10 @@ import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.DatasetMapper;
-import com.qingluo.link.mapper.KnowledgeOriginalFileMapper;
+import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
-import com.qingluo.link.model.dto.entity.KnowledgeOriginalFile;
+import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.model.dto.request.CreateDatasetRequest;
 import com.qingluo.link.model.dto.request.UpdateDatasetRequest;
 import com.qingluo.link.model.dto.response.DatasetDTO;
@@ -40,7 +40,7 @@ public class DatasetServiceImpl implements DatasetService {
     private final DatasetMapper datasetMapper;
     private final ChatConversationMapper chatConversationMapper;
     private final ChatMessageMapper chatMessageMapper;
-    private final KnowledgeOriginalFileMapper knowledgeOriginalFileMapper;
+    private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
 
@@ -127,9 +127,9 @@ public class DatasetServiceImpl implements DatasetService {
     public void delete(Long userId, Long datasetId) {
         Dataset dataset = getOwnedDataset(userId, datasetId);
 
-        List<KnowledgeOriginalFile> files = knowledgeOriginalFileMapper.selectList(new LambdaQueryWrapper<KnowledgeOriginalFile>()
-            .eq(KnowledgeOriginalFile::getDatasetId, dataset.getId()));
-        for (KnowledgeOriginalFile file : files) {
+        List<DocumentOriginalFile> files = documentOriginalFileMapper.selectList(new LambdaQueryWrapper<DocumentOriginalFile>()
+            .eq(DocumentOriginalFile::getDatasetId, dataset.getId()));
+        for (DocumentOriginalFile file : files) {
             if (StringUtils.hasText(file.getObjectKey())) {
                 boolean deleted = ossService.deleteFile(OssSavePlaceEnum.PRIVATE, file.getObjectKey());
                 if (!deleted) {
@@ -154,8 +154,8 @@ public class DatasetServiceImpl implements DatasetService {
                     .eq(com.qingluo.link.model.dto.entity.ChatMessage::getConversationId, conversation.getId()));
             }
 
-            knowledgeOriginalFileMapper.delete(new LambdaQueryWrapper<KnowledgeOriginalFile>()
-                .eq(KnowledgeOriginalFile::getDatasetId, dataset.getId()));
+            documentOriginalFileMapper.delete(new LambdaQueryWrapper<DocumentOriginalFile>()
+                .eq(DocumentOriginalFile::getDatasetId, dataset.getId()));
             chatConversationMapper.delete(new LambdaQueryWrapper<ChatConversation>()
                 .eq(ChatConversation::getDatasetId, dataset.getId()));
             datasetMapper.deleteById(dataset.getId());

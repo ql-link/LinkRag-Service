@@ -46,7 +46,7 @@
 | POST | `/api/v1/chat/conversations/{id}/messages` | 保存消息 |
 | DELETE | `/api/v1/chat/conversations/{id}` | 删除会话 |
 
-## Dataset / Knowledge File
+## Dataset / Document File
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -55,7 +55,7 @@
 | GET | `/api/v1/datasets/{datasetId}` | 数据集详情 |
 | PATCH | `/api/v1/datasets/{datasetId}` | 更新数据集 |
 | DELETE | `/api/v1/datasets/{datasetId}` | 删除数据集 |
-| POST | `/api/v1/datasets/{datasetId}/files` | 上传知识文件 |
+| POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件 |
 | GET | `/api/v1/datasets/{datasetId}/files` | 文件列表 |
 | GET | `/api/v1/files/{fileId}` | 文件详情 |
 | DELETE | `/api/v1/files/{fileId}` | 删除文件 |

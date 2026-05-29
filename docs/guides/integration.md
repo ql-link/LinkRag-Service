@@ -25,4 +25,4 @@
 - `parse_task` 传递 `document_parse_file_id` 和 `trigger_mode`，便于 Python 创建日志记录。
 - `parse_result` 传递 `document_parsed_log_id`，Java 读取日志及聚合记录校验后只转发 SSE。
 - `processing` / `progress` 经内部 HTTP 接口上报；`success` / `failed` 只经 MQ 回传。
-- `parse_result` 若丢失或长时间未送达，Java 侧不依赖单条 MQ：前端结果查询按 `latest_parse_task_id` 读 DB 自愈，`KnowledgeParseStuckScanner` 也以 DB 为权威源对超阈值任务补推或告警。本兜底不要求 Python 配合改动消息体。
+- `parse_result` 若丢失或长时间未送达，Java 侧不依赖单条 MQ：前端结果查询按 `latest_parse_task_id` 读 DB 自愈，`DocumentParseStuckScanner` 也以 DB 为权威源对超阈值任务补推或告警。本兜底不要求 Python 配合改动消息体。

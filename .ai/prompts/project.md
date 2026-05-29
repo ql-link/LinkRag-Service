@@ -119,7 +119,7 @@ ToLink 采用 “Java 管理端 + Python RAG 执行端” 协作模式：
 | 修改表、Entity、Mapper | `docs/reference/mysql_schema.md` + `docs/db/schema.sql` + Entity |
 | 修改 MQ | `docs/reference/mq_contracts.md` + `docs/architecture/mq_module.md` |
 | 修改 Redis 缓存 | `docs/architecture/cache_module.md` |
-| 修改 OSS / 文件上传 | `docs/architecture/object_storage_module.md` + `docs/architecture/knowledge_file_module.md` |
+| 修改 OSS / 文件上传 | `docs/architecture/object_storage_module.md` + `docs/architecture/document_file_module.md` |
 | 修改配置 | `docs/guides/configuration.md` |
 | 新需求开发 | `docs/development/spec_as_test_handbook.md` |
 

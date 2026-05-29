@@ -29,4 +29,4 @@ mvn -pl link-service test
 - 外部 MySQL、Redis、Kafka、MinIO、第三方 API 在单元测试中默认 Mock。
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。
 - 解析链路测试需覆盖 schema 初始化、扁平 MQ 契约、上传初始化 `document_parse_file`、解析投递事务回滚、重复提交拦截、结果归属校验和 SSE 转发；Java 端不应在结果消费测试中回写 Python 负责的终态字段。
-- parse_result 消费兜底测试：失败分类与当前任务过滤用 Mockito 单测（`KnowledgeParseResultServiceImplTest`、`KnowledgeParseStuckScannerTest`、`ParseResultKafkaConfigTest`）；“坏消息不阻塞后续 / 缓存补偿隔离”用 `@EmbeddedKafka` 集成测试（`ParseResultConsumerEmbeddedKafkaTest`，按 `*Test` 命名以纳入 Surefire）。所有用例须断言 Java 不写业务表（`verify(...never()).updateById`）。
+- parse_result 消费兜底测试：失败分类与当前任务过滤用 Mockito 单测（`DocumentParseResultServiceImplTest`、`DocumentParseStuckScannerTest`、`ParseResultKafkaConfigTest`）；“坏消息不阻塞后续 / 缓存补偿隔离”用 `@EmbeddedKafka` 集成测试（`ParseResultConsumerEmbeddedKafkaTest`，按 `*Test` 命名以纳入 Surefire）。所有用例须断言 Java 不写业务表（`verify(...never()).updateById`）。
