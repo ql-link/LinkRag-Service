@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl.know;
+package com.qingluo.link.service.impl.document;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;

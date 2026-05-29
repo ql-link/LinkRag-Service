@@ -17,11 +17,11 @@ import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.mapper.DocumentParseFileMapper;
 import com.qingluo.link.mapper.DocumentParsedLogMapper;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
-import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
-import com.qingluo.link.service.config.KnowledgeFileProperties;
+import com.qingluo.link.service.DocumentFileRuntimeConfigService;
+import com.qingluo.link.service.config.DocumentFileProperties;
 import com.qingluo.link.service.mq.DocumentParseTaskMQ;
 
-import com.qingluo.link.service.impl.know.DocumentFileServiceImpl;
+import com.qingluo.link.service.impl.document.DocumentFileServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,10 +55,10 @@ class DocumentFileServiceImplTest {
     private ObjectProvider<MQSend> mqSendProvider;
 
     @Mock
-    private KnowledgeFileProperties properties;
+    private DocumentFileProperties properties;
 
     @Mock
-    private KnowledgeFileRuntimeConfigService knowledgeFileRuntimeConfigService;
+    private DocumentFileRuntimeConfigService documentFileRuntimeConfigService;
 
     @InjectMocks
     private DocumentFileServiceImpl documentFileService;

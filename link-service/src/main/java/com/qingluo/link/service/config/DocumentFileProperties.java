@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConfigurationProperties(prefix = "tolink.knowledge-file")
-public class KnowledgeFileProperties {
+@ConfigurationProperties(prefix = "tolink.document-file")
+public class DocumentFileProperties {
 
     private Set<String> allowedSuffixes = new LinkedHashSet<>(Set.of("md", "markdown", "pdf", "docx", "txt"));
     private long maxSizeBytes = 20L * 1024 * 1024;

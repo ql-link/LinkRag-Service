@@ -3,7 +3,7 @@ package com.qingluo.link.api.config;
 import com.qingluo.link.components.mq.constant.MQProperties;
 import com.qingluo.link.components.oss.config.OssProperties;
 import com.qingluo.link.components.redis.config.CacheConsistencyProperties;
-import com.qingluo.link.service.config.KnowledgeFileProperties;
+import com.qingluo.link.service.config.DocumentFileProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +39,7 @@ class ConfigurationBindingTest {
     }
 
     @Autowired
-    private KnowledgeFileProperties knowledgeFileProperties;
+    private DocumentFileProperties documentFileProperties;
 
     @Autowired
     private OssProperties ossProperties;
@@ -51,15 +51,15 @@ class ConfigurationBindingTest {
     private CacheConsistencyProperties cacheConsistencyProperties;
 
     @Test
-    @DisplayName("KnowledgeFileProperties: maxSizeBytes 绑定为 20971520")
-    void knowledgeFileMaxSizeBytes() {
-        assertThat(knowledgeFileProperties.getMaxSizeBytes()).isEqualTo(20971520L);
+    @DisplayName("DocumentFileProperties: maxSizeBytes 绑定为 20971520")
+    void documentFileMaxSizeBytes() {
+        assertThat(documentFileProperties.getMaxSizeBytes()).isEqualTo(20971520L);
     }
 
     @Test
-    @DisplayName("KnowledgeFileProperties: allowedSuffixes 包含 pdf 和 md")
-    void knowledgeFileAllowedSuffixes() {
-        assertThat(knowledgeFileProperties.getAllowedSuffixes()).contains("pdf", "md");
+    @DisplayName("DocumentFileProperties: allowedSuffixes 包含 pdf 和 md")
+    void documentFileAllowedSuffixes() {
+        assertThat(documentFileProperties.getAllowedSuffixes()).contains("pdf", "md");
     }
 
     @Test

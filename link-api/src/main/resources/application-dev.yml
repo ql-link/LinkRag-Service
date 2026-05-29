@@ -76,11 +76,11 @@ tolink:
       private-bucket-name: ${ALIYUN_OSS_PRIVATE_BUCKET:}
       access-key-id: ${ALIYUN_OSS_ACCESS_KEY_ID:}
       access-key-secret: ${ALIYUN_OSS_ACCESS_KEY_SECRET:}
-  knowledge-file:
+  document-file:
     max-size-bytes: 20971520
-    internal-base-url: ${KNOWLEDGE_FILE_INTERNAL_BASE_URL:http://tolink-service:8080}
-    service-token: ${KNOWLEDGE_FILE_SERVICE_TOKEN:}
-    sse-timeout-ms: ${KNOWLEDGE_FILE_SSE_TIMEOUT_MS:300000}
+    internal-base-url: ${DOCUMENT_FILE_INTERNAL_BASE_URL:http://tolink-service:8080}
+    service-token: ${DOCUMENT_FILE_SERVICE_TOKEN:}
+    sse-timeout-ms: ${DOCUMENT_FILE_SSE_TIMEOUT_MS:300000}
   parse-result:
     stuck:
       # 文件上传解析为用户在线等待场景，超过阈值仍未出终态即视为异常
@@ -102,7 +102,7 @@ thread-pool:
   max-pool-size: ${THREAD_POOL_MAX_SIZE:10}
   queue-capacity: ${THREAD_POOL_QUEUE_CAPACITY:50}
   keep-alive-seconds: 60
-  thread-name-prefix: knowledge-file-upload-
+  thread-name-prefix: document-file-upload-
 
 management:
   health:

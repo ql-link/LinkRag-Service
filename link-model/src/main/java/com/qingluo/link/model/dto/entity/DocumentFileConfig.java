@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 import lombok.Data;
 
 @Data
-@TableName("knowledge_file_config")
-public class KnowledgeFileConfig {
+@TableName("document_file_config")
+public class DocumentFileConfig {
 
     @TableId(type = IdType.AUTO)
     private Long id;

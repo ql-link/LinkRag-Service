@@ -10,8 +10,8 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "知识文件上传配置")
-public class KnowledgeFileConfigDTO {
+@Schema(description = "文档文件上传配置")
+public class DocumentFileConfigDTO {
 
     @Schema(description = "单文件大小上限，单位字节", example = "20971520")
     private Long maxSizeBytes;

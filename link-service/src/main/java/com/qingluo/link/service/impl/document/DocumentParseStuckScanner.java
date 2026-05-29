@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl.know;
+package com.qingluo.link.service.impl.document;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.components.mq.model.DocumentParseResultMQ;

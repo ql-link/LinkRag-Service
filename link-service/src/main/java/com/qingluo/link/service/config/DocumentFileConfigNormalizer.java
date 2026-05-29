@@ -12,16 +12,16 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.util.StringUtils;
 
-public final class KnowledgeFileConfigNormalizer {
+public final class DocumentFileConfigNormalizer {
 
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
 
-    private KnowledgeFileConfigNormalizer() {
+    private DocumentFileConfigNormalizer() {
     }
 
     public static LinkedHashSet<String> normalizeAndValidate(List<String> suffixes, Set<String> supportedSuffixes) {
         if (suffixes == null || suffixes.isEmpty()) {
-            throw new BusinessException(ErrorCode.KNOWLEDGE_FILE_CONFIG_INVALID);
+            throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
         }
         LinkedHashSet<String> normalized = suffixes.stream()
             .filter(StringUtils::hasText)
@@ -29,12 +29,12 @@ public final class KnowledgeFileConfigNormalizer {
             .map(value -> value.toLowerCase(Locale.ROOT))
             .peek(value -> {
                 if (!supportedSuffixes.contains(value)) {
-                    throw new BusinessException(ErrorCode.KNOWLEDGE_FILE_CONFIG_INVALID);
+                    throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
                 }
             })
             .collect(Collectors.toCollection(LinkedHashSet::new));
         if (normalized.isEmpty()) {
-            throw new BusinessException(ErrorCode.KNOWLEDGE_FILE_CONFIG_INVALID);
+            throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
         }
         return normalized;
     }
@@ -75,7 +75,7 @@ public final class KnowledgeFileConfigNormalizer {
         try {
             return objectMapper.writeValueAsString(suffixes);
         } catch (JsonProcessingException e) {
-            throw new BusinessException(ErrorCode.KNOWLEDGE_FILE_CONFIG_INVALID);
+            throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
         }
     }
 

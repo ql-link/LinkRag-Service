@@ -8,8 +8,8 @@ import javax.validation.constraints.Positive;
 import lombok.Data;
 
 @Data
-@Schema(description = "修改知识文件上传配置请求")
-public class UpdateKnowledgeFileConfigRequest {
+@Schema(description = "修改文档文件上传配置请求")
+public class UpdateDocumentFileConfigRequest {
 
     @NotNull
     @Positive

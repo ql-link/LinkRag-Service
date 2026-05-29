@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS document_parsed_log (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件解析任务日志表';
 
 -- 11. 知识文件上传配置表
-CREATE TABLE IF NOT EXISTS knowledge_file_config (
+CREATE TABLE IF NOT EXISTS document_file_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置记录ID',
     max_size_bytes      BIGINT UNSIGNED NOT NULL COMMENT '单文件大小上限，单位字节',
     allowed_suffixes    VARCHAR(1024) NOT NULL COMMENT '允许上传后缀白名单，JSON字符串',
@@ -223,4 +223,4 @@ ALTER TABLE llm_usage_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
-ALTER TABLE knowledge_file_config AUTO_INCREMENT = 10000;
+ALTER TABLE document_file_config AUTO_INCREMENT = 10000;
