@@ -19,6 +19,8 @@
 | GET | `/api/v1/admin/users` | 管理员用户列表 |
 | PATCH | `/api/v1/admin/users/{id}/status` | 启用/禁用用户 |
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
+| GET | `/api/v1/admin/document-file-config` | 查询文档文件上传配置 |
+| PATCH | `/api/v1/admin/document-file-config` | 修改文档文件上传配置 |
 
 ## LLM
 

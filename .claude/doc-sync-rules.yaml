@@ -104,14 +104,14 @@ rules:
     severity: warning
     rationale: OSS 公私有边界和配置变化影响文件访问。
 
-  - id: knowledge-file-module
-    description: 知识文件、解析任务、结果回传或 SSE 变更
+  - id: document-file-module
+    description: 文档文件、解析任务、结果回传或 SSE 变更
     when_changed:
-      - link-api/src/main/java/**/KnowledgeFileController.java
-      - link-api/src/main/java/**/InternalKnowledgeFileController.java
-      - link-service/src/main/java/**/KnowledgeFile*.java
-      - link-service/src/main/java/**/KnowledgeParse*.java
-      - link-model/src/main/java/**/Knowledge*.java
+      - link-api/src/main/java/**/DocumentFileController.java
+      - link-api/src/main/java/**/InternalDocumentFileController.java
+      - link-service/src/main/java/**/DocumentFile*.java
+      - link-service/src/main/java/**/DocumentParse*.java
+      - link-model/src/main/java/**/Document*.java
     must_update:
       - docs/architecture/document_file_module.md
       - docs/guides/integration.md

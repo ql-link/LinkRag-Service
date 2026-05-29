@@ -6,8 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
-import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
-import com.qingluo.link.service.cache.KnowledgeFileConfigCacheService;
+import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
+import com.qingluo.link.service.cache.DocumentFileConfigCacheService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,13 +48,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
-    "tolink.oss.file-root-path=/tmp/tolink-knowledge-file-test",
-    "tolink.knowledge-file.max-size-bytes=64",
-    "tolink.knowledge-file.internal-base-url=http://tolink-service:8080",
-    "tolink.knowledge-file.service-token=test-service-token"
+    "tolink.oss.file-root-path=/tmp/tolink-document-file-test",
+    "tolink.document-file.max-size-bytes=64",
+    "tolink.document-file.internal-base-url=http://tolink-service:8080",
+    "tolink.document-file.service-token=test-service-token"
 })
 @AutoConfigureMockMvc
-@Import({TestSecurityConfig.class, DocumentFileControllerTest.KnowledgeFileTestConfig.class})
+@Import({TestSecurityConfig.class, DocumentFileControllerTest.DocumentFileTestConfig.class})
 class DocumentFileControllerTest {
 
     @Autowired
@@ -76,7 +76,7 @@ class DocumentFileControllerTest {
     private com.qingluo.link.components.oss.service.IOssService ossService;
 
     @MockBean
-    private KnowledgeFileConfigCacheService knowledgeFileConfigCacheService;
+    private DocumentFileConfigCacheService documentFileConfigCacheService;
 
     private String token;
     private Long userId;
@@ -84,9 +84,9 @@ class DocumentFileControllerTest {
 
     @BeforeEach
     void setUp() {
-        reset(knowledgeFileConfigCacheService);
-        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.empty());
-        jdbcTemplate.update("DELETE FROM knowledge_file_config");
+        reset(documentFileConfigCacheService);
+        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.empty());
+        jdbcTemplate.update("DELETE FROM document_file_config");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
@@ -95,16 +95,16 @@ class DocumentFileControllerTest {
         jdbcTemplate.update("DELETE FROM sys_user");
         recordingMQSend.clear();
 
-        String username = "knowledge_" + System.nanoTime();
+        String username = "document_" + System.nanoTime();
         jdbcTemplate.update("""
                 INSERT INTO sys_user (username, password_hash, nickname, email, role, status)
                 VALUES (?, ?, ?, ?, 'USER', 1)
-                """, username, passwordEncoder.encode("password123"), "知识文件测试", username + "@test.com");
+                """, username, passwordEncoder.encode("password123"), "文档文件测试", username + "@test.com");
         userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE username = ?", Long.class, username);
 
         jdbcTemplate.update("""
                 INSERT INTO dataset (user_id, name, description, status)
-                VALUES (?, ?, '知识文件测试数据集', 'ACTIVE')
+                VALUES (?, ?, '文档文件测试数据集', 'ACTIVE')
                 """, userId, "dataset_" + System.nanoTime());
         datasetId = jdbcTemplate.queryForObject("SELECT id FROM dataset WHERE user_id = ?", Long.class, userId);
 
@@ -113,7 +113,7 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_UploadPrivateKnowledgeFileAndCreateDatabaseRecord_When_FileIsSupported() throws Exception {
+    void Should_UploadPrivateDocumentFileAndCreateDatabaseRecord_When_FileIsSupported() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "guide.MD", "text/markdown", "# hello".getBytes(StandardCharsets.UTF_8));
 
@@ -153,7 +153,7 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectKnowledgeFileUpload_When_SameConversationAlreadyHasSameOriginalFilename() throws Exception {
+    void Should_RejectDocumentFileUpload_When_SameConversationAlreadyHasSameOriginalFilename() throws Exception {
         MockMultipartFile firstFile = new MockMultipartFile(
             "file", "duplicate.md", "text/markdown", "# first".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile secondFile = new MockMultipartFile(
@@ -180,7 +180,7 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectKnowledgeFileUpload_When_FileSuffixIsUnsupported() throws Exception {
+    void Should_RejectDocumentFileUpload_When_FileSuffixIsUnsupported() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "virus.exe", MediaType.APPLICATION_OCTET_STREAM_VALUE, "bad".getBytes(StandardCharsets.UTF_8));
 
@@ -192,7 +192,7 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectKnowledgeFileUpload_When_FileNameContainsIllegalCharacters() throws Exception {
+    void Should_RejectDocumentFileUpload_When_FileNameContainsIllegalCharacters() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "bad#name.md", "text/markdown", "# bad".getBytes(StandardCharsets.UTF_8));
 
@@ -241,9 +241,9 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectKnowledgeFileUpload_When_RedisConfigOverridesMaxSize() throws Exception {
-        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.of(
-            new KnowledgeFileConfigDTO(5L, List.of("txt"), 99995L, null)));
+    void Should_RejectDocumentFileUpload_When_RedisConfigOverridesMaxSize() throws Exception {
+        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.of(
+            new DocumentFileConfigDTO(5L, List.of("txt"), 99995L, null)));
         MockMultipartFile file = new MockMultipartFile(
             "file", "too-large.txt", MediaType.TEXT_PLAIN_VALUE, "123456".getBytes(StandardCharsets.UTF_8));
 
@@ -255,9 +255,9 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectKnowledgeFileUpload_When_RedisConfigOverridesAllowedSuffixes() throws Exception {
-        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.of(
-            new KnowledgeFileConfigDTO(1024L, List.of("pdf"), 99995L, null)));
+    void Should_RejectDocumentFileUpload_When_RedisConfigOverridesAllowedSuffixes() throws Exception {
+        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.of(
+            new DocumentFileConfigDTO(1024L, List.of("pdf"), 99995L, null)));
         MockMultipartFile file = new MockMultipartFile(
             "file", "note.txt", MediaType.TEXT_PLAIN_VALUE, "ok".getBytes(StandardCharsets.UTF_8));
 
@@ -269,7 +269,7 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_ListAndDeleteKnowledgeFile_When_FileBelongsToCurrentUser() throws Exception {
+    void Should_ListAndDeleteDocumentFile_When_FileBelongsToCurrentUser() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "note.txt", MediaType.TEXT_PLAIN_VALUE, "hello".getBytes(StandardCharsets.UTF_8));
 
@@ -281,7 +281,7 @@ class DocumentFileControllerTest {
         Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
         String objectKey = jdbcTemplate.queryForObject(
             "SELECT object_key FROM document_original_file WHERE id = ?", String.class, fileId);
-        Path privateFile = Path.of("/tmp/tolink-knowledge-file-test/private").resolve(objectKey);
+        Path privateFile = Path.of("/tmp/tolink-document-file-test/private").resolve(objectKey);
         assertThat(Files.exists(privateFile)).isTrue();
 
         mockMvc.perform(get("/api/v1/datasets/{datasetId}/files", datasetId)
@@ -545,7 +545,7 @@ class DocumentFileControllerTest {
     }
 
     @TestConfiguration
-    static class KnowledgeFileTestConfig {
+    static class DocumentFileTestConfig {
 
         @Bean
         RecordingMQSend recordingMQSend() {

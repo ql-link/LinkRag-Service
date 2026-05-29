@@ -4,15 +4,15 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
-import com.qingluo.link.model.dto.request.UpdateKnowledgeFileConfigRequest;
+import com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateUserRoleRequest;
 import com.qingluo.link.model.dto.request.UpdateUserStatusRequest;
-import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
+import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
-import com.qingluo.link.service.AdminKnowledgeFileConfigService;
+import com.qingluo.link.service.AdminDocumentFileConfigService;
 import com.qingluo.link.service.AdminProviderService;
 import com.qingluo.link.service.AdminUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,7 +38,7 @@ public class AdminController {
 
     private final AdminUserService adminUserService;
     private final AdminProviderService adminProviderService;
-    private final AdminKnowledgeFileConfigService adminKnowledgeFileConfigService;
+    private final AdminDocumentFileConfigService adminDocumentFileConfigService;
 
     // ---- 用户管理 ----
 
@@ -106,16 +106,16 @@ public class AdminController {
         return Result.success(adminProviderService.listProviders(page, size));
     }
 
-    @GetMapping("/knowledge-file-config")
-    @Operation(summary = "查询知识文件上传配置", description = "查询当前生效的知识文件上传大小限制和格式白名单")
-    public Result<KnowledgeFileConfigDTO> getKnowledgeFileConfig() {
-        return Result.success(adminKnowledgeFileConfigService.getCurrentConfig());
+    @GetMapping("/document-file-config")
+    @Operation(summary = "查询文档文件上传配置", description = "查询当前生效的文档文件上传大小限制和格式白名单")
+    public Result<DocumentFileConfigDTO> getDocumentFileConfig() {
+        return Result.success(adminDocumentFileConfigService.getCurrentConfig());
     }
 
-    @PatchMapping("/knowledge-file-config")
-    @Operation(summary = "修改知识文件上传配置", description = "修改当前生效的知识文件上传大小限制和格式白名单")
-    public Result<Void> updateKnowledgeFileConfig(@RequestBody @Validated UpdateKnowledgeFileConfigRequest request) {
-        adminKnowledgeFileConfigService.updateConfig(AuthContext.getLoginUserIdOrThrow(), request);
+    @PatchMapping("/document-file-config")
+    @Operation(summary = "修改文档文件上传配置", description = "修改当前生效的文档文件上传大小限制和格式白名单")
+    public Result<Void> updateDocumentFileConfig(@RequestBody @Validated UpdateDocumentFileConfigRequest request) {
+        adminDocumentFileConfigService.updateConfig(AuthContext.getLoginUserIdOrThrow(), request);
         return Result.success(null);
     }
 

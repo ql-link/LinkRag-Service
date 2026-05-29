@@ -1,7 +1,7 @@
 package com.qingluo.link.service.config;
 
-import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
-import com.qingluo.link.service.cache.KnowledgeFileConfigCacheService;
+import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
+import com.qingluo.link.service.cache.DocumentFileConfigCacheService;
 import java.util.LinkedHashSet;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -13,14 +13,14 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class KnowledgeFileConfigInitializer {
+public class DocumentFileConfigInitializer {
 
-    private final KnowledgeFileProperties properties;
-    private final KnowledgeFileConfigCacheService cacheService;
+    private final DocumentFileProperties properties;
+    private final DocumentFileConfigCacheService cacheService;
 
     @EventListener(ApplicationReadyEvent.class)
     public void initialize() {
-        KnowledgeFileConfigDTO defaultConfig = new KnowledgeFileConfigDTO(
+        DocumentFileConfigDTO defaultConfig = new DocumentFileConfigDTO(
             properties.getMaxSizeBytes(),
             List.copyOf(new LinkedHashSet<>(properties.getAllowedSuffixes())),
             null,
@@ -29,10 +29,10 @@ public class KnowledgeFileConfigInitializer {
         try {
             boolean initialized = cacheService.putConfigIfAbsent(defaultConfig);
             if (initialized) {
-                log.info("Initialized knowledge file upload config in Redis from application defaults");
+                log.info("Initialized document file upload config in Redis from application defaults");
             }
         } catch (RuntimeException ex) {
-            log.warn("Initialize knowledge file upload config in Redis failed; default config remains available, error={}: {}",
+            log.warn("Initialize document file upload config in Redis failed; default config remains available, error={}: {}",
                 ex.getClass().getSimpleName(), ex.getMessage());
         }
     }

@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl.know;
+package com.qingluo.link.service.impl.document;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -20,10 +20,10 @@ import com.qingluo.link.model.dto.response.DocumentFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.DocumentFileDownloadResource;
 import com.qingluo.link.service.DocumentFileService;
-import com.qingluo.link.service.KnowledgeFileRuntimeConfigService;
+import com.qingluo.link.service.DocumentFileRuntimeConfigService;
 import com.qingluo.link.service.DocumentParseTaskService;
-import com.qingluo.link.service.config.KnowledgeFileProperties;
-import com.qingluo.link.service.config.KnowledgeFileRuntimeConfig;
+import com.qingluo.link.service.config.DocumentFileProperties;
+import com.qingluo.link.service.config.DocumentFileRuntimeConfig;
 import java.io.File;
 import java.time.LocalDate;
 import java.util.List;
@@ -39,7 +39,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 知识文件服务实现，负责原文件上传、查询、删除和解析任务投递。
+ * 文档文件服务实现，负责原文件上传、查询、删除和解析任务投递。
  */
 @Service
 @RequiredArgsConstructor
@@ -55,14 +55,14 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     private final DocumentParsedLogMapper documentParsedLogMapper;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
-    private final KnowledgeFileProperties properties;
-    private final KnowledgeFileRuntimeConfigService knowledgeFileRuntimeConfigService;
+    private final DocumentFileProperties properties;
+    private final DocumentFileRuntimeConfigService documentFileRuntimeConfigService;
     private final DocumentParseTaskService documentParseTaskService;
 
     @Override
     @Transactional(noRollbackFor = BusinessException.class)
     /**
-     * 上传原始知识文件，并在需要时立即创建解析任务。
+     * 上传原始文档文件，并在需要时立即创建解析任务。
      */
     public DocumentFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately) {
         assertOwnedDataset(userId, datasetId);
@@ -96,7 +96,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
                 .set(DocumentOriginalFile::getUploadStatus, UPLOAD_FAILED)
                 .set(DocumentOriginalFile::getIsUploadSuccess, false)
                 .set(DocumentOriginalFile::getFailureReason, "文件上传失败，请稍后重试"));
-            log.error("Upload knowledge file to oss failed, userId={}, datasetId={}, fileName={}",
+            log.error("Upload document file to oss failed, userId={}, datasetId={}, fileName={}",
                 userId, datasetId, originalFilename);
             throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
         }
@@ -124,7 +124,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
 
     @Override
     /**
-     * 分页查询知识文件列表，并支持按状态筛选。
+     * 分页查询文档文件列表，并支持按状态筛选。
      */
     public PageResult<DocumentFileDTO> list(Long userId, Long datasetId, String uploadStatus, int page, int pageSize) {
         assertOwnedDataset(userId, datasetId);
@@ -144,7 +144,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
 
     @Override
     /**
-     * 查询知识文件详情。
+     * 查询文档文件详情。
      */
     public DocumentFileDTO detail(Long userId, Long fileId) {
         return toDTO(getOwnedFile(userId, fileId));
@@ -153,14 +153,14 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     @Override
     @Transactional
     /**
-     * 删除知识文件及其 OSS 对象。
+     * 删除文档文件及其 OSS 对象。
      */
     public void delete(Long userId, Long fileId) {
         DocumentOriginalFile record = getOwnedFile(userId, fileId);
         if (StringUtils.hasText(record.getObjectKey())) {
             boolean deleted = ossService.deleteFile(OssSavePlaceEnum.PRIVATE, record.getObjectKey());
             if (!deleted) {
-                log.error("Delete knowledge file oss object failed, userId={}, fileId={}, datasetId={}, objectKey={}",
+                log.error("Delete document file oss object failed, userId={}, fileId={}, datasetId={}, objectKey={}",
                     userId, fileId, record.getDatasetId(), record.getObjectKey());
                 throw new BusinessException(500, "删除原文件失败，请稍后重试", 500);
             }
@@ -175,7 +175,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             deleteParseRecords(record.getId());
             documentOriginalFileMapper.deleteById(record.getId());
         } catch (RuntimeException e) {
-            log.error("Delete knowledge file database record failed after oss delete, userId={}, fileId={}, datasetId={}, objectKey={}",
+            log.error("Delete document file database record failed after oss delete, userId={}, fileId={}, datasetId={}, objectKey={}",
                 userId, fileId, record.getDatasetId(), record.getObjectKey(), e);
             throw new BusinessException(500, "原文件对象已删除，但数据库记录删除失败，请尽快补偿处理", 500);
         }
@@ -263,7 +263,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     }
 
     /**
-     * 查询当前用户可访问的知识文件记录。
+     * 查询当前用户可访问的文档文件记录。
      */
     private DocumentOriginalFile getOwnedFile(Long userId, Long fileId) {
         DocumentOriginalFile record = documentOriginalFileMapper.selectOne(new LambdaQueryWrapper<DocumentOriginalFile>()
@@ -282,7 +282,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(400, "请选择要上传的文件", 400);
         }
-        KnowledgeFileRuntimeConfig runtimeConfig = knowledgeFileRuntimeConfigService.getCurrent();
+        DocumentFileRuntimeConfig runtimeConfig = documentFileRuntimeConfigService.getCurrent();
         String suffix = extractSuffix(file.getOriginalFilename());
         if (!runtimeConfig.getAllowedSuffixes().contains(suffix)) {
             throw new BusinessException(400, "当前文件格式暂不支持", 400);
@@ -371,7 +371,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     }
 
     /**
-     * 将知识文件实体转换为接口返回 DTO。
+     * 将文档文件实体转换为接口返回 DTO。
      */
     private DocumentFileDTO toDTO(DocumentOriginalFile record) {
         DocumentFileDTO dto = new DocumentFileDTO();

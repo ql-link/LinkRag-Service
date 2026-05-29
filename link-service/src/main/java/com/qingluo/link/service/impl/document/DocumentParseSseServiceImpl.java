@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl.know;
+package com.qingluo.link.service.impl.document;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.components.mq.model.DocumentParseResultMQ;
@@ -10,7 +10,7 @@ import com.qingluo.link.model.dto.entity.DocumentParsedLog;
 import com.qingluo.link.model.dto.request.DocumentParseCallbackRequest;
 import com.qingluo.link.model.dto.response.FileParseEventDTO;
 import com.qingluo.link.service.DocumentParseSseService;
-import com.qingluo.link.service.config.KnowledgeFileProperties;
+import com.qingluo.link.service.config.DocumentFileProperties;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +31,7 @@ public class DocumentParseSseServiceImpl implements DocumentParseSseService {
 
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentParsedLogMapper documentParsedLogMapper;
-    private final KnowledgeFileProperties properties;
+    private final DocumentFileProperties properties;
     private final Map<Long, CopyOnWriteArrayList<SseEmitter>> emittersByFileId = new ConcurrentHashMap<>();
 
     @Override

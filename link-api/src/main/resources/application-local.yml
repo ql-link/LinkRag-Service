@@ -41,7 +41,7 @@ tolink:
     service-type: local
     file-root-path: ${user.home}/.tolink/oss
     public-base-url: /api/v1/oss-files/public
-  knowledge-file:
+  document-file:
     max-size-bytes: 20971520
     internal-base-url: http://localhost:8080
     service-token:

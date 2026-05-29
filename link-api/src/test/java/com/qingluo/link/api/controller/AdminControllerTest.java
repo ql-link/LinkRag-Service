@@ -4,10 +4,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.entity.SystemProvider;
-import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
+import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
-import com.qingluo.link.service.cache.KnowledgeFileConfigCacheService;
+import com.qingluo.link.service.cache.DocumentFileConfigCacheService;
 import java.util.Optional;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,7 +86,7 @@ class AdminControllerTest {
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @MockBean
-    private KnowledgeFileConfigCacheService knowledgeFileConfigCacheService;
+    private DocumentFileConfigCacheService documentFileConfigCacheService;
 
     /**
      * PasswordEncoder - BCrypt 密码加密
@@ -127,7 +127,7 @@ class AdminControllerTest {
      */
     @BeforeAll
     void setup() {
-        jdbcTemplate.update("DELETE FROM knowledge_file_config");
+        jdbcTemplate.update("DELETE FROM document_file_config");
 
         // ===== 步骤 1: 插入管理员用户 =====
         SysUser admin = new SysUser();
@@ -168,9 +168,9 @@ class AdminControllerTest {
     }
 
     @BeforeEach
-    void resetKnowledgeFileConfigCache() {
-        reset(knowledgeFileConfigCacheService);
-        given(knowledgeFileConfigCacheService.getConfig()).willReturn(Optional.empty());
+    void resetDocumentFileConfigCache() {
+        reset(documentFileConfigCacheService);
+        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.empty());
     }
 
     /**
@@ -285,9 +285,9 @@ class AdminControllerTest {
 
     @Test
     @Order(5)
-    @DisplayName("管理员获取知识文件配置 - GET /api/v1/admin/knowledge-file-config")
-    void Should_ReturnKnowledgeFileConfig_When_AdminQueriesCurrentConfig() throws Exception {
-        mockMvc.perform(get("/api/v1/admin/knowledge-file-config")
+    @DisplayName("管理员获取文档文件配置 - GET /api/v1/admin/document-file-config")
+    void Should_ReturnDocumentFileConfig_When_AdminQueriesCurrentConfig() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/document-file-config")
                 .header("satoken", adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
@@ -297,8 +297,8 @@ class AdminControllerTest {
 
     @Test
     @Order(6)
-    @DisplayName("管理员修改知识文件配置 - PATCH /api/v1/admin/knowledge-file-config")
-    void Should_UpdateKnowledgeFileConfig_When_AdminPatchesConfig() throws Exception {
+    @DisplayName("管理员修改文档文件配置 - PATCH /api/v1/admin/document-file-config")
+    void Should_UpdateDocumentFileConfig_When_AdminPatchesConfig() throws Exception {
         String requestJson = """
             {
               "maxSizeBytes": 1024,
@@ -306,16 +306,16 @@ class AdminControllerTest {
             }
             """;
 
-        mockMvc.perform(patch("/api/v1/admin/knowledge-file-config")
+        mockMvc.perform(patch("/api/v1/admin/document-file-config")
                 .header("satoken", adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200));
 
-        org.mockito.ArgumentCaptor<KnowledgeFileConfigDTO> captor =
-            org.mockito.ArgumentCaptor.forClass(KnowledgeFileConfigDTO.class);
-        verify(knowledgeFileConfigCacheService).putConfig(captor.capture());
+        org.mockito.ArgumentCaptor<DocumentFileConfigDTO> captor =
+            org.mockito.ArgumentCaptor.forClass(DocumentFileConfigDTO.class);
+        verify(documentFileConfigCacheService).putConfig(captor.capture());
         assertThat(captor.getValue().getMaxSizeBytes()).isEqualTo(1024L);
         assertThat(captor.getValue().getAllowedSuffixes()).containsExactly("pdf", "txt");
         assertThat(captor.getValue().getUpdatedBy()).isEqualTo(ADMIN_USER_ID);

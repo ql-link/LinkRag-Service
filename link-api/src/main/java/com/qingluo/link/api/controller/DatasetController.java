@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 知识库数据集管理接口。
  *
- * <p>数据集是知识文件的业务归属边界，文件上传、解析结果和后续问答都按数据集隔离。
+ * <p>数据集是文档文件的业务归属边界，文件上传、解析结果和后续问答都按数据集隔离。
  */
 @RestController
 @RequestMapping("/api/v1/datasets")

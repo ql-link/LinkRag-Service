@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl.know;
+package com.qingluo.link.service.impl.document;
 
 import com.qingluo.link.components.mq.model.DocumentParseResultMQ;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;

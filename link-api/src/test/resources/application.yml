@@ -42,7 +42,7 @@ tolink:
     service-type: local
     file-root-path: ${java.io.tmpdir}/tolink-test-oss
     public-base-url: /api/v1/oss-files/public
-  knowledge-file:
+  document-file:
     max-size-bytes: 20971520
     internal-base-url: http://localhost:8080
     service-token: test-token
@@ -64,4 +64,4 @@ thread-pool:
   max-pool-size: 10
   queue-capacity: 50
   keep-alive-seconds: 60
-  thread-name-prefix: knowledge-file-upload-
+  thread-name-prefix: document-file-upload-

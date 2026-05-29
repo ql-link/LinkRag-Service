@@ -1,10 +1,10 @@
 package com.qingluo.link.service.impl.admin;
 
 import com.qingluo.link.core.exception.BusinessException;
-import com.qingluo.link.model.dto.request.UpdateKnowledgeFileConfigRequest;
-import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
-import com.qingluo.link.service.cache.KnowledgeFileConfigCacheService;
-import com.qingluo.link.service.config.KnowledgeFileProperties;
+import com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest;
+import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
+import com.qingluo.link.service.cache.DocumentFileConfigCacheService;
+import com.qingluo.link.service.config.DocumentFileProperties;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,20 +23,20 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
-class AdminKnowledgeFileConfigServiceImplTest {
+class AdminDocumentFileConfigServiceImplTest {
 
     @Mock
-    private KnowledgeFileConfigCacheService cacheService;
+    private DocumentFileConfigCacheService cacheService;
 
     @Test
     @DisplayName("Should_ReturnRedisConfig_When_ConfigExists")
     void Should_ReturnRedisConfig_When_ConfigExists() {
-        KnowledgeFileProperties properties = properties(1024L, "pdf", "txt");
-        AdminKnowledgeFileConfigServiceImpl service = new AdminKnowledgeFileConfigServiceImpl(properties, cacheService);
+        DocumentFileProperties properties = properties(1024L, "pdf", "txt");
+        AdminDocumentFileConfigServiceImpl service = new AdminDocumentFileConfigServiceImpl(properties, cacheService);
         given(cacheService.getConfig()).willReturn(Optional.of(
-            new KnowledgeFileConfigDTO(2048L, List.of("PDF", "txt"), 10000L, null)));
+            new DocumentFileConfigDTO(2048L, List.of("PDF", "txt"), 10000L, null)));
 
-        KnowledgeFileConfigDTO result = service.getCurrentConfig();
+        DocumentFileConfigDTO result = service.getCurrentConfig();
 
         assertThat(result.getMaxSizeBytes()).isEqualTo(2048L);
         assertThat(result.getAllowedSuffixes()).containsExactly("pdf", "txt");
@@ -46,11 +46,11 @@ class AdminKnowledgeFileConfigServiceImplTest {
     @Test
     @DisplayName("Should_ReturnDefaultConfig_When_RedisConfigMissing")
     void Should_ReturnDefaultConfig_When_RedisConfigMissing() {
-        KnowledgeFileProperties properties = properties(1024L, "pdf", "txt");
-        AdminKnowledgeFileConfigServiceImpl service = new AdminKnowledgeFileConfigServiceImpl(properties, cacheService);
+        DocumentFileProperties properties = properties(1024L, "pdf", "txt");
+        AdminDocumentFileConfigServiceImpl service = new AdminDocumentFileConfigServiceImpl(properties, cacheService);
         given(cacheService.getConfig()).willReturn(Optional.empty());
 
-        KnowledgeFileConfigDTO result = service.getCurrentConfig();
+        DocumentFileConfigDTO result = service.getCurrentConfig();
 
         assertThat(result.getMaxSizeBytes()).isEqualTo(1024L);
         assertThat(result.getAllowedSuffixes()).containsExactly("pdf", "txt");
@@ -60,15 +60,15 @@ class AdminKnowledgeFileConfigServiceImplTest {
     @Test
     @DisplayName("Should_WriteRedisConfig_When_UpdateConfigValid")
     void Should_WriteRedisConfig_When_UpdateConfigValid() {
-        KnowledgeFileProperties properties = properties(1024L, "pdf", "txt");
-        AdminKnowledgeFileConfigServiceImpl service = new AdminKnowledgeFileConfigServiceImpl(properties, cacheService);
-        UpdateKnowledgeFileConfigRequest request = new UpdateKnowledgeFileConfigRequest();
+        DocumentFileProperties properties = properties(1024L, "pdf", "txt");
+        AdminDocumentFileConfigServiceImpl service = new AdminDocumentFileConfigServiceImpl(properties, cacheService);
+        UpdateDocumentFileConfigRequest request = new UpdateDocumentFileConfigRequest();
         request.setMaxSizeBytes(4096L);
         request.setAllowedSuffixes(List.of("PDF", "txt", "pdf"));
 
         service.updateConfig(10000L, request);
 
-        ArgumentCaptor<KnowledgeFileConfigDTO> captor = ArgumentCaptor.forClass(KnowledgeFileConfigDTO.class);
+        ArgumentCaptor<DocumentFileConfigDTO> captor = ArgumentCaptor.forClass(DocumentFileConfigDTO.class);
         verify(cacheService).putConfig(captor.capture());
         assertThat(captor.getValue().getMaxSizeBytes()).isEqualTo(4096L);
         assertThat(captor.getValue().getAllowedSuffixes()).containsExactly("pdf", "txt");
@@ -79,13 +79,13 @@ class AdminKnowledgeFileConfigServiceImplTest {
     @Test
     @DisplayName("Should_ThrowBusinessException_When_RedisWriteFails")
     void Should_ThrowBusinessException_When_RedisWriteFails() {
-        KnowledgeFileProperties properties = properties(1024L, "pdf", "txt");
-        AdminKnowledgeFileConfigServiceImpl service = new AdminKnowledgeFileConfigServiceImpl(properties, cacheService);
-        UpdateKnowledgeFileConfigRequest request = new UpdateKnowledgeFileConfigRequest();
+        DocumentFileProperties properties = properties(1024L, "pdf", "txt");
+        AdminDocumentFileConfigServiceImpl service = new AdminDocumentFileConfigServiceImpl(properties, cacheService);
+        UpdateDocumentFileConfigRequest request = new UpdateDocumentFileConfigRequest();
         request.setMaxSizeBytes(4096L);
         request.setAllowedSuffixes(List.of("pdf"));
         willThrow(new RuntimeException("redis timeout")).given(cacheService)
-            .putConfig(org.mockito.ArgumentMatchers.any(KnowledgeFileConfigDTO.class));
+            .putConfig(org.mockito.ArgumentMatchers.any(DocumentFileConfigDTO.class));
 
         assertThatThrownBy(() -> service.updateConfig(10000L, request))
             .isInstanceOf(BusinessException.class)
@@ -95,9 +95,9 @@ class AdminKnowledgeFileConfigServiceImplTest {
     @Test
     @DisplayName("Should_RejectUnsupportedSuffix_When_UpdateConfig")
     void Should_RejectUnsupportedSuffix_When_UpdateConfig() {
-        KnowledgeFileProperties properties = properties(1024L, "pdf", "txt");
-        AdminKnowledgeFileConfigServiceImpl service = new AdminKnowledgeFileConfigServiceImpl(properties, cacheService);
-        UpdateKnowledgeFileConfigRequest request = new UpdateKnowledgeFileConfigRequest();
+        DocumentFileProperties properties = properties(1024L, "pdf", "txt");
+        AdminDocumentFileConfigServiceImpl service = new AdminDocumentFileConfigServiceImpl(properties, cacheService);
+        UpdateDocumentFileConfigRequest request = new UpdateDocumentFileConfigRequest();
         request.setMaxSizeBytes(4096L);
         request.setAllowedSuffixes(List.of("exe"));
 
@@ -105,8 +105,8 @@ class AdminKnowledgeFileConfigServiceImplTest {
             .isInstanceOf(BusinessException.class);
     }
 
-    private KnowledgeFileProperties properties(long maxSizeBytes, String... suffixes) {
-        KnowledgeFileProperties properties = new KnowledgeFileProperties();
+    private DocumentFileProperties properties(long maxSizeBytes, String... suffixes) {
+        DocumentFileProperties properties = new DocumentFileProperties();
         properties.setMaxSizeBytes(maxSizeBytes);
         properties.setAllowedSuffixes(new LinkedHashSet<>(Arrays.asList(suffixes)));
         return properties;

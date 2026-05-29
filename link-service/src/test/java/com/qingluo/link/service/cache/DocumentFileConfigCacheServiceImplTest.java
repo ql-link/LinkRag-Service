@@ -3,7 +3,7 @@ package com.qingluo.link.service.cache;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.qingluo.link.model.dto.response.KnowledgeFileConfigDTO;
+import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -24,7 +24,7 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
-class KnowledgeFileConfigCacheServiceImplTest {
+class DocumentFileConfigCacheServiceImplTest {
 
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
@@ -33,26 +33,26 @@ class KnowledgeFileConfigCacheServiceImplTest {
     private ValueOperations<String, Object> valueOperations;
 
     private ObjectMapper objectMapper;
-    private KnowledgeFileConfigCacheServiceImpl cacheService;
+    private DocumentFileConfigCacheServiceImpl cacheService;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        cacheService = new KnowledgeFileConfigCacheServiceImpl(redisTemplate, objectMapper);
+        cacheService = new DocumentFileConfigCacheServiceImpl(redisTemplate, objectMapper);
     }
 
     @Test
     @DisplayName("Should_ReturnConfig_When_RedisContainsJsonString")
     void Should_ReturnConfig_When_RedisContainsJsonString() throws Exception {
-        KnowledgeFileConfigDTO config = new KnowledgeFileConfigDTO(
+        DocumentFileConfigDTO config = new DocumentFileConfigDTO(
             1024L, List.of("pdf", "txt"), 10000L, LocalDateTime.of(2026, 5, 28, 10, 0));
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.get(KnowledgeFileConfigCacheService.CACHE_KEY))
+        given(valueOperations.get(DocumentFileConfigCacheService.CACHE_KEY))
             .willReturn(objectMapper.writeValueAsString(config));
 
-        Optional<KnowledgeFileConfigDTO> result = cacheService.getConfig();
+        Optional<DocumentFileConfigDTO> result = cacheService.getConfig();
 
         assertThat(result).isPresent();
         assertThat(result.get().getMaxSizeBytes()).isEqualTo(1024L);
@@ -64,10 +64,10 @@ class KnowledgeFileConfigCacheServiceImplTest {
     @DisplayName("Should_ReturnEmpty_When_RedisReadFails")
     void Should_ReturnEmpty_When_RedisReadFails() {
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.get(KnowledgeFileConfigCacheService.CACHE_KEY))
+        given(valueOperations.get(DocumentFileConfigCacheService.CACHE_KEY))
             .willThrow(new RuntimeException("redis timeout"));
 
-        Optional<KnowledgeFileConfigDTO> result = cacheService.getConfig();
+        Optional<DocumentFileConfigDTO> result = cacheService.getConfig();
 
         assertThat(result).isEmpty();
     }
@@ -75,21 +75,21 @@ class KnowledgeFileConfigCacheServiceImplTest {
     @Test
     @DisplayName("Should_WriteJson_When_PutConfig")
     void Should_WriteJson_When_PutConfig() {
-        KnowledgeFileConfigDTO config = new KnowledgeFileConfigDTO(2048L, List.of("md"), 10001L, null);
+        DocumentFileConfigDTO config = new DocumentFileConfigDTO(2048L, List.of("md"), 10001L, null);
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
 
         cacheService.putConfig(config);
 
-        verify(valueOperations).set(eq(KnowledgeFileConfigCacheService.CACHE_KEY), eq("{\"maxSizeBytes\":2048,\"allowedSuffixes\":[\"md\"],\"updatedBy\":10001,\"updatedAt\":null}"));
+        verify(valueOperations).set(eq(DocumentFileConfigCacheService.CACHE_KEY), eq("{\"maxSizeBytes\":2048,\"allowedSuffixes\":[\"md\"],\"updatedBy\":10001,\"updatedAt\":null}"));
     }
 
     @Test
     @DisplayName("Should_Throw_When_PutConfigFails")
     void Should_Throw_When_PutConfigFails() {
-        KnowledgeFileConfigDTO config = new KnowledgeFileConfigDTO(2048L, List.of("md"), 10001L, null);
+        DocumentFileConfigDTO config = new DocumentFileConfigDTO(2048L, List.of("md"), 10001L, null);
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
         willThrow(new RuntimeException("redis timeout")).given(valueOperations)
-            .set(eq(KnowledgeFileConfigCacheService.CACHE_KEY), eq("{\"maxSizeBytes\":2048,\"allowedSuffixes\":[\"md\"],\"updatedBy\":10001,\"updatedAt\":null}"));
+            .set(eq(DocumentFileConfigCacheService.CACHE_KEY), eq("{\"maxSizeBytes\":2048,\"allowedSuffixes\":[\"md\"],\"updatedBy\":10001,\"updatedAt\":null}"));
 
         assertThatThrownBy(() -> cacheService.putConfig(config))
             .isInstanceOf(RuntimeException.class)
@@ -99,10 +99,10 @@ class KnowledgeFileConfigCacheServiceImplTest {
     @Test
     @DisplayName("Should_WriteOnlyWhenAbsent_When_PutConfigIfAbsent")
     void Should_WriteOnlyWhenAbsent_When_PutConfigIfAbsent() {
-        KnowledgeFileConfigDTO config = new KnowledgeFileConfigDTO(4096L, List.of("pdf"), null, null);
+        DocumentFileConfigDTO config = new DocumentFileConfigDTO(4096L, List.of("pdf"), null, null);
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
         given(valueOperations.setIfAbsent(
-            eq(KnowledgeFileConfigCacheService.CACHE_KEY),
+            eq(DocumentFileConfigCacheService.CACHE_KEY),
             eq("{\"maxSizeBytes\":4096,\"allowedSuffixes\":[\"pdf\"],\"updatedBy\":null,\"updatedAt\":null}")))
             .willReturn(Boolean.TRUE);
 

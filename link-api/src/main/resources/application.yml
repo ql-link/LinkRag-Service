@@ -29,7 +29,7 @@ server:
   port: 8080
 
 tolink:
-  knowledge-file:
+  document-file:
     allowed-suffixes:
       - md
       - markdown
@@ -46,4 +46,4 @@ thread-pool:
   max-pool-size: 10
   queue-capacity: 50
   keep-alive-seconds: 60
-  thread-name-prefix: knowledge-file-upload-
+  thread-name-prefix: document-file-upload-

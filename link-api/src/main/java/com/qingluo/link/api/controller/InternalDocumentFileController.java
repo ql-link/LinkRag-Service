@@ -5,7 +5,7 @@ import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.service.DocumentFileDownloadResource;
 import com.qingluo.link.service.DocumentFileService;
 import com.qingluo.link.service.DocumentParseSseService;
-import com.qingluo.link.service.config.KnowledgeFileProperties;
+import com.qingluo.link.service.config.DocumentFileProperties;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import javax.validation.Valid;
@@ -31,7 +31,7 @@ public class InternalDocumentFileController {
 
     private final DocumentFileService documentFileService;
     private final DocumentParseSseService documentParseSseService;
-    private final KnowledgeFileProperties properties;
+    private final DocumentFileProperties properties;
 
     @GetMapping("/api/v1/internal/files/{fileId}/content")
     public ResponseEntity<?> download(@PathVariable Long fileId,

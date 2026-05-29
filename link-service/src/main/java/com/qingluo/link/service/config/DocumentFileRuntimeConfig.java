@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class KnowledgeFileRuntimeConfig {
+public class DocumentFileRuntimeConfig {
 
     private long maxSizeBytes;
     private Set<String> allowedSuffixes = new LinkedHashSet<>();

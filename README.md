@@ -1,6 +1,6 @@
 # ToLink Service
 
-ToLink Service 是 ToLink 的 Java 管理端后端服务，负责用户、LLM 配置、对话、数据集、知识文件、OSS 上传、解析任务投递和解析结果回传。实际文档解析、RAG 执行和 LLM 调用由 Python RAG 执行端承担。
+ToLink Service 是 ToLink 的 Java 管理端后端服务，负责用户、LLM 配置、对话、数据集、文档文件、OSS 上传、解析任务投递和解析结果回传。实际文档解析、RAG 执行和 LLM 调用由 Python RAG 执行端承担。
 
 ## 技术栈
 
@@ -39,10 +39,10 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 - 用户与权限：注册、登录、退出、用户资料、管理员用户管理，基于 sa-token 与 `ADMIN/USER` 角色。
 - LLM 配置：系统厂商、用户 API Key 配置、默认配置、模型能力展示，API Key 使用 AES-256-GCM 加密。
 - 对话与用量：会话、消息、用量汇总、日度统计、明细查询。
-- 数据集与知识文件：数据集管理、原始文件上传、解析提交、解析状态查询、SSE 事件推送。
+- 数据集与文档文件：数据集管理、原始文件上传、解析提交、解析状态查询、SSE 事件推送。
 - OSS：本地存储和 MinIO 文件服务，区分 public/private 对象。
 - MQ：解析任务 `tolink.rag.parse_task` 投递，解析结果 `tolink.rag.parse_result` 回传，缓存补偿 `tolink.cache.evict`；`parse_result` 消费具备接收兜底（专用容器工厂、失败分类带退避重试、当前任务过滤、卡住扫描以 DB 为准补推，监控指标经 Micrometer/Actuator）。
-- Redis：用户、LLM 配置、知识文件运行配置缓存，以及同步删除和补偿删除能力。
+- Redis：用户、LLM 配置、文档文件运行配置缓存，以及同步删除和补偿删除能力。
 
 ## 快速开始
 
@@ -66,7 +66,7 @@ mysql -h <DB_HOST> -u root -p tolink_rag_db < docs/db/init.sql
 | `OSS_SERVICE_TYPE` | OSS 实现，默认 `local` |
 | `OSS_FILE_ROOT_PATH` | 本地 OSS 根目录 |
 | `OSS_MINIO_*` | MinIO 配置 |
-| `KNOWLEDGE_FILE_*` | 知识文件上传与内部访问配置 |
+| `DOCUMENT_FILE_*` | 文档文件上传与内部访问配置 |
 | `LLM_SECRET` | API Key 加密密钥，64 位十六进制字符串 |
 
 ### 3. 启动服务
@@ -91,13 +91,13 @@ mvn -pl link-service test
 | --- | --- |
 | Auth | `/api/v1/auth/login`、`/register`、`/logout` |
 | User | `/api/v1/user/profile` |
-| Admin | `/api/v1/admin/users`、`/providers`、`/knowledge-file-config` |
+| Admin | `/api/v1/admin/users`、`/providers`、`/document-file-config` |
 | Provider | `/api/v1/llm/providers` |
 | LLM Config | `/api/v1/llm/configs` |
 | Chat | `/api/v1/chat/conversations` |
 | Usage | `/api/v1/llm/usage/*` |
 | Dataset | `/api/v1/datasets` |
-| Knowledge File | `/api/v1/datasets/{datasetId}/files`、`/api/v1/files/{fileId}` |
+| Document File | `/api/v1/datasets/{datasetId}/files`、`/api/v1/files/{fileId}` |
 | OSS File | `/api/v1/oss-files/{bizType}` |
 | Internal | `/api/v1/internal/files/{fileId}/content`、`/api/v1/internal/parse-tasks/{taskId}/events` |
 

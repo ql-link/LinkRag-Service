@@ -17,7 +17,7 @@ import com.qingluo.link.model.dto.entity.DocumentParsedLog;
 import com.qingluo.link.service.DocumentParseSseService;
 import com.qingluo.link.service.exception.NonRetryableParseResultException;
 import com.qingluo.link.service.exception.ParseResultPendingException;
-import com.qingluo.link.service.impl.know.DocumentParseResultServiceImpl;
+import com.qingluo.link.service.impl.document.DocumentParseResultServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

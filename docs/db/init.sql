@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     INDEX idx_conversation_id (conversation_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 调用用量日志表';
 
--- 8. 知识文件原始文档上传记录表
+-- 8. 文档文件原始文档上传记录表
 CREATE TABLE IF NOT EXISTS document_original_file (
     id                         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '原始文档唯一标识',
     dataset_id                 BIGINT UNSIGNED NOT NULL COMMENT '所属数据集ID，对应 dataset.id',
@@ -202,15 +202,15 @@ CREATE TABLE IF NOT EXISTS document_parsed_log (
     INDEX idx_parsed_log_parse_file_status (document_parse_file_id, task_status, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件解析任务日志表';
 
--- 11. 知识文件上传配置表
-CREATE TABLE IF NOT EXISTS knowledge_file_config (
+-- 11. 文档文件上传配置表
+CREATE TABLE IF NOT EXISTS document_file_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置记录ID',
     max_size_bytes      BIGINT UNSIGNED NOT NULL COMMENT '单文件大小上限，单位字节',
     allowed_suffixes    VARCHAR(1024) NOT NULL COMMENT '允许上传后缀白名单，JSON字符串',
     updated_by          BIGINT UNSIGNED NOT NULL COMMENT '最后修改管理员ID',
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '知识文件上传配置表';
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文档文件上传配置表';
 
 -- 设置所有表的自增起始值为 10000 (MySQL 8.0 推荐显式指定方式)
 ALTER TABLE sys_user AUTO_INCREMENT = 10000;
@@ -223,4 +223,4 @@ ALTER TABLE llm_usage_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
-ALTER TABLE knowledge_file_config AUTO_INCREMENT = 10000;
+ALTER TABLE document_file_config AUTO_INCREMENT = 10000;
