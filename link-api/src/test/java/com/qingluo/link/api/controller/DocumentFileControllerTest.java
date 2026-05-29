@@ -323,24 +323,78 @@ class DocumentFileControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.items[0].id").value(fileId));
 
+        Integer parseFileBefore = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parse_file WHERE document_original_file_id = ?", Integer.class, fileId);
+
         mockMvc.perform(delete("/api/v1/files/{fileId}", fileId)
                 .header("satoken", token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200));
 
-        assertThat(Files.exists(privateFile)).isFalse();
+        // 隐性删除：保留 OSS 原文件对象（不物理删、不清缓存）
+        assertThat(Files.exists(privateFile)).isTrue();
 
-        Integer count = jdbcTemplate.queryForObject(
+        // 原文件行软删保留：物理存在但对列表不可见
+        Integer physicalCount = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM document_original_file WHERE id = ?", Integer.class, fileId);
-        assertThat(count).isEqualTo(0);
-        Integer parseFileCount = jdbcTemplate.queryForObject(
+        assertThat(physicalCount).isEqualTo(1);
+        Integer activeCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_original_file WHERE id = ? AND is_deleted = false", Integer.class, fileId);
+        assertThat(activeCount).isEqualTo(0);
+
+        // 解析域交 Python：Java 删除路径不触碰 document_parse_file（计数不变）
+        Integer parseFileAfter = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM document_parse_file WHERE document_original_file_id = ?", Integer.class, fileId);
-        assertThat(parseFileCount).isEqualTo(0);
+        assertThat(parseFileAfter).isEqualTo(parseFileBefore);
 
         mockMvc.perform(get("/api/v1/datasets/{datasetId}/files", datasetId)
                 .header("satoken", token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
+    @Test
+    void Should_AllowReuploadSameName_AfterSoftDelete() throws Exception {
+        MockMultipartFile first = new MockMultipartFile(
+            "file", "dup.txt", MediaType.TEXT_PLAIN_VALUE, "hi".getBytes(StandardCharsets.UTF_8));
+        MvcResult firstUpload = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(first)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long fileId1 = objectMapper.readTree(firstUpload.getResponse().getContentAsString())
+            .get("data").get("id").asLong();
+
+        // 软删
+        mockMvc.perform(delete("/api/v1/files/{fileId}", fileId1)
+                .header("satoken", token))
+            .andExpect(status().isOk());
+
+        // 重传同名：经 @TableLogic 过滤死行 → 走 insert 新行，不被同名校验 / 唯一约束拦截
+        MockMultipartFile again = new MockMultipartFile(
+            "file", "dup.txt", MediaType.TEXT_PLAIN_VALUE, "hi-again".getBytes(StandardCharsets.UTF_8));
+        MvcResult reupload = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(again)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.uploadStatus").value("UPLOADING"))
+            .andReturn();
+        Long fileId2 = objectMapper.readTree(reupload.getResponse().getContentAsString())
+            .get("data").get("id").asLong();
+
+        assertThat(fileId2).isNotEqualTo(fileId1);
+        // 列表仅见新活行
+        mockMvc.perform(get("/api/v1/datasets/{datasetId}/files", datasetId)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].id").value(fileId2))
+            .andExpect(jsonPath("$.data.items[1]").doesNotExist());
+        // 物理仍有 2 行（旧死行保留，可追溯）
+        Integer physical = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ? AND original_filename = ?",
+            Integer.class, datasetId, "dup.txt");
+        assertThat(physical).isEqualTo(2);
     }
 
     @Test

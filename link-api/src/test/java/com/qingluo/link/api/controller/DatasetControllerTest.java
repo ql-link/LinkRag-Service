@@ -198,20 +198,28 @@ class DatasetControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200));
 
-        Integer datasetCount = jdbcTemplate.queryForObject(
+        // 数据集软删保留：物理存在但对列表不可见
+        Integer datasetPhysical = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM dataset WHERE id = ?", Integer.class, datasetId);
-        Integer activeConversationCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM chat_conversation WHERE dataset_id = ? AND is_deleted = false",
-            Integer.class,
-            datasetId);
-        Integer fileCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ?", Integer.class, datasetId);
+        Integer datasetActive = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM dataset WHERE id = ? AND is_deleted = false", Integer.class, datasetId);
+        // 会话与消息一律物理删
+        Integer conversationCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM chat_conversation WHERE dataset_id = ?", Integer.class, datasetId);
         Integer messageCount = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM chat_message WHERE conversation_id = ?", Integer.class, conversationId);
+        // 名下原文件软删保留：物理存在但对列表不可见
+        Integer filePhysical = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ?", Integer.class, datasetId);
+        Integer fileActive = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ? AND is_deleted = false",
+            Integer.class, datasetId);
 
-        assertThat(datasetCount).isEqualTo(0);
-        assertThat(activeConversationCount).isEqualTo(0);
-        assertThat(fileCount).isEqualTo(0);
+        assertThat(datasetPhysical).isEqualTo(1);
+        assertThat(datasetActive).isEqualTo(0);
+        assertThat(conversationCount).isEqualTo(0);
         assertThat(messageCount).isEqualTo(0);
+        assertThat(filePhysical).isEqualTo(1);
+        assertThat(fileActive).isEqualTo(0);
     }
 }

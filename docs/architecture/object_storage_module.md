@@ -17,3 +17,5 @@ OSS 组件位于 `link-components/toLink-components-oss`，业务上传入口位
 ## 约定
 
 新增上传业务需明确 public/private 边界、对象 key 规则、访问 URL 和删除策略。异步/请求外上传须用 `File` 重载（不要持有请求期 `MultipartFile`）。
+
+- **删除策略（隐性删除）**：数据集 / 文档文件删除采用软删保留原文件，**不调用 `IOssService.deleteFile` 物理删 OSS 原文件对象**；原文件随软删行保留，便于追溯 / 恢复。Python 侧衍生产物（清洗文件、向量等）的删除交 Python（删除通知 MQ 占位、未实现）。

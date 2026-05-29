@@ -8,7 +8,6 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
@@ -17,14 +16,13 @@ import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
-import com.qingluo.link.mapper.DocumentParseFileMapper;
-import com.qingluo.link.mapper.DocumentParsedLogMapper;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.model.dto.response.DocumentFileDTO;
 import com.qingluo.link.service.DocumentFileRuntimeConfigService;
 import com.qingluo.link.service.config.DocumentFileProperties;
 import com.qingluo.link.service.config.DocumentFileRuntimeConfig;
+import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import com.qingluo.link.service.mq.DocumentParseTaskMQ;
 
 import com.qingluo.link.service.impl.document.DocumentFileServiceImpl;
@@ -33,6 +31,7 @@ import com.qingluo.link.service.impl.document.DocumentUploadTempStorage;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -55,10 +54,7 @@ class DocumentFileServiceImplTest {
     private DocumentOriginalFileMapper documentOriginalFileMapper;
 
     @Mock
-    private DocumentParseFileMapper documentParseFileMapper;
-
-    @Mock
-    private DocumentParsedLogMapper documentParsedLogMapper;
+    private DocumentDeleteNotifier deleteNotifier;
 
     @Mock
     private IOssService ossService;
@@ -100,34 +96,33 @@ class DocumentFileServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_NotDeleteDatabaseRecord_When_OssDeleteFails")
-    void Should_NotDeleteDatabaseRecord_When_OssDeleteFails() {
-        DocumentOriginalFile file = buildFile(1L, 100L, "raw/100/200/test.txt");
-        given(documentOriginalFileMapper.selectOne(any())).willReturn(file);
-        given(ossService.deleteFile(any(), any())).willReturn(false);
+    @DisplayName("Should_SoftDeleteFileWithoutOssOrParse_When_DeleteFile")
+    void Should_SoftDeleteFileWithoutOssOrParse_When_DeleteFile() {
+        given(documentOriginalFileMapper.selectOne(any())).willReturn(buildFile(1L, 100L, 200L));
 
-        assertThatThrownBy(() -> documentFileService.delete(100L, 1L))
-            .isInstanceOf(BusinessException.class)
-            .hasMessage("删除原文件失败，请稍后重试");
+        documentFileService.delete(100L, 1L);
 
-        verify(documentOriginalFileMapper).selectOne(any());
-        verifyNoMoreInteractions(documentOriginalFileMapper);
+        // 原文件软删（update），不物理删 DB 行
+        verify(documentOriginalFileMapper).update(any(), any());
+        verify(documentOriginalFileMapper, never()).deleteById(any(Long.class));
+        // 不删 OSS 对象、不清本地缓存
+        verify(ossService, never()).deleteFile(any(), any());
+        verify(privateFileResolver, never()).evictPrivateFile(any());
+        // 提交后通知 Python（占位），载荷含该文件 id + datasetId + userId
+        verify(deleteNotifier).notifyAfterDelete(List.of(1L), 200L, 100L);
     }
 
     @Test
-    @DisplayName("Should_ThrowCompensationException_When_DatabaseDeleteFailsAfterOssDelete")
-    void Should_ThrowCompensationException_When_DatabaseDeleteFailsAfterOssDelete() {
-        DocumentOriginalFile file = buildFile(1L, 100L, "raw/100/200/test.txt");
-        given(documentOriginalFileMapper.selectOne(any())).willReturn(file);
-        given(ossService.deleteFile(any(), any())).willReturn(true);
-        org.mockito.Mockito.doThrow(new RuntimeException("db delete failed"))
-            .when(documentOriginalFileMapper).deleteById((java.io.Serializable) 1L);
+    @DisplayName("Should_Return404AndNotDelete_When_DeleteFileNotOwned")
+    void Should_Return404AndNotDelete_When_DeleteFileNotOwned() {
+        given(documentOriginalFileMapper.selectOne(any())).willReturn(null);
 
         assertThatThrownBy(() -> documentFileService.delete(100L, 1L))
             .isInstanceOf(BusinessException.class)
-            .hasMessage("原文件对象已删除，但数据库记录删除失败，请尽快补偿处理");
+            .hasMessage("文件不存在或无权访问");
 
-        verify(privateFileResolver).evictPrivateFile("raw/100/200/test.txt");
+        verify(documentOriginalFileMapper, never()).update(any(), any());
+        verify(deleteNotifier, never()).notifyAfterDelete(any(), any(), any());
     }
 
     @Test
@@ -238,11 +233,11 @@ class DocumentFileServiceImplTest {
         given(documentFileRuntimeConfigService.getCurrent()).willReturn(rc);
     }
 
-    private DocumentOriginalFile buildFile(Long fileId, Long userId, String objectKey) {
+    private DocumentOriginalFile buildFile(Long fileId, Long userId, Long datasetId) {
         DocumentOriginalFile file = new DocumentOriginalFile();
         file.setId(fileId);
         file.setUserId(userId);
-        file.setObjectKey(objectKey);
+        file.setDatasetId(datasetId);
         return file;
     }
 }

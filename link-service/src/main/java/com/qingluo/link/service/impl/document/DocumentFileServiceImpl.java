@@ -10,17 +10,14 @@ import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
-import com.qingluo.link.mapper.DocumentParseFileMapper;
-import com.qingluo.link.mapper.DocumentParsedLogMapper;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
-import com.qingluo.link.model.dto.entity.DocumentParseFile;
-import com.qingluo.link.model.dto.entity.DocumentParsedLog;
 import com.qingluo.link.model.dto.response.DocumentFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.DocumentFileDownloadResource;
 import com.qingluo.link.service.DocumentFileService;
 import com.qingluo.link.service.DocumentFileRuntimeConfigService;
+import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import com.qingluo.link.service.config.DocumentFileProperties;
 import com.qingluo.link.service.config.DocumentFileRuntimeConfig;
 import java.io.File;
@@ -51,8 +48,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     private static final String UPLOAD_FAILED = "failed";
     private final DatasetMapper datasetMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
-    private final DocumentParseFileMapper documentParseFileMapper;
-    private final DocumentParsedLogMapper documentParsedLogMapper;
+    private final DocumentDeleteNotifier deleteNotifier;
     private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
     private final DocumentFileProperties properties;
@@ -207,31 +203,40 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     @Override
     @Transactional
     /**
-     * 删除文档文件及其 OSS 对象。
+     * 隐性删除单个文件：软删原文件行（保留 OSS 原文件对象、不物理删行），提交后预留通知 Python
+     * 删除其衍生产物（占位）。解析派生行（document_parse_file / document_parsed_log）交 Python 清理，
+     * 本方法不再触碰。
      */
     public void delete(Long userId, Long fileId) {
         DocumentOriginalFile record = getOwnedFile(userId, fileId);
-        if (StringUtils.hasText(record.getObjectKey())) {
-            boolean deleted = ossService.deleteFile(OssSavePlaceEnum.PRIVATE, record.getObjectKey());
-            if (!deleted) {
-                log.error("Delete document file oss object failed, userId={}, fileId={}, datasetId={}, objectKey={}",
-                    userId, fileId, record.getDatasetId(), record.getObjectKey());
-                throw new BusinessException(500, "删除原文件失败，请稍后重试", 500);
-            }
-            try {
-                privateFileResolver.evictPrivateFile(record.getObjectKey());
-            } catch (RuntimeException e) {
-                log.warn("Evict private file cache failed after oss delete, userId={}, fileId={}, datasetId={}, objectKey={}",
-                    userId, fileId, record.getDatasetId(), record.getObjectKey(), e);
-            }
-        }
-        try {
-            deleteParseRecords(record.getId());
-            documentOriginalFileMapper.deleteById(record.getId());
-        } catch (RuntimeException e) {
-            log.error("Delete document file database record failed after oss delete, userId={}, fileId={}, datasetId={}, objectKey={}",
-                userId, fileId, record.getDatasetId(), record.getObjectKey(), e);
-            throw new BusinessException(500, "原文件对象已删除，但数据库记录删除失败，请尽快补偿处理", 500);
+
+        // 软删该原文件：不删 OSS 对象、不物理删行；deleted_seq 置为自身 id，使死行退出唯一键“活名额”，
+        // 支持删后同名重传（实体带 @TableLogic，MP 对 wrapper update 自动追加 is_deleted=0）。
+        documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
+            .eq(DocumentOriginalFile::getId, record.getId())
+            .set(DocumentOriginalFile::getIsDeleted, true)
+            .set(DocumentOriginalFile::getDeletedSeq, record.getId()));
+
+        // 事务提交后再通知 Python 删衍生产物（占位）；回滚则不通知。
+        notifyPythonAfterCommit(record.getId(), record.getDatasetId(), userId);
+    }
+
+    /**
+     * 删除事务提交后触发删除通知发送点（占位）；处于事务中则注册 afterCommit（回滚不发），
+     * 无事务时（如单元测试）直接调用。沿用上传链路的 afterCommit 模式。
+     */
+    private void notifyPythonAfterCommit(Long originalFileId, Long datasetId, Long userId) {
+        List<Long> ids = List.of(originalFileId);
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+            && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    deleteNotifier.notifyAfterDelete(ids, datasetId, userId);
+                }
+            });
+        } else {
+            deleteNotifier.notifyAfterDelete(ids, datasetId, userId);
         }
     }
 
@@ -253,19 +258,6 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             throw new BusinessException(404, "文件不存在", 404);
         }
         return new DocumentFileDownloadResource(file, record.getOriginalFilename(), record.getContentType());
-    }
-
-    private void deleteParseRecords(Long originalFileId) {
-        DocumentParseFile parseFile = documentParseFileMapper.selectOne(new LambdaQueryWrapper<DocumentParseFile>()
-            .eq(DocumentParseFile::getDocumentOriginalFileId, originalFileId));
-        if (parseFile != null) {
-            documentParsedLogMapper.delete(new LambdaQueryWrapper<DocumentParsedLog>()
-                .eq(DocumentParsedLog::getDocumentParseFileId, parseFile.getId()));
-            documentParseFileMapper.deleteById(parseFile.getId());
-            return;
-        }
-        documentParsedLogMapper.delete(new LambdaQueryWrapper<DocumentParsedLog>()
-            .eq(DocumentParsedLog::getDocumentOriginalFileId, originalFileId));
     }
 
     /**

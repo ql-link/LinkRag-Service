@@ -76,10 +76,12 @@ CREATE TABLE IF NOT EXISTS dataset (
     name            VARCHAR(128)    NOT NULL COMMENT '数据集名称',
     description     VARCHAR(512)    DEFAULT NULL COMMENT '数据集描述',
     status          VARCHAR(16)     NOT NULL DEFAULT 'ACTIVE' COMMENT '数据集状态',
+    is_deleted      BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '逻辑删除标记（软删保留数据集）',
+    deleted_seq     BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '删除判别列：活行=0、软删=自身id；纳入唯一键支持删后同名重建',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    UNIQUE KEY uk_dataset_user_name (user_id, name),
+    UNIQUE KEY uk_dataset_user_name_seq (user_id, name, deleted_seq),
     INDEX idx_dataset_user_updated (user_id, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '数据集表';
 
@@ -92,11 +94,10 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
     last_model_name VARCHAR(128)    COMMENT '最后使用的模型名快照',
     title           VARCHAR(255)    COMMENT '对话标题',
     is_pinned       BOOLEAN         DEFAULT FALSE COMMENT '是否置顶',
-    is_deleted      BOOLEAN         DEFAULT FALSE COMMENT '软删除标记',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    INDEX idx_chat_conversation_user_active_list (user_id, is_deleted, is_pinned, updated_at),
+    INDEX idx_chat_conversation_user_active_list (user_id, is_pinned, updated_at),
     INDEX idx_chat_conversation_dataset_updated (dataset_id, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话表';
 
@@ -151,10 +152,12 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     upload_status              VARCHAR(20) NOT NULL DEFAULT 'uploading' COMMENT '上传状态: uploading/success/failed',
     is_upload_success          TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否上传成功',
     failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '上传失败原因',
+    is_deleted                 BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除标记（软删保留原文件，不删 OSS）',
+    deleted_seq                BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '删除判别列：活行=0、软删=自身id；纳入唯一键支持删后同名重传',
     created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    UNIQUE KEY uk_dataset_user_name_suffix (dataset_id, user_id, original_filename, file_suffix),
+    UNIQUE KEY uk_dof_name_suffix_seq (dataset_id, user_id, original_filename, file_suffix, deleted_seq),
     INDEX idx_document_original_dataset_created (dataset_id, created_at),
     INDEX idx_document_original_user_created (user_id, created_at),
     INDEX idx_document_original_upload_status (upload_status, updated_at)

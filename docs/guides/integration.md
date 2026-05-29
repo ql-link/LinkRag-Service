@@ -19,6 +19,7 @@
 - OSS object key 和数据库文件记录一致。
 - 解析终态结果可幂等处理。
 - **上传异步化**：上传接口立即返回 `uploadStatus=UPLOADING`，OSS 上传/终态回写在 Java 侧线程池异步完成；`parseImmediately=true` 的解析任务**只在 OSS 上传成功后**才投递（不会对尚未落 OSS 的文件触发解析）。Python 侧无需改动，仍以收到 `parse_task` 为准；前端需改为按 `uploadStatus` 轮询获取上传终态。
+- **隐性删除**：删除数据集/文件为软删保留原文件——Java 端不物理删 OSS 对象、不删解析表（`document_parse_file` / `document_parsed_log`）；这些衍生产物与 Python 侧 OSS 产物（清洗文件/向量）由 Python 负责删除，Java 在删除事务提交后（afterCommit）预留通知发送点（MQ 占位、未实现，单独立项）。Python 侧本次无需改动。
 
 ## 解析数据契约
 
