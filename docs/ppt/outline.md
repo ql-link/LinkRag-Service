@@ -48,13 +48,13 @@
 - 不用展开讲，让学弟知道用了什么就行
 
 ### P7 数据库核心表（2 分钟）
-- 按业务域分组列出 11 张表：
+- 按业务域分组列出 10 张表：
   - **用户域**：sys_user
   - **LLM 域**：llm_system_provider / llm_user_config / llm_usage_log
   - **对话域**：chat_conversation / chat_message
   - **数据集域**：datasets
   - **文件解析域（重点）**：document_original_file / document_parse_file / document_parsed_log
-  - **配置域**：knowledge_file_config（历史兼容，运行配置已迁 Redis）
+  - **配置域**：上传配置运行时位于 Redis
 - 配图：ER 关系简图，重点标注解析三表之间的关系
 
 ---

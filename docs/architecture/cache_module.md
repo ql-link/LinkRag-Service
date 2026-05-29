@@ -22,7 +22,7 @@ Redis 能力由 `link-components/toLink-components-redis` 提供，业务缓存�
 - Startup initialization writes the default config to Redis only when the key is absent.
 - Admin updates write Redis directly. A Redis write failure must fail the admin update.
 - Upload validation reads Redis first. Missing, unreadable, or invalid Redis config falls back to application defaults.
-- `document_file_config` is kept for historical compatibility only and is no longer a runtime config source.
+- The historical `document_file_config` table has been removed; there is no database fallback for this runtime config.
 
 ## 可用性与一致性边界
 

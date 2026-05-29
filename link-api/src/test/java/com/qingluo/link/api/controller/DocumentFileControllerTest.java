@@ -86,7 +86,6 @@ class DocumentFileControllerTest {
     void setUp() {
         reset(documentFileConfigCacheService);
         given(documentFileConfigCacheService.getConfig()).willReturn(Optional.empty());
-        jdbcTemplate.update("DELETE FROM document_file_config");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
