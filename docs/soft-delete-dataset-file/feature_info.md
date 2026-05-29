@@ -5,8 +5,8 @@
 | 需求名 | soft-delete-dataset-file |
 | 中文名 | 数据集/文件删除改为隐性删除（软删保留原文件 + 预留 MQ 通知 Python 删产物） |
 | 来源 | GitHub issue ql-link/LinkRag-Service#27（取代 #1 的 P2「并行硬删 OSS」设想） |
-| 分支 | feature/soft-delete-dataset-file（待创建） |
-| 当前阶段 | 质量审查 APPROVE（2026-05-30），待提交/PR |
+| 分支 | feature/soft-delete-dataset-file（已推送，PR #28） |
+| 当前阶段 | 已发 PR #28 → dev（2026-05-30），待评审/合并 |
 | brief.md | 已冻结（2026-05-30） |
 | acceptance.feature | 已冻结（2026-05-30，21 Scenario；原 22，移除迁移不复活场景） |
 | technical_design.md | 已审核（2026-05-30） |
@@ -59,3 +59,4 @@
 - 2026-05-30 **TD 审核通过**：判别列显式 UPDATE 方案、两 delete 重构、去 chat_conversation 软删、解析域交 Python、MQ 占位、数据可清空无迁移等全部确认。进入实现阶段（implementation-execution），按 TD §13 顺序落地。
 - 2026-05-30 **实现完成**：按 §13 落地（实体软删+判别列/去会话软删 → DDL 双源 → DocumentDeleteNotifier → 两 delete 重构+删 deleteParseRecords → 测试 → 文档同步）。新增 `SoftDeleteReuseIntegrationTest`（H2，验证判别列同名重传多轮不撞）；重写 `DatasetServiceImplTest`/`DocumentFileServiceImplTest` 各 2 条 OSS 用例 + 改 `ChatConversationTest`；**额外修复** TD 未列出的 `DatasetControllerTest`/`DocumentFileControllerTest` 删除断言（原断言旧硬删/删 OSS 语义）。全量 `mvn test` BUILD SUCCESS；check_docs_sync/check_ai_links 通过。文档同步 5 篇。偏差 2 处见 implementation_report.md。已生成 implementation_report.md，进入质量审查（code-review-and-quality）。发布前置：MQ 占位未实现（Python 侧产物清理待后续）。
 - 2026-05-30 **质量审查 APPROVE**：6 维度（Correctness/Tests/Architecture/Security/Performance/Contracts）通过，0 Critical、0 Required。1 个 Suggestion 已就地修复——补端到端测试 `DocumentFileControllerTest.Should_AllowReuploadSameName_AfterSoftDelete`（删后经上传端点重传同名成功，闭合“同名重传”头部场景的 endpoint 级覆盖）；其余建议记录待后续：①级联软删 deleted_seq=id 值未直接断言（SQL 构造正确、单文件路径已断言，低优先）；②H2/MySQL 的 chat_conversation 列表索引命名分歧（既有、非本次引入）；③数据集删除按会话逐条删消息的 N+1（既有）。全量 `mvn test` BUILD SUCCESS、doc-sync/ai-links 通过。待提交/PR（branch-pr-workflow）。
+- 2026-05-30 **提交 + PR**：commit 41040fa（24 文件，+1447/-186），推送 `feature/soft-delete-dataset-file`，发起 PR #28 → dev（https://github.com/ql-link/LinkRag-Service/pull/28）。在 issue #27 评论说明 Java 端隐性删除方案 + 后续 MQ 契约 / Python 侧删产物待办（https://github.com/ql-link/LinkRag-Service/issues/27#issuecomment-4579084320）。发布前置：MQ / Python 侧产物清理未实现。
