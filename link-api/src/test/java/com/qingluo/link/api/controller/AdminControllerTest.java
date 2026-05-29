@@ -124,11 +124,9 @@ class AdminControllerTest {
      *   <li>插入 SystemProvider（外键依赖）</li>
      *   <li>管理员用户登录</li>
      * </ol>
-     */
+    */
     @BeforeAll
     void setup() {
-        jdbcTemplate.update("DELETE FROM document_file_config");
-
         // ===== 步骤 1: 插入管理员用户 =====
         SysUser admin = new SysUser();
         admin.setId(ADMIN_USER_ID);
