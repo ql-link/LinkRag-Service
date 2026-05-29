@@ -60,11 +60,13 @@ CREATE TABLE IF NOT EXISTS dataset (
     name            VARCHAR(128) NOT NULL,
     description     VARCHAR(512),
     status          VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_seq     BIGINT NOT NULL DEFAULT 0,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_dataset_user_name ON dataset(user_id, name);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_dataset_user_name_seq ON dataset(user_id, name, deleted_seq);
 CREATE INDEX IF NOT EXISTS idx_dataset_user_updated ON dataset(user_id, updated_at);
 
 -- 5. 对话表
@@ -76,7 +78,6 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
     last_model_name VARCHAR(128),
     title           VARCHAR(255),
     is_pinned       BOOLEAN DEFAULT FALSE,
-    is_deleted      BOOLEAN DEFAULT FALSE,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -135,12 +136,14 @@ CREATE TABLE IF NOT EXISTS document_original_file (
     upload_status              VARCHAR(20) NOT NULL DEFAULT 'uploading',
     is_upload_success          BOOLEAN NOT NULL DEFAULT FALSE,
     failure_reason             VARCHAR(512),
+    is_deleted                 BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_seq                BIGINT NOT NULL DEFAULT 0,
     created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_document_original_dataset_user_name_suffix
-    ON document_original_file(dataset_id, user_id, original_filename, file_suffix);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_dof_name_suffix_seq
+    ON document_original_file(dataset_id, user_id, original_filename, file_suffix, deleted_seq);
 CREATE INDEX IF NOT EXISTS idx_document_original_dataset_created ON document_original_file(dataset_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_document_original_user_created ON document_original_file(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_document_original_upload_status ON document_original_file(upload_status, updated_at);

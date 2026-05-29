@@ -1,11 +1,9 @@
 package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
-import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
-import com.qingluo.link.components.oss.service.IOssService;
-import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
@@ -19,12 +17,14 @@ import com.qingluo.link.model.dto.request.UpdateDatasetRequest;
 import com.qingluo.link.model.dto.response.DatasetDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.DatasetService;
+import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 /**
@@ -32,7 +32,6 @@ import org.springframework.util.StringUtils;
  */
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class DatasetServiceImpl implements DatasetService {
 
     private static final String DATASET_STATUS_ACTIVE = "ACTIVE";
@@ -41,8 +40,7 @@ public class DatasetServiceImpl implements DatasetService {
     private final ChatConversationMapper chatConversationMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
-    private final IOssService ossService;
-    private final PrivateFileResolver privateFileResolver;
+    private final DocumentDeleteNotifier deleteNotifier;
 
     @Override
     @Transactional
@@ -122,47 +120,59 @@ public class DatasetServiceImpl implements DatasetService {
     @Override
     @Transactional
     /**
-     * 删除数据集及其关联文件、会话和消息记录。
+     * 隐性删除数据集：软删名下原文件与数据集行（保留 OSS 原文件对象、不物理删行），
+     * 物理删名下会话与消息（衍生数据不保留），提交后预留通知 Python 删除解析域衍生产物（占位）。
      */
     public void delete(Long userId, Long datasetId) {
         Dataset dataset = getOwnedDataset(userId, datasetId);
 
-        List<DocumentOriginalFile> files = documentOriginalFileMapper.selectList(new LambdaQueryWrapper<DocumentOriginalFile>()
-            .eq(DocumentOriginalFile::getDatasetId, dataset.getId()));
-        for (DocumentOriginalFile file : files) {
-            if (StringUtils.hasText(file.getObjectKey())) {
-                boolean deleted = ossService.deleteFile(OssSavePlaceEnum.PRIVATE, file.getObjectKey());
-                if (!deleted) {
-                    log.error("Delete dataset oss object failed, userId={}, datasetId={}, objectKey={}",
-                        userId, datasetId, file.getObjectKey());
-                    throw new BusinessException(500, "删除数据集原文件失败，请稍后重试", 500);
-                }
-                try {
-                    privateFileResolver.evictPrivateFile(file.getObjectKey());
-                } catch (RuntimeException e) {
-                    log.warn("Evict dataset private file cache failed after oss delete, userId={}, datasetId={}, objectKey={}",
-                        userId, datasetId, file.getObjectKey(), e);
-                }
-            }
+        // 收集名下活文件 id（@TableLogic 自动只返回未软删行），供提交后通知 Python 删其衍生产物使用。
+        List<Long> originalFileIds = documentOriginalFileMapper.selectList(new LambdaQueryWrapper<DocumentOriginalFile>()
+                .eq(DocumentOriginalFile::getDatasetId, dataset.getId()))
+            .stream().map(DocumentOriginalFile::getId).toList();
+
+        // 软删名下原文件：不删 OSS 对象、不物理删行；deleted_seq 置为各行自身 id，使死行退出唯一键“活名额”，
+        // 支持删后同名重传（实体带 @TableLogic，MP 对 wrapper update 自动追加 is_deleted=0，只软删当前活行）。
+        documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
+            .eq(DocumentOriginalFile::getDatasetId, dataset.getId())
+            .set(DocumentOriginalFile::getIsDeleted, true)
+            .setSql("deleted_seq = id"));
+
+        // 会话与消息属衍生数据，一律物理删（ChatConversation 已去 @TableLogic，delete 即物理删）。
+        List<ChatConversation> conversations = chatConversationMapper.selectList(new LambdaQueryWrapper<ChatConversation>()
+            .eq(ChatConversation::getDatasetId, dataset.getId()));
+        for (ChatConversation conversation : conversations) {
+            chatMessageMapper.delete(new LambdaQueryWrapper<com.qingluo.link.model.dto.entity.ChatMessage>()
+                .eq(com.qingluo.link.model.dto.entity.ChatMessage::getConversationId, conversation.getId()));
         }
+        chatConversationMapper.delete(new LambdaQueryWrapper<ChatConversation>()
+            .eq(ChatConversation::getDatasetId, dataset.getId()));
 
-        try {
-            List<ChatConversation> conversations = chatConversationMapper.selectList(new LambdaQueryWrapper<ChatConversation>()
-                .eq(ChatConversation::getDatasetId, dataset.getId()));
-            for (ChatConversation conversation : conversations) {
-                chatMessageMapper.delete(new LambdaQueryWrapper<com.qingluo.link.model.dto.entity.ChatMessage>()
-                    .eq(com.qingluo.link.model.dto.entity.ChatMessage::getConversationId, conversation.getId()));
-            }
+        // 软删数据集行本身（保留空壳便于追溯/恢复）；deleted_seq 置为自身 id。
+        datasetMapper.update(null, new LambdaUpdateWrapper<Dataset>()
+            .eq(Dataset::getId, dataset.getId())
+            .set(Dataset::getIsDeleted, true)
+            .set(Dataset::getDeletedSeq, dataset.getId()));
 
-            documentOriginalFileMapper.delete(new LambdaQueryWrapper<DocumentOriginalFile>()
-                .eq(DocumentOriginalFile::getDatasetId, dataset.getId()));
-            chatConversationMapper.delete(new LambdaQueryWrapper<ChatConversation>()
-                .eq(ChatConversation::getDatasetId, dataset.getId()));
-            datasetMapper.deleteById(dataset.getId());
-        } catch (RuntimeException e) {
-            log.error("Delete dataset database records failed after oss cleanup, userId={}, datasetId={}",
-                userId, datasetId, e);
-            throw new BusinessException(500, "数据集原始对象已删除，但数据库记录删除失败，请尽快补偿处理", 500);
+        // 事务提交后再通知 Python 删衍生产物（占位）；回滚则不通知，避免对未真正删除的数据误通知。
+        notifyPythonAfterCommit(originalFileIds, datasetId, userId);
+    }
+
+    /**
+     * 删除事务提交后触发删除通知发送点（占位）；处于事务中则注册 afterCommit（回滚不发），
+     * 无事务时（如单元测试）直接调用。沿用上传链路的 afterCommit 模式。
+     */
+    private void notifyPythonAfterCommit(List<Long> originalFileIds, Long datasetId, Long userId) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+            && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    deleteNotifier.notifyAfterDelete(originalFileIds, datasetId, userId);
+                }
+            });
+        } else {
+            deleteNotifier.notifyAfterDelete(originalFileIds, datasetId, userId);
         }
     }
 
