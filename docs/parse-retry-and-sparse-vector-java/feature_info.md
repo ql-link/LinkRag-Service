@@ -7,7 +7,7 @@
 | 来源 | GitHub issue ql-link/LinkRag-Service#16 |
 | 关联前序 | knowledge_parse_pipeline_migration、parse-result-consumer-resilience（#15） |
 | 分支 | feature/parse-retry-and-sparse-vector-java（已从 dev@1c05362 切出，2026-05-30） |
-| 当前阶段 | branch-pr-workflow（实现+测试+文档完成，准备发 PR；R4 留联调核对） |
+| 当前阶段 | PR #32 待 review/合并（base dev；R4 留联调核对） |
 | brief.md | 已冻结（v3，2026-05-30） |
 | acceptance.feature | 已冻结（26 Scenario，2026-05-30） |
 | technical_design.md | 已审核冻结（v1.0，2026-05-30） |
@@ -69,3 +69,4 @@ issue 要求的测试覆盖映射：首次解析（S1/S2/S8）、重试解析（
   - doc-sync OK（30 文件）、AI links OK。
   - 偏离 TD：仅一处实现细节——`DocumentParseTaskServiceImplTest` 因 `LambdaUpdateWrapper.set` 需 `@BeforeAll` 调 `TableInfoHelper.initTableInfo` 预热（沿用 DocumentUploadStatusWriterTest 既有模式）；不影响验收。
 - 发 PR（2026-05-30）：用户决定 R4（parse_task 的 `document_parse_file_id` vs Python `document_parse_task_id` 别名）留待联调核对，直接发 PR。发前已跑全量测试（243 绿）+ doc-sync + ai-links 全绿。
+- PR #32 已发（2026-05-30）：https://github.com/ql-link/LinkRag-Service/pull/32 ，base dev，关联 issue #16（未 Closes，待维护者判断）。31 文件 +1914/-155。已在 issue #16 评论解决思路。
