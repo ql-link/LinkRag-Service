@@ -5,8 +5,8 @@
 | 需求名 | delete-notify-mq |
 | 中文名 | 删除链路（续）：MQ 删除通知 Java producer 落地 + 契约定义 |
 | 来源 | GitHub issue ql-link/LinkRag-Service#29（承接 #27 / PR #28 占位） |
-| 分支 | 待创建 |
-| 当前阶段 | 质量审查 APPROVE（2026-05-30），待提交/PR（branch-pr-workflow） |
+| 分支 | feature/delete-notify-mq（已推送，commit 0147f86） |
+| 当前阶段 | 已发 PR #33 → dev（2026-05-30），待评审/合并 |
 | brief.md | 已冻结（2026-05-30），无遗留待确认项 |
 | acceptance.feature | 已冻结（2026-05-30，9 Scenario 含 5 Scenario Outline） |
 | technical_design.md | 已审核（2026-05-30），发布前置已决策（队列积压→上线协调） |
@@ -57,3 +57,4 @@
 - 2026-05-30 **TD 审核通过**：用户放行。消息模型 + notifier 两语义方法 + 两删除入口按范围分流 + 移除 dataset 多余 selectList + 失败吞掉 + 文档同步方案全部确认。进入实现阶段（implementation-execution），按 TD §13 顺序落地。
 - 2026-05-30 **实现完成**：按 §13 落地——新增 `DocumentDeleteNotifyMQ`（QUEUE/snake_case/`delete_type` 分流/`validate`/工厂/无参构造）；`DocumentDeleteNotifier` 注入 `ObjectProvider<MQSend>`、两语义方法、失败吞掉不外抛；`DatasetServiceImpl` 移除多余 `selectList` 改调 `notifyDatasetDeleted`、`DocumentFileServiceImpl` 改调 `notifyFileDeleted`。新增 `DocumentDeleteNotifyMQTest`/`DocumentDeleteNotifierTest`，改 `DatasetServiceImplTest`（断言换 + 移除多余 stub 与孤儿 buildFile）/`DocumentFileServiceImplTest`（断言换 + 清 List import）。全量 `mvn test` BUILD SUCCESS（link-service 163、link-api 117）；doc-sync OK（17 files）、ai-links OK。同步 5 篇文档（mq_contracts/mq_module/integration/document_file_module/testing）。偏差 3 处见 implementation_report.md（未加可选整测、删孤儿 buildFile、dataset 测试加 times(1)/never file）。发布前置：Python 消费端未实现，producer 不单独上生产。进入质量审查（code-review-and-quality）。
 - 2026-05-30 **质量审查 APPROVE**：6 维度（Correctness/Tests/Architecture/Security/Performance/Contracts）通过，0 Critical、0 Required。核实关键点：①afterCommit 发送失败 notifier 内吞掉不外抛、null sender 兜底、与 parse_task「失败外抛」差异有注释；②**启动安全**——核 `RabbitMQAutoConfiguration.rabbitMQDeclarables` 声明队列仅用 `getMQName/getMQType`、不调 `getMessage()`，故空 payload 实例化不触发 validate（无启动隐患）；③移除 `DatasetServiceImpl` 的 selectList 无其他消费者（`LambdaQueryWrapper`/`DocumentOriginalFile` 仍被别处用，import 不孤儿）、删除测试孤儿 buildFile/List import 干净；④契约字段/topic/snake_case 与文档一致、dataset 省略 original_file_id 由 containsKey 断言守护（测试通过即确认 fastjson 省 null 行为）；⑤Performance 净改善（少一次 selectList 查询）。2 个 Suggestion（非阻塞，记录）：①「发送失败删除仍成功」由组合覆盖（notifier 无条件吞掉单测 + service 调 notifier 单测），未加端到端整测（TD 已标可选，逻辑闭合）；②数据集删除按会话逐条删消息的 N+1 为既有、非本次引入。发布前置硬约束重申：Python 消费端就绪前 producer 不单独上生产。待 branch-pr-workflow。
+- 2026-05-30 **提交 + PR**：从 dev（a432719）切 `feature/delete-notify-mq`，commit 0147f86（18 文件，+1137/-58），推送 origin，发起 PR #33 → dev（https://github.com/ql-link/LinkRag-Service/pull/33，base 干净=dev tip）。在 issue #29 评论说明 Java 半契约已定 + Python 第 2/3 部分待办 + 发布协调（https://github.com/ql-link/LinkRag-Service/issues/29#issuecomment-4583142523）。发布前置：Python 消费端未实现，producer 不单独上生产。
