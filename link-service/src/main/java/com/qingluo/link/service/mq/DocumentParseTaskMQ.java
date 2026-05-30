@@ -70,6 +70,12 @@ public class DocumentParseTaskMQ implements AbstractMQ {
         private String mdBucket;
         @JSONField(name = "md_object_key")
         private String mdObjectKey;
+        // 重试标识：Python 以 is_retry 分流（首次解析为 false/省略）。
+        @JSONField(name = "is_retry")
+        private Boolean isRetry;
+        // 重试时填上一轮失败任务 task_id；首次解析为空。
+        @JSONField(name = "previous_task_id")
+        private String previousTaskId;
     }
 
     private static void validate(MsgPayload payload) {
@@ -90,6 +96,10 @@ public class DocumentParseTaskMQ implements AbstractMQ {
         }
         if (!StringUtils.hasText(payload.getMdBucket()) || !StringUtils.hasText(payload.getMdObjectKey())) {
             throw new IllegalArgumentException("parse_task md object is missing");
+        }
+        // 重试消息完整性：is_retry=true 时 previous_task_id 必须非空（md 非空已由上方强制）。
+        if (Boolean.TRUE.equals(payload.getIsRetry()) && !StringUtils.hasText(payload.getPreviousTaskId())) {
+            throw new IllegalArgumentException("parse_task previous_task_id is missing for retry");
         }
     }
 }

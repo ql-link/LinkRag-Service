@@ -9,6 +9,9 @@ import lombok.Data;
 
 /**
  * 每次解析任务日志。Python 创建并推进该记录，Java 仅读取校验和查询。
+ *
+ * <p>注意：端到端终态（原 task_status）与失败原因（原 failure_reason）已迁出本表（Python migration 0007），
+ * 现由 document_parse_pipeline.pipeline_status / failure_reason 表达；本表仅保留解析（Markdown）产物快照与重试链向前指针。</p>
  */
 @Data
 @TableName("document_parsed_log")
@@ -28,12 +31,6 @@ public class DocumentParsedLog {
 
     @TableField("trigger_mode")
     private String triggerMode;
-
-    @TableField("task_status")
-    private String taskStatus;
-
-    @TableField("failure_reason")
-    private String failureReason;
 
     @TableField("parsed_filename")
     private String parsedFilename;
@@ -58,6 +55,13 @@ public class DocumentParsedLog {
 
     @TableField("parse_duration_ms")
     private Long parseDurationMs;
+
+    /**
+     * 重试链向前指针：本轮任务对应的上一轮 task_id；首次解析为 null。
+     * 由 Python 在创建重试日志时写入（= parse_task 消息的 previous_task_id），Java 只读用于向 origin 回溯。
+     */
+    @TableField("retry_of_task_id")
+    private String retryOfTaskId;
 
     @TableField("created_at")
     private LocalDateTime createdAt;

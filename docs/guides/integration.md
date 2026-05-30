@@ -23,8 +23,8 @@
 
 ## 解析数据契约
 
-- Java 写入原文件与 `document_parse_file.latest_parse_task_id`；Python 写入 `document_parsed_log` 和解析成功次数。
-- `parse_task` 传递 `document_parse_file_id` 和 `trigger_mode`，便于 Python 创建日志记录。
-- `parse_result` 传递 `document_parsed_log_id`，Java 读取日志及聚合记录校验后只转发 SSE。
+- Java 写入原文件与 `document_parse_file.latest_parse_task_id`；Python 写入 `document_parsed_log`（Markdown 产物 + `retry_of_task_id`）与 `document_parse_pipeline`（端到端终态 `pipeline_status` + `superseded_by_task_id`）。
+- `parse_task` 传递 `document_parse_file_id` 和 `trigger_mode`，便于 Python 创建日志记录；重试再带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标（`md_bucket`/`md_object_key`）做阶段恢复，已成功文件 Java 侧友好拒绝、不投递。
+- `parse_result` 传递 `document_parsed_log_id`，Java 读取日志、流水线（`pipeline_status` 为终态权威源）及聚合记录校验后只转发 SSE；`document_parsed_log.task_status` 已删，Java 不再读取。
 - `processing` / `progress` 经内部 HTTP 接口上报；`success` / `failed` 只经 MQ 回传。
 - `parse_result` 若丢失或长时间未送达，Java 侧不依赖单条 MQ：前端结果查询按 `latest_parse_task_id` 读 DB 自愈，`DocumentParseStuckScanner` 也以 DB 为权威源对超阈值任务补推或告警。本兜底不要求 Python 配合改动消息体。

@@ -50,6 +50,7 @@ class SoftDeleteReuseIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM document_parse_pipeline");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
         jdbcTemplate.update("DELETE FROM document_original_file");

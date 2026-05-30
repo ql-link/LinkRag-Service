@@ -28,6 +28,10 @@ MQ 实现事实来源：
 - `trigger_mode`：`upload_auto` 或 `manual_retry`
 - `file_type`、`source_bucket`、`source_object_key`、`source_filename`
 - `md_bucket`、`md_object_key`
+- `is_retry`（bool，默认 `false`/省略）：Python 据此分流首次解析与阶段恢复重试
+- `previous_task_id`（重试时填上一轮失败任务 `task_id`，首次解析为空）
+
+阶段恢复重试约定：`is_retry=true` 时复用上一轮 `document_parsed_log` 的 `parsed_bucket_name` / `parsed_object_key` 作为本次 `md_bucket` / `md_object_key`，让 Python 从失败的后处理阶段（含稀疏向量）续跑，不重新解析原文件。Java 发送前完整性校验：`is_retry=true` 时 `previous_task_id`、`md_bucket`、`md_object_key` 必须非空，缺字段不发送。`is_retry` 由 DB 状态（`document_parse_pipeline.pipeline_status=FAILED` 且已产出 Markdown）推导，与 `trigger_mode` 解耦。
 
 `DocumentParseResultMQ` 使用扁平 JSON，字段为：
 
@@ -46,4 +50,5 @@ Python 在发送结果前先写入 `document_parsed_log` 与 `document_parse_fil
 - **失败分类**：`task_id`/状态/归属不匹配（`NonRetryableParseResultException`）与坏 JSON（`IllegalArgumentException`/`DeserializationException`）判为不可重试，立即告警+提交跳过；`document_parsed_log` 暂不存在（`ParseResultPendingException`）与基础设施异常带退避重试（指数退避，最多 3 次，1s→×2→上限 10s），耗尽后告警+跳过。
 - **无 DLQ**：失败兜底为告警日志 + 监控指标（`tolink.parse_result.recover` 等），不静默丢弃、不引入死信队列。
 - **当前任务过滤**：结果消费与卡住补推前比对消息 `task_id` 与 `document_parse_file.latest_parse_task_id`，旧任务/乱序结果不推终态 SSE，指针为空时 fail-open 放行。
-- **卡住兜底**：定时扫描 `document_parsed_log` 中仍为 `created` 且超阈值的当前任务，重读 DB——已终态则以 DB 为准补推一次终态 SSE，仍 `created` 则告警。Java 全程只读，不回写终态。
+- **卡住兜底**：定时扫描 `document_parse_pipeline` 中仍为 `PENDING`/`PROCESSING`（运行中）且超阈值的当前任务，重读 DB——已终态（`SUCCESS`/`FAILED`）则以 DB 为准补推一次终态 SSE，仍运行中则告警。Java 全程只读，不回写终态。
+- **终态判定迁移**：结果消费的状态一致性校验与卡住扫描原依据 `document_parsed_log.task_status`（已删除），现统一改用 `document_parse_pipeline.pipeline_status`（大写）。
