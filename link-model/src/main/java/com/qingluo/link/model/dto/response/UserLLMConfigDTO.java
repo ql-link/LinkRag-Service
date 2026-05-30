@@ -31,7 +31,7 @@ public class UserLLMConfigDTO {
     private String modelName;
 
     @Schema(description = "能力列表")
-    private String capabilities;
+    private String capability;
 
     @Schema(description = "API Key(脱敏)")
     private String apiKeyMasked;

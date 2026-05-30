@@ -74,7 +74,7 @@ public class UserLLMConfig {
     private Boolean streamEnabled = true;
 
     @Schema(description = "能力列表")
-    private String capabilities;
+    private String capability;
 
     @Schema(description = "额外配置")
     @TableField("extra_config")
