@@ -30,6 +30,7 @@ class DocumentParseResultIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("DELETE FROM document_parse_pipeline");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
@@ -58,12 +59,19 @@ class DocumentParseResultIntegrationTest {
         Long parseFileId = jdbcTemplate.queryForObject("SELECT id FROM document_parse_file", Long.class);
         jdbcTemplate.update("""
             INSERT INTO document_parsed_log (
-                task_id, document_original_file_id, document_parse_file_id, trigger_mode, task_status,
+                task_id, document_original_file_id, document_parse_file_id, trigger_mode,
                 parsed_filename, parsed_bucket_name, parsed_object_key, parse_finished_at
-            ) VALUES ('task-integration-1', ?, ?, 'upload_auto', 'success',
+            ) VALUES ('task-integration-1', ?, ?, 'upload_auto',
                 'guide.md', 'rag-md', 'parsed/guide.md', CURRENT_TIMESTAMP)
             """, originalFileId, parseFileId);
         parsedLogId = jdbcTemplate.queryForObject("SELECT id FROM document_parsed_log", Long.class);
+        // 终态权威源：pipeline_status（大写）。Python 发 parse_result 前已写入终态。
+        jdbcTemplate.update("""
+            INSERT INTO document_parse_pipeline (
+                document_parsed_log_id, task_id, document_original_file_id, document_parse_file_id,
+                pipeline_status, finished_at
+            ) VALUES (?, 'task-integration-1', ?, ?, 'SUCCESS', CURRENT_TIMESTAMP)
+            """, parsedLogId, originalFileId, parseFileId);
     }
 
     @Test
@@ -72,11 +80,13 @@ class DocumentParseResultIntegrationTest {
             {"task_id":"task-integration-1","original_file_id":%d,"document_parsed_log_id":%d,"dataset_id":%d,"user_id":%d,"task_status":"success","failure_reason":null,"parse_finished_at":"2026-05-27T10:00:08+08:00"}
             """.formatted(originalFileId, parsedLogId, datasetId, userId));
 
+        // Java 不回写：流水线终态与 Markdown 产物保持 Python 写入值不变。
         String status = jdbcTemplate.queryForObject(
-            "SELECT task_status FROM document_parsed_log WHERE id = ?", String.class, parsedLogId);
+            "SELECT pipeline_status FROM document_parse_pipeline WHERE document_parsed_log_id = ?",
+            String.class, parsedLogId);
         String objectKey = jdbcTemplate.queryForObject(
             "SELECT parsed_object_key FROM document_parsed_log WHERE id = ?", String.class, parsedLogId);
-        assertThat(status).isEqualTo("success");
+        assertThat(status).isEqualTo("SUCCESS");
         assertThat(objectKey).isEqualTo("parsed/guide.md");
     }
 }

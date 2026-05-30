@@ -91,6 +91,7 @@ class DocumentFileControllerTest {
     void setUp() {
         reset(documentFileConfigCacheService);
         given(documentFileConfigCacheService.getConfig()).willReturn(Optional.empty());
+        jdbcTemplate.update("DELETE FROM document_parse_pipeline");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
         jdbcTemplate.update("DELETE FROM document_original_file");
@@ -575,12 +576,21 @@ class DocumentFileControllerTest {
             "task-result-1", parseFileId);
         jdbcTemplate.update("""
                 INSERT INTO document_parsed_log (
-                    task_id, document_original_file_id, document_parse_file_id, trigger_mode, task_status,
+                    task_id, document_original_file_id, document_parse_file_id, trigger_mode,
                     parsed_filename, parsed_bucket_name, parsed_object_key, parsed_file_url, parsed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
-            "task-result-1", fileId, parseFileId, "manual_retry", "success",
+            "task-result-1", fileId, parseFileId, "manual_retry",
             "result.md", "rag-md", "parsed/result.md", "internal://parsed/result.md");
+        // 终态权威源为 pipeline_status（大写）；前端态由它推导。
+        Long resultLogId = jdbcTemplate.queryForObject(
+            "SELECT id FROM document_parsed_log WHERE task_id = 'task-result-1'", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO document_parse_pipeline (
+                    document_parsed_log_id, task_id, document_original_file_id, document_parse_file_id,
+                    pipeline_status, finished_at
+                ) VALUES (?, 'task-result-1', ?, ?, 'SUCCESS', CURRENT_TIMESTAMP)
+                """, resultLogId, fileId, parseFileId);
 
         mockMvc.perform(get("/api/v1/datasets/{datasetId}/files/parse-results", datasetId)
                 .param("fileIds", fileId.toString())
@@ -601,10 +611,10 @@ class DocumentFileControllerTest {
             "task-progress-1", parseFileId);
         jdbcTemplate.update("""
                 INSERT INTO document_parsed_log (
-                    task_id, document_original_file_id, document_parse_file_id, trigger_mode, task_status
-                ) VALUES (?, ?, ?, ?, ?)
+                    task_id, document_original_file_id, document_parse_file_id, trigger_mode
+                ) VALUES (?, ?, ?, ?)
                 """,
-            "task-progress-1", fileId, parseFileId, "manual_retry", "created");
+            "task-progress-1", fileId, parseFileId, "manual_retry");
 
         mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "task-progress-1")
                 .header("Authorization", "Bearer test-service-token")

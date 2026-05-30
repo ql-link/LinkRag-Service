@@ -180,15 +180,14 @@ CREATE TABLE IF NOT EXISTS document_parse_file (
     INDEX idx_parse_file_latest_task (latest_parse_task_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件解析聚合表';
 
--- 10. 文件解析日志表
+-- 10. 文件解析日志表（Markdown 产物快照 + 重试链向前指针）；Python 写、Java 只读
+-- 注：终态 task_status / failure_reason 已迁出本表（Python migration 0007），改由 document_parse_pipeline 表达。
 CREATE TABLE IF NOT EXISTS document_parsed_log (
     id                         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '解析任务记录主键',
     task_id                    VARCHAR(36) NOT NULL COMMENT '解析任务业务唯一标识(UUID)',
     document_original_file_id  BIGINT UNSIGNED NOT NULL COMMENT '原文件主键，对应 document_original_file.id',
     document_parse_file_id     BIGINT UNSIGNED DEFAULT NULL COMMENT '文件解析聚合表主键',
     trigger_mode               VARCHAR(20) NOT NULL COMMENT '触发方式: upload_auto/manual_retry',
-    task_status                VARCHAR(16) NOT NULL DEFAULT 'created' COMMENT '任务状态: created/success/failed',
-    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '解析失败原因',
     parsed_filename            VARCHAR(255) DEFAULT NULL COMMENT '解析后文件名',
     parsed_bucket_name         VARCHAR(64) DEFAULT NULL COMMENT '解析结果文件桶名',
     parsed_object_key          VARCHAR(512) DEFAULT NULL COMMENT '解析结果文件对象Key',
@@ -197,13 +196,39 @@ CREATE TABLE IF NOT EXISTS document_parsed_log (
     parse_started_at           DATETIME DEFAULT NULL COMMENT 'Python开始解析时间',
     parse_finished_at          DATETIME DEFAULT NULL COMMENT 'Python结束解析时间',
     parse_duration_ms          BIGINT DEFAULT NULL COMMENT '解析耗时，单位毫秒',
+    retry_of_task_id           VARCHAR(36) DEFAULT NULL COMMENT '重试链向前指针：上一轮 task_id；首次解析为 NULL',
     created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     UNIQUE KEY uk_parsed_log_task_id (task_id),
-    INDEX idx_parsed_log_original_status (document_original_file_id, task_status, updated_at),
-    INDEX idx_parsed_log_parse_file_status (document_parse_file_id, task_status, updated_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件解析任务日志表';
+    INDEX idx_parsed_log_original_file (document_original_file_id, updated_at),
+    INDEX idx_parsed_log_parse_file (document_parse_file_id, updated_at),
+    INDEX idx_parsed_log_retry_of (retry_of_task_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件解析产物日志表';
+
+-- 11. 文件后处理流水线表（含稀疏向量阶段）；端到端终态权威源，Python 写、Java 只读
+-- 注：Python 侧实际含 6 个阶段状态/耗时列，此处仅建模 Java 读取所需列（不含 retry_count/last_retry_at，已删）。
+CREATE TABLE IF NOT EXISTS document_parse_pipeline (
+    id                         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '流水线记录主键',
+    document_parsed_log_id     BIGINT UNSIGNED NOT NULL COMMENT '对应 document_parsed_log.id',
+    task_id                    VARCHAR(36) NOT NULL COMMENT '对应 document_parsed_log.task_id',
+    document_original_file_id  BIGINT UNSIGNED NOT NULL COMMENT '对应 document_original_file.id',
+    document_parse_file_id     BIGINT UNSIGNED DEFAULT NULL COMMENT '对应 document_parse_file.id',
+    pipeline_status            VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '端到端终态: PENDING/PROCESSING/SUCCESS/FAILED',
+    failed_stage               VARCHAR(20) DEFAULT NULL COMMENT '失败阶段',
+    recover_from_stage         VARCHAR(20) DEFAULT NULL COMMENT '恢复起始阶段',
+    failure_reason             VARCHAR(512) DEFAULT NULL COMMENT '失败原因',
+    superseded_by_task_id      VARCHAR(36) DEFAULT NULL COMMENT '重试链向后指针：被哪个新 task_id 接班（CAS 写）',
+    started_at                 DATETIME DEFAULT NULL,
+    finished_at                DATETIME DEFAULT NULL,
+    created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_parse_pipeline_parsed_log (document_parsed_log_id),
+    INDEX idx_parse_pipeline_task_id (task_id),
+    INDEX idx_parse_pipeline_status (pipeline_status, updated_at),
+    INDEX idx_parse_pipeline_superseded (superseded_by_task_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件后处理流水线表';
 
 -- 设置所有表的自增起始值为 10000 (MySQL 8.0 推荐显式指定方式)
 ALTER TABLE sys_user AUTO_INCREMENT = 10000;
@@ -216,3 +241,4 @@ ALTER TABLE llm_usage_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
+ALTER TABLE document_parse_pipeline AUTO_INCREMENT = 10000;

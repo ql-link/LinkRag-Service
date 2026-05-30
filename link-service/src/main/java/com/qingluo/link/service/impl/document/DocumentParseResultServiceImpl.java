@@ -1,14 +1,18 @@
 package com.qingluo.link.service.impl.document;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.components.mq.model.DocumentParseResultMQ;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.mapper.DocumentParseFileMapper;
+import com.qingluo.link.mapper.DocumentParsePipelineMapper;
 import com.qingluo.link.mapper.DocumentParsedLogMapper;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.model.dto.entity.DocumentParseFile;
+import com.qingluo.link.model.dto.entity.DocumentParsePipeline;
 import com.qingluo.link.model.dto.entity.DocumentParsedLog;
 import com.qingluo.link.service.DocumentParseResultService;
 import com.qingluo.link.service.DocumentParseSseService;
+import com.qingluo.link.service.constant.ParsePipelineStatus;
 import com.qingluo.link.service.exception.NonRetryableParseResultException;
 import com.qingluo.link.service.exception.ParseResultPendingException;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +35,7 @@ public class DocumentParseResultServiceImpl implements DocumentParseResultServic
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentParseFileMapper documentParseFileMapper;
     private final DocumentParsedLogMapper documentParsedLogMapper;
+    private final DocumentParsePipelineMapper documentParsePipelineMapper;
     private final DocumentParseSseService documentParseSseService;
 
     @Override
@@ -42,12 +47,23 @@ public class DocumentParseResultServiceImpl implements DocumentParseResultServic
             throw new ParseResultPendingException(
                 "解析日志暂不存在，待重试，documentParsedLogId=" + payload.getDocumentParsedLogId());
         }
-        // 以下三类是消息与已持久化终态的逻辑矛盾，重试不会变对 → 不可恢复，立即告警跳过。
+        // 以下是消息与已持久化终态的逻辑矛盾，重试不会变对 → 不可恢复，立即告警跳过。
         if (!payload.getTaskId().equals(logRecord.getTaskId())) {
             throw new NonRetryableParseResultException("解析结果消息中的任务标识不匹配");
         }
-        if (!payload.getTaskStatus().equals(logRecord.getTaskStatus())) {
-            throw new NonRetryableParseResultException("解析结果消息状态与已持久化状态不匹配");
+        // 终态权威源已由 document_parsed_log.task_status（已删）迁至 document_parse_pipeline.pipeline_status（大写）。
+        // Python 发 parse_result 前先写 pipeline 终态；流水线行暂缺按跨库可见性/主从延迟瞬时态可重试处理。
+        DocumentParsePipeline pipeline = documentParsePipelineMapper.selectOne(
+            new LambdaQueryWrapper<DocumentParsePipeline>()
+                .eq(DocumentParsePipeline::getDocumentParsedLogId, payload.getDocumentParsedLogId())
+                .last("LIMIT 1"));
+        if (pipeline == null) {
+            throw new ParseResultPendingException(
+                "解析流水线暂不存在，待重试，documentParsedLogId=" + payload.getDocumentParsedLogId());
+        }
+        // 消息小写 task_status 与库侧大写 pipeline_status 经归一比较；不一致即不可恢复。
+        if (!ParsePipelineStatus.matchesMessageStatus(payload.getTaskStatus(), pipeline.getPipelineStatus())) {
+            throw new NonRetryableParseResultException("解析结果消息状态与已持久化流水线终态不匹配");
         }
         DocumentParseFile parseFile = documentParseFileMapper.selectById(logRecord.getDocumentParseFileId());
         DocumentOriginalFile originalFile = documentOriginalFileMapper.selectById(payload.getOriginalFileId());
