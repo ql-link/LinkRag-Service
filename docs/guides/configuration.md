@@ -181,6 +181,26 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `LOG_LEVEL` | 应用日志级别 | 否 | `debug` | `info`（生产） |
 | `MYBATIS_LOG_IMPL` | MyBatis SQL 日志实现类 | 否 | `org.apache.ibatis.logging.stdout.StdOutImpl` | `org.apache.ibatis.logging.nologging.NoLoggingImpl`（生产） |
 
+### 4.14 召回网关（RECALL_* / RAG_PYTHON_BASE_URL）
+
+用户态召回 SSE 网关配置，前缀 `tolink.recall`（`RecallProperties`）：
+
+| 名称 | 用途 | 是否必需 | 默认值 |
+|------|------|----------|--------|
+| `RAG_PYTHON_BASE_URL` | Python RAG 服务地址（拼接 `/api/v1/internal/recall/stream`） | 否 | `http://tolink-rag:8000` |
+| `RECALL_INTERNAL_JWT_SECRET` | 内部 JWT HS256 密钥（须与 Python 验签端一致；生产用密钥管理系统） | 是（dev） | 空 |
+| `RECALL_JWT_EXP_SECONDS` | 内部 JWT 有效期（秒） | 否 | `30` |
+| `RECALL_STREAM_TIMEOUT_MS` | 召回整体超时（毫秒，作为 okhttp callTimeout） | 否 | `60000` |
+| `RECALL_EMITTER_TIMEOUT_BUFFER_MS` | SseEmitter 超时相对整体超时的缓冲（毫秒）；emitter 超时 = stream-timeout-ms + 本值，使上游超时先触发并发出 `RECALL_TIMEOUT`，避免前端流被静默关闭 | 否 | `5000` |
+| `RECALL_CONNECT_TIMEOUT_MS` | 连接 Python 超时（毫秒） | 否 | `3000` |
+| `RECALL_READ_TIMEOUT_MS` | 读取 Python 响应超时（毫秒） | 否 | `60000` |
+| `RECALL_RATE_LIMIT_PER_MINUTE` | 每用户每分钟召回上限（单机固定窗口计数，窗口内允许突发，超限返回 429） | 否 | `10` |
+| `RECALL_EXECUTOR_CORE_SIZE` | 召回转发线程池核心线程数 | 否 | `8` |
+| `RECALL_EXECUTOR_MAX_SIZE` | 召回转发线程池最大线程数 | 否 | `32` |
+| `RECALL_EXECUTOR_QUEUE_CAPACITY` | 召回转发线程池队列容量 | 否 | `64` |
+
+> 本地 `application-local.yml` 使用固定示例密钥联调；`internal-jwt-secret` 为空时召回会在签发 JWT 阶段失败（500），生产/dev 部署必须配置该密钥且与 Python 验签端一致。
+
 ## 5. 本地开发快速启动
 
 ### 前置条件
