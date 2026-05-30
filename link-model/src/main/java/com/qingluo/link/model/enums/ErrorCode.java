@@ -8,6 +8,7 @@ import lombok.Getter;
  * 错误码分类：
  * - 10001-19999: LLM 配置相关
  * - 20001-29999: 用户/认证相关
+ * - 30001-39999: 召回 / RAG 网关相关
  * - 50001-59999: 系统错误
  */
 @Getter
@@ -34,6 +35,16 @@ public enum ErrorCode {
     UNAUTHORIZED_ACCESS(20005, "无权访问该对话内容", 403),
     DUPLICATE_USERNAME(20006, "用户名已存在", 409),
     DUPLICATE_EMAIL(20007, "邮箱已被使用", 409),
+
+    // 召回 / RAG 网关相关 (30001-39999)
+    // 用于建流前 HTTP 错误（数字 code + httpStatus）；建流后 SSE 的英文串码见 RecallSseError。
+    RECALL_INVALID_REQUEST(30001, "召回请求参数不合法", 400),
+    RECALL_SCOPE_FORBIDDEN(30002, "无权访问指定数据集", 403),
+    RECALL_RATE_LIMITED(30003, "召回请求过于频繁，请稍后再试", 429),
+    RECALL_INTERNAL_AUTH_FAILED(30004, "召回内部鉴权失败", 502),
+    RECALL_ALL_SOURCES_FAILED(30005, "召回失败，请稍后再试", 502),
+    RECALL_TIMEOUT(30006, "召回超时，请稍后再试", 504),
+    RECALL_UPSTREAM_ERROR(30007, "召回服务暂不可用，请稍后再试", 502),
 
     // 系统错误 (50001-59999)
     UNKNOWN_ERROR(50001, "系统内部错误", 500),

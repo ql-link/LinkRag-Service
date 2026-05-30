@@ -88,6 +88,18 @@ tolink:
       scan-interval-ms: ${PARSE_RESULT_STUCK_SCAN_INTERVAL_MS:60000}
       # 按数据集覆盖阈值示例：dataset-thresholds.{datasetId}: 20m（默认空，回落 default-threshold）
       dataset-thresholds: {}
+  recall:
+    python-base-url: ${RAG_PYTHON_BASE_URL:http://tolink-rag:8000}
+    internal-jwt-secret: ${RECALL_INTERNAL_JWT_SECRET:}
+    jwt-exp-seconds: ${RECALL_JWT_EXP_SECONDS:30}
+    stream-timeout-ms: ${RECALL_STREAM_TIMEOUT_MS:60000}
+    emitter-timeout-buffer-ms: ${RECALL_EMITTER_TIMEOUT_BUFFER_MS:5000}
+    connect-timeout-ms: ${RECALL_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${RECALL_READ_TIMEOUT_MS:60000}
+    rate-limit-per-minute: ${RECALL_RATE_LIMIT_PER_MINUTE:10}
+    executor-core-size: ${RECALL_EXECUTOR_CORE_SIZE:8}
+    executor-max-size: ${RECALL_EXECUTOR_MAX_SIZE:32}
+    executor-queue-capacity: ${RECALL_EXECUTOR_QUEUE_CAPACITY:64}
 
 llm:
   api-key:

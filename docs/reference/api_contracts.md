@@ -78,3 +78,17 @@
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
 
 解析过程接口只接受 `processing` / `progress`；终态结果通过 `tolink.rag.parse_result` MQ 推送。解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。
+
+## Recall
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/v1/recall/stream` | 用户态流式召回（SSE，`text/event-stream`） |
+
+> 用户态召回网关：Java 校验 Sa-Token 登录态、用户状态（`status==1`）、`datasetIds` 归属后，签发内部 HS256 JWT 调用 Python `POST {RAG_PYTHON_BASE_URL}/api/v1/internal/recall/stream`（snake_case `query`/`user_id`/`dataset_ids`，header `Authorization: Bearer`、`X-Request-Id`），把结果裁剪为最小候选并以 SSE 转发。Java 不向 Python 透传前端 Sa-Token；内部 JWT `sub`/`dataset_ids` 与请求体 `user_id`/`dataset_ids` 自洽。
+>
+> **请求体**（camelCase）：`{ "query": "...", "datasetIds": [1,2] }`。`query` 非空；`datasetIds` 非 null，空列表表示「当前用户的全部数据集」（Java 展开为本人所有 dataset id，本人无库则直接返回空 `hits`、不调 Python）。首版拒绝 `docIds`/`topK`/`sources`/`strict`/`includeContent` 等未知字段（400）。
+>
+> **SSE 事件**：成功 `event: recall_done` + `data: {"hits":[{"chunkId","docId","datasetId"}]}`（保持 Python 顺序，首版不含正文与打分）；失败 `event: error` + `data: {"code","message"}`，`code` 为英文串码（`UNAUTHORIZED`/`RECALL_SCOPE_FORBIDDEN`/`RECALL_INVALID_REQUEST`/`RECALL_INTERNAL_AUTH_FAILED`/`RECALL_ALL_SOURCES_FAILED`/`RECALL_TIMEOUT`/`RECALL_UPSTREAM_ERROR`），不含内部堆栈。
+>
+> **建流前 / 建流后**：登录态、用户状态、参数、未知字段、`datasetIds` 越权、限流（默认每用户每分钟 10 次，固定窗口内允许突发）等校验在建流前完成，失败返回普通 HTTP 错误（401/403/400/429）；建流后（已开始 SSE）的任何错误（Python `error`、非 2xx、超时、未知）统一映射为 `event: error` 后关闭。前端断开时 Java 取消到 Python 的调用。

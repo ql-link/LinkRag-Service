@@ -51,6 +51,19 @@ tolink:
       default-threshold: 5m
       scan-interval-ms: 60000
       dataset-thresholds: {}
+  recall:
+    python-base-url: http://localhost:8000
+    # 本地联调示例密钥；生产必须用环境变量/密钥管理系统替换，且与 Python 验签端一致
+    internal-jwt-secret: 9780df1524906ac133898a8cc74280c512f0334d32d795786c021059ec09b5da
+    jwt-exp-seconds: 30
+    stream-timeout-ms: 60000
+    emitter-timeout-buffer-ms: 5000
+    connect-timeout-ms: 3000
+    read-timeout-ms: 60000
+    rate-limit-per-minute: 10
+    executor-core-size: 8
+    executor-max-size: 32
+    executor-queue-capacity: 64
 
 llm:
   api-key:

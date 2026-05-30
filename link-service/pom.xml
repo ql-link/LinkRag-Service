@@ -145,6 +145,27 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Guava：召回按用户限流（RateLimiter + Cache）；version 由根 dependencyManagement 管理 -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+
+        <!-- OkHttp：调用 Python 内部召回 stream（流式读取上游 SSE）；根 pom 未管理版本，显式声明 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
+        </dependency>
+
+        <!-- MockWebServer：OkHttpRecallUpstreamClient 上游 SSE 测试 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>4.12.0</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

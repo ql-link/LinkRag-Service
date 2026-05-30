@@ -43,6 +43,7 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 - OSS：本地存储和 MinIO 文件服务，区分 public/private 对象。
 - MQ：解析任务 `tolink.rag.parse_task` 投递，解析结果 `tolink.rag.parse_result` 回传，缓存补偿 `tolink.cache.evict`；`parse_result` 消费具备接收兜底（专用容器工厂、失败分类带退避重试、当前任务过滤、卡住扫描以 DB 为准补推，监控指标经 Micrometer/Actuator）。
 - Redis：用户、LLM 配置、文档文件运行配置缓存，以及同步删除和补偿删除能力。
+- 召回网关：用户态流式召回入口（SSE），Java 校验登录态、用户状态、数据集权限后签发内部 HS256 JWT 调用 Python 内部召回，并把结果转发给前端。
 
 ## 快速开始
 
@@ -98,6 +99,7 @@ mvn -pl link-service test
 | Usage | `/api/v1/llm/usage/*` |
 | Dataset | `/api/v1/datasets` |
 | Document File | `/api/v1/datasets/{datasetId}/files`、`/api/v1/files/{fileId}` |
+| Recall | `/api/v1/recall/stream`（SSE 流式召回） |
 | OSS File | `/api/v1/oss-files/{bizType}` |
 | Internal | `/api/v1/internal/files/{fileId}/content`、`/api/v1/internal/parse-tasks/{taskId}/events` |
 
