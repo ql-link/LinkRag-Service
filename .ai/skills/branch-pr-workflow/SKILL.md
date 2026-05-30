@@ -72,7 +72,7 @@ feat(模块): 简短描述（不超过 70 字符）
 
 ### 步骤 5：更新 feature_info.md
 
-提 PR 前将 `docs/<需求名>/feature_info.md` 状态更新为 `PR 待合并`，并将本次提交纳入暂存，一并提交或单独提交均可。这样 feature 状态变更才能随分支推上去。
+提 PR 前将 `.specs/<需求名>/feature_info.md` 状态更新为 `PR 待合并`，并将本次提交纳入暂存，一并提交或单独提交均可。这样 feature 状态变更才能随分支推上去。
 
 ### 步骤 6：推送并创建 PR
 
@@ -82,7 +82,7 @@ git push -u origin <branch-name>
 
 PR base 默认 `dev`，除非用户明确指定其他目标分支。
 
-**关联 Issue**：检查 `docs/<需求名>/feature_info.md` 和当前对话上下文中是否有 GitHub issue 号。有则在 PR 正文开头加 `Closes #<issue号>`，没有则跳过，不追问用户。
+**关联 Issue**：检查 `.specs/<需求名>/feature_info.md` 和当前对话上下文中是否有 GitHub issue 号。有则在 PR 正文开头加 `Closes #<issue号>`，没有则跳过，不追问用户。
 
 优先用 `gh pr create`：
 

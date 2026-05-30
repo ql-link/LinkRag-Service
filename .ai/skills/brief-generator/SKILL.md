@@ -1,6 +1,6 @@
 ---
 name: brief-generator
-description: 用户提出新需求、重构想法、业务分析、先写 brief 或需要理清影响模块时使用；产出 docs/<需求名>/brief.md，并支持迭代到冻结。
+description: 用户提出新需求、重构想法、业务分析、先写 brief 或需要理清影响模块时使用；产出 .specs/<需求名>/brief.md，并支持迭代到冻结。
 when_to_use: "新需求、先分析、写 brief、需求理解、业务流程梳理、影响模块分析。若 brief 已冻结且用户要生成 acceptance，转 acceptance-generator。"
 ---
 
@@ -13,8 +13,8 @@ when_to_use: "新需求、先分析、写 brief、需求理解、业务流程梳
 ## 输出位置
 
 ```text
-docs/<需求名>/brief.md
-docs/<需求名>/feature_info.md
+.specs/<需求名>/brief.md
+.specs/<需求名>/feature_info.md
 ```
 
 若目录已存在 `brief.md`，先读旧版判断是修订还是覆盖，不允许无说明地重写关键结论。

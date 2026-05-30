@@ -1,7 +1,7 @@
 ---
 name: acceptance-generator
-description: brief.md 已冻结后，基于 brief 生成 Gherkin 验收契约 docs/<需求名>/acceptance.feature。
-when_to_use: "用户要求生成 acceptance、Gherkin、验收场景、测试场景，且 docs/<需求名>/brief.md 已冻结。"
+description: brief.md 已冻结后，基于 brief 生成 Gherkin 验收契约 .specs/<需求名>/acceptance.feature。
+when_to_use: "用户要求生成 acceptance、Gherkin、验收场景、测试场景，且 .specs/<需求名>/brief.md 已冻结。"
 ---
 
 # Acceptance Feature Generator
@@ -16,7 +16,7 @@ when_to_use: "用户要求生成 acceptance、Gherkin、验收场景、测试场
 
 执行前必须确认：
 
-1. `docs/<需求名>/brief.md` 真实存在。
+1. `.specs/<需求名>/brief.md` 真实存在。
 2. brief 已由开发者确认冻结（无"待确认问题"章节，或仅剩非阻塞项且用户确认保留）。
 3. 用户明确要求生成 acceptance / Gherkin / 验收契约。
 
@@ -24,15 +24,15 @@ when_to_use: "用户要求生成 acceptance、Gherkin、验收场景、测试场
 
 ## 必读
 
-1. `docs/<需求名>/brief.md`
-2. `docs/<需求名>/feature_info.md`（若存在）
+1. `.specs/<需求名>/brief.md`
+2. `.specs/<需求名>/feature_info.md`（若存在）
 3. `.ai/skills/acceptance-generator/acceptance.template.feature`
 4. 同业务域已有 acceptance（若存在）
 
 ## 输出
 
 ```text
-docs/<需求名>/acceptance.feature
+.specs/<需求名>/acceptance.feature
 ```
 
 同时更新 `feature_info.md`：状态、Scenario 总数、覆盖分类。

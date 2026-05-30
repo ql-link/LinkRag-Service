@@ -47,7 +47,7 @@ when_to_use: "当用户要求修改项目文档，或代码/配置/数据库/MQ/
 | 模块边界、组件职责、业务链路变更 | `docs/architecture/project_structure.md` |
 | 配置项（application.yml 等）变更 | `docs/guides/configuration.md` |
 | Agent 入口、阅读路径、目录结构 | `AGENTS.md` |
-| 当前需求的 brief / acceptance / 技术方案 | `docs/<需求名>/` 下对应产物 |
+| 当前需求的 brief / acceptance / 技术方案 | `.specs/<需求名>/` 下对应产物 |
 
 ## 同步步骤
 
