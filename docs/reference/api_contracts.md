@@ -37,7 +37,7 @@
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
 
-> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（取值 `CHAT` / `EMBEDDING` / `RERANK` / `OCR`），曾误用复数 `capabilities`，前端需按 `capability` 取值。
+> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
 >
