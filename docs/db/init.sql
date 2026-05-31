@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    UNIQUE KEY uk_user_provider_model (user_id, provider_id, model_name),
+    UNIQUE KEY uk_user_provider_model_capability (user_id, provider_id, model_name, capability),
     INDEX idx_user_active_default (user_id, is_active, is_default),
     INDEX idx_user_provider_cap (user_id, provider_type, capability) -- 🆕 新增：支撑按能力快速切换的查询索引
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '用户级 LLM 配置表';

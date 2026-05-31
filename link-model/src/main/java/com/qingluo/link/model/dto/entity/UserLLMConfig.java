@@ -73,7 +73,8 @@ public class UserLLMConfig {
     @TableField("stream_enabled")
     private Boolean streamEnabled = true;
 
-    @Schema(description = "能力列表")
+    @Schema(description = "模型能力", example = "CHAT")
+    @TableField("capability")
     private String capability;
 
     @Schema(description = "额外配置")

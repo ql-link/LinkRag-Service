@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     timeout_ms          INT DEFAULT 60000,
     max_retries         INT DEFAULT 3,
     stream_enabled      BOOLEAN DEFAULT TRUE,
-    capabilities        JSON,
+    capability          VARCHAR(32) NOT NULL DEFAULT 'CHAT',
     extra_config        JSON,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
