@@ -37,6 +37,8 @@
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
 
+> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（取值 `CHAT` / `EMBEDDING` / `RERANK` / `OCR`），曾误用复数 `capabilities`，前端需按 `capability` 取值。
+
 ## Chat
 
 | 方法 | 路径 | 说明 |
