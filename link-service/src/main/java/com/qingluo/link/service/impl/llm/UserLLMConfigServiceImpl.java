@@ -198,7 +198,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         dto.setProviderType(config.getProviderType());
         dto.setProviderName(config.getProviderName());
         dto.setModelName(config.getModelName());
-        dto.setCapabilities(config.getCapabilities());
+        dto.setCapability(config.getCapability());
         dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(config.getApiKey()));
         dto.setCustomApiBaseUrl(config.getCustomApiBaseUrl());
         dto.setPriority(config.getPriority());

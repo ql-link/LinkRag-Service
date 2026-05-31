@@ -37,7 +37,7 @@ class UserLLMConfigTest {
         assertFieldExists("timeoutMs");
         assertFieldExists("maxRetries");
         assertFieldExists("streamEnabled");
-        assertFieldExists("capabilities");
+        assertFieldExists("capability");
         assertFieldExists("extraConfig");
         assertFieldExists("createdAt");
         assertFieldExists("updatedAt");
