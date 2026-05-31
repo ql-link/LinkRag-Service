@@ -8,12 +8,9 @@ pipeline {
     }
 
     environment {
-        REGISTRY    = 'registry.example.com/tolink'   // TODO: 改成你的镜像仓库
-        IMAGE_NAME  = 'tolink-service'
-        IMAGE       = "${REGISTRY}/${IMAGE_NAME}"
-        TAG         = "${env.GIT_COMMIT?.take(8) ?: env.BUILD_NUMBER}"
-        DEPLOY_HOST = 'deploy@your-server'             // TODO: 部署目标主机
-        DEPLOY_DIR  = '/opt/tolink/toLink-Service'
+        IMAGE      = 'tolink-service'
+        TAG        = "${env.GIT_COMMIT?.take(8) ?: env.BUILD_NUMBER}"
+        DEPLOY_DIR = '/opt/tolink/toLink-Service'   // TODO: 本机部署目录，内含 .env 和 deploy/docker-compose.yml
     }
 
     stages {
@@ -25,7 +22,7 @@ pipeline {
             agent {
                 docker {
                     image 'maven:3.9-eclipse-temurin-17'
-                    args  '-v $HOME/.m2:/root/.m2'   // 复用 Maven 本地仓库缓存
+                    args  '-v $HOME/.m2:/root/.m2'
                     reuseNode true
                 }
             }
@@ -36,35 +33,19 @@ pipeline {
 
         stage('Build Image') {
             steps {
+                // 本机构建镜像，打两个 tag：commit 和 latest
                 sh "DOCKER_BUILDKIT=1 docker build -t ${IMAGE}:${TAG} -t ${IMAGE}:latest ."
-            }
-        }
-
-        stage('Push Image') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'registry-cred',
-                        usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
-                    sh '''
-                        echo "$REG_PASS" | docker login ${REGISTRY%%/*} -u "$REG_USER" --password-stdin
-                        docker push ${IMAGE}:${TAG}
-                        docker push ${IMAGE}:latest
-                    '''
-                }
             }
         }
 
         stage('Deploy') {
             steps {
-                sshagent(credentials: ['deploy-ssh-key']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ${DEPLOY_HOST} '
-                            cd ${DEPLOY_DIR} &&
-                            export REGISTRY=${REGISTRY} TAG=${TAG} SPRING_PROFILES_ACTIVE=dev &&
-                            docker compose -f deploy/docker-compose.yml pull &&
-                            docker compose -f deploy/docker-compose.yml up -d
-                        '
-                    """
-                }
+                // 同机部署：镜像已在本机 docker 中，compose 直接按名引用
+                sh """
+                    cd ${DEPLOY_DIR}
+                    export TAG=${TAG} SPRING_PROFILES_ACTIVE=dev
+                    docker compose -f deploy/docker-compose.yml up -d
+                """
             }
         }
     }
