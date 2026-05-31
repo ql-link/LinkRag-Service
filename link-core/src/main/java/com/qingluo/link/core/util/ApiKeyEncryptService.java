@@ -22,7 +22,7 @@ public class ApiKeyEncryptService {
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
 
-    @Value("${llm.api-key.secret:}")
+    @Value("${tolink.llm.api-key.secret:}")
     private String secretKey;
 
     /**

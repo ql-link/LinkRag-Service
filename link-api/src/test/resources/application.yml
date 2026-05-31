@@ -31,11 +31,10 @@ sa-token:
   is-share: false
   token-mode: uuid
 
-llm:
-  api-key:
-    secret: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-
 tolink:
+  llm:
+    api-key:
+      secret: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   mq:
     vender: none
   oss:
