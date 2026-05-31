@@ -8,8 +8,11 @@ import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.UpdateConfigRequest;
+import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.SystemProviderService;
 import com.qingluo.link.service.impl.llm.UserLLMConfigServiceImpl;
+
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +32,9 @@ class UserLLMConfigServiceImplTest {
 
     @Mock
     private SystemProviderService systemProviderService;
+
+    @Mock
+    private LLMCapabilityService llmCapabilityService;
 
     @Mock
     private ApiKeyEncryptService apiKeyEncryptService;
@@ -75,7 +81,8 @@ class UserLLMConfigServiceImplTest {
         provider.setId(5L);
         provider.setProviderType("openai");
         provider.setProviderName("OpenAI");
-        given(systemProviderService.getByProviderType("openai")).willReturn(provider);
+        given(systemProviderService.getActiveByProviderType("openai")).willReturn(provider);
+        given(llmCapabilityService.getModelCapabilities(provider, "gpt-4")).willReturn(List.of("CHAT"));
         given(apiKeyEncryptService.encrypt("secret")).willReturn("encrypted");
 
         com.qingluo.link.model.dto.request.CreateConfigRequest request =
@@ -83,6 +90,7 @@ class UserLLMConfigServiceImplTest {
         request.setProviderType("openai");
         request.setConfigName("cfg");
         request.setApiKey("secret");
+        request.setModelName("gpt-4");
 
         service.createConfig(7L, request);
 

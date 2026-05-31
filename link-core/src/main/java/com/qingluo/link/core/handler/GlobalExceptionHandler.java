@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -52,6 +53,12 @@ public class GlobalExceptionHandler {
      * 请求体反序列化失败：覆盖 RecallStreamRequest 的未知字段拒绝（docIds/topK/sources/strict/includeContent）
      * 与字段类型错误（如 query 非字符串）。统一返回 400，对应召回“建流前参数错误”。
      */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<Result<Object>> handleMissingParam(MissingServletRequestParameterException e) {
+        return ResponseEntity.badRequest()
+            .body(Result.error(400, "缺少必填参数: " + e.getParameterName()));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Result<Object>> handleNotReadable(HttpMessageNotReadableException e) {
         log.warn("请求体不可读（含未知字段/类型错误）: {}", e.getMessage());

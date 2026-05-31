@@ -38,6 +38,10 @@
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
 
 > `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（取值 `CHAT` / `EMBEDDING` / `RERANK` / `OCR`），曾误用复数 `capabilities`，前端需按 `capability` 取值。
+>
+> 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
+>
+> `POST /api/v1/llm/configs` 按模型支持的全部能力展开为多条配置并返回列表；`GET /api/v1/llm/configs` 支持 `capability` 过滤；`GET /configs/default`、`PATCH /configs/{id}/default` 按 `capability` 维度维护默认配置。无效能力标识返回错误码 `10011`。
 
 ## Chat
 
