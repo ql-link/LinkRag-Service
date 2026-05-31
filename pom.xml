@@ -6,14 +6,15 @@
 
     <groupId>com.qingluo</groupId>
     <artifactId>link</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
     <packaging>pom</packaging>
     <modules>
         <module>link-components</module>
         <module>link-service</module>
         <module>link-core</module>
-        <module>link-api</module>
         <module>link-model</module>
+        <module>link-api</module>
+        <module>link-mapper</module>
     </modules>
 
     <properties>
@@ -40,11 +41,11 @@
         <google.guava.version>30.0-jre</google.guava.version>
         <knif4j.version>2.0.2</knif4j.version>
         <hutool.version>5.8.0.M3</hutool.version>
-        <lombok.version>1.18.22</lombok.version>
+        <lombok.version>1.18.30</lombok.version>
         <commons-pool2.version>2.11.1</commons-pool2.version>
         <fastjson.version>1.2.83</fastjson.version>
         <mybatis-plus-boot-starter.version>3.4.2</mybatis-plus-boot-starter.version>
-        <lombok.version>1.18.22</lombok.version>
+        <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
 
         <sa-token-spring-boot-starter.version>1.39.0</sa-token-spring-boot-starter.version>
     </properties>
@@ -199,7 +200,42 @@
                         </excludes>
                     </configuration>
                 </plugin>
+
+                <!-- Maven Compiler Plugin with Lombok support -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.8.1</version>
+                    <configuration>
+                        <source>${maven.compiler.source}</source>
+                        <target>${maven.compiler.target}</target>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+        </plugins>
     </build>
 </project>

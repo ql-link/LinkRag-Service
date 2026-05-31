@@ -1,0 +1,3 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.qingluo.link.components.mq.vender.rabbitmq.RabbitMQAutoConfiguration,\
+  com.qingluo.link.components.mq.vender.kafka.KafkaMQAutoConfiguration

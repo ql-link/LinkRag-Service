@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: tolink-service
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+server:
+  port: 8080
+
+sa-token:
+  token-name: satoken
+  timeout: 604800
+  token-style: uuid
+  is-concurrent: true
+  is-share: false
+  token-mode: uuid
+
+logging:
+  level:
+    com.qingluo.link: debug
+
+thread-pool:
+  document-upload:
+    core-pool-size: 5
+    max-pool-size: 10
+    queue-capacity: 50
+    keep-alive-seconds: 60
+    thread-name-prefix: document-file-upload-
+
+management:
+  health:
+    db:
+      enabled: false
+    redis:
+      enabled: false
+    rabbit:
+      enabled: false

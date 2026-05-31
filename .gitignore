@@ -1,0 +1,40 @@
+llm_module_java_api_design.md
+/.idea/
+/.vscode/
+/.claude/*
+!/.claude/doc-sync-rules.yaml
+!/.claude/skills
+/.claude/worktrees/
+
+# Maven
+target/
+logs/
+**/logs/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# 本地配置文件（保留 application-example.yml 作为模板）
+**/application-local.yml
+**/application-local.yaml
+!link-api/src/main/resources/application-local.yml
+**/application-dev.yml
+**/application-dev.yaml
+**/application-personal.yml
+**/application-personal.yaml
+
+# 环境变量文件（保留 .env.example 作为模板）
+.env
+.env.*
+!.env.example
+/.mcp.json
+docs/ToLink-前端API文档.md
+.DS_Store
+/.agents/*
+!/.agents/skills/
+!/.agents/skills/**
+
+.kiro/
+/link-api/src/main/resources/application-local.yml
