@@ -32,7 +32,8 @@ public class LLMCapabilityServiceImpl implements LLMCapabilityService {
 
     private static final String DEFAULT_LEGACY_CAPABILITY = "CHAT";
     private static final Set<String> SUPPORTED_CAPABILITIES = Set.of(
-            "CHAT", "EMBEDDING", "OCR", "VISION", "REASONING", "CODE"
+            "CHAT", "EMBEDDING", "OCR", "VISION", "REASONING", "CODE",
+            "TOOL_CALLING", "RERANK"
     );
 
     private final ObjectMapper objectMapper;
