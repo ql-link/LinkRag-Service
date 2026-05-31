@@ -26,6 +26,7 @@ public enum ErrorCode {
     MODEL_NOT_SUPPORTED(10008, "模型不被该厂商支持", 400),
     DUPLICATE_USER_CONFIG(10009, "用户已存在该厂商相同模型的配置", 409),
     DOCUMENT_FILE_CONFIG_INVALID(10010, "文档文件上传配置不合法", 400),
+    INVALID_MODEL_CAPABILITY(10011, "模型能力标识无效", 400),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),

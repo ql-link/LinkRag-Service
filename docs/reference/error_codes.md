@@ -13,6 +13,11 @@
 - Controller 不直接拼装异常响应，交给全局异常处理。
 - 对外错误语义变化需同步 `docs/reference/api_contracts.md`。
 
+## LLM 配置错误码（10001-10999）
+
+- `INVALID_MODEL_CAPABILITY(10011/400)`：模型能力标识无效（取值须为 `CHAT` / `EMBEDDING` / `RERANK` / `OCR`），用于用户侧厂商/配置接口的能力参数校验。其余 `MODEL_NOT_SUPPORTED(10008)`、`DUPLICATE_USER_CONFIG(10009)` 等以 `ErrorCode.java` 为准。
+- `GlobalExceptionHandler` 新增对 `MissingServletRequestParameterException` 的处理：缺少必填查询参数统一返回 400 `缺少必填参数: <name>`。
+
 ## 召回错误码（recall-gateway）
 
 召回网关采用**双通道**错误表达：
