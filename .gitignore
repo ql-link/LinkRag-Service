@@ -20,6 +20,8 @@ release.properties
 **/application-local.yml
 **/application-local.yaml
 !link-api/src/main/resources/application-local.yml
+**/application-dev.yml
+**/application-dev.yaml
 **/application-personal.yml
 **/application-personal.yaml
 
