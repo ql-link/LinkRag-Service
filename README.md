@@ -1,6 +1,24 @@
 # ToLink Service
 
+> ToLink 的 Java 管理端后端服务 · 当前版本 `v0.1.0`
+
 ToLink Service 是 ToLink 的 Java 管理端后端服务，负责用户、LLM 配置、对话、数据集、文档文件、OSS 上传、解析任务投递和解析结果回传。实际文档解析、RAG 执行和 LLM 调用由 Python RAG 执行端承担。
+
+## 系统边界
+
+ToLink 采用「Java 管理端 + Python RAG 执行端」协作模式：
+
+```text
+            ┌──────────────────────┐        MySQL / Redis        ┌─────────────────────┐
+  前端 ───▶ │  Java 管理端 (本服务)  │ ◀── OSS / MinIO ──────────▶ │  Python RAG 执行端   │
+            │  入口·权限·配置·文件   │ ─── MQ (parse_task) ──────▶ │  文档解析·RAG·LLM    │
+            │  状态查询·SSE 转发     │ ◀── MQ (parse_result) ───── │  解析产物·状态推进   │
+            └──────────────────────┘     内部 HTTP (文件内容/召回)  └─────────────────────┘
+```
+
+- **Java 端**：管理入口、用户态资源、配置、文件上传、对象存储定位、解析任务投递、结果查询与 SSE 转发。
+- **Python 端**：文档解析、RAG 执行、LLM 调用、解析产物生成与部分状态推进。
+- 两端通过 MySQL、MQ、OSS/MinIO 与必要的内部 HTTP 接口协作。
 
 ## 技术栈
 
@@ -85,6 +103,17 @@ mvn clean test
 mvn -pl link-api test
 mvn -pl link-service test
 ```
+
+## 容器化部署
+
+仓库提供 `deploy/docker-compose.yml`，用于打包后的服务部署（数据库、Redis、MQ、OSS 等中间件按需自备或外接）：
+
+```bash
+cd deploy
+docker compose up -d
+```
+
+服务通过环境变量对接外部 MySQL / Redis / Kafka / OSS，变量含义见下方「配置环境变量」。
 
 ## API 概览
 
