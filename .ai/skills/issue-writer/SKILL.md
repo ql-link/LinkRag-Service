@@ -1,17 +1,19 @@
 ---
 name: issue-writer
-description: 发现 bug 或有新需求时，生成规范的 GitHub Issue 并通过 gh 创建。
-when_to_use: "发现 bug、想提 issue、记录新需求、报告问题。触发示例：'提个 issue'、'把这个 bug 记一下'、'写个需求 issue'、'把这个问题提到 GitHub 上'"
+description: 当用户明确只需要 GitHub issue，或 Linear 不可用且接受降级时，生成规范的 GitHub issue 并通过 gh 创建。
+when_to_use: "发现 bug、想提 issue、记录新需求，但只想建 GitHub issue；或 Linear 不可用、用户接受只落 GitHub。若需要 Linear 与 GitHub 双向同步，转 cowork-issue-sync。"
 ---
 
 # Issue Writer
 
 ## 定位
 
-帮助用户快速生成规范的 GitHub Issue，支持两种类型：
+帮助用户快速生成规范的 GitHub issue，作为 **GitHub-only fallback** 使用。支持两种类型：
 
 - **Bug Report**：描述发现的问题、复现路径、预期与实际行为
 - **Feature Request**：描述新需求的背景、目标和边界
+
+若当前项目要求 Linear 与 GitHub 双向同步，默认不使用本 skill，应转 `cowork-issue-sync`。
 
 ## 工作流程
 
