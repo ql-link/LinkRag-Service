@@ -22,12 +22,18 @@
 - 描述外部或跨系统契约：放 `reference/`
 - 描述使用、部署、联调步骤：放 `guides/`
 - 描述协作流程：放 `development/`
-- 单次需求产物：放 `docs/<需求名>/`
+- 单次需求产物：放 `.specs/<需求名>/`（本地工作产物，不入库，合并后清理；只 `.specs/README.md` 入库）
 
 ## 协作流程文档约定
 
 - `docs/development/spec_as_test_handbook.md`：需求从 brief 到实现的主流程
 - `docs/development/branching_and_pr.md`：分支、提交与 PR 约定
 - `docs/development/issue_tracking_workflow.md`：Linear 与 GitHub 的 issue 创建与双向同步流程
+
+## 技能治理
+
+- `.ai/skills/README.md`：技能注册表，按类别索引每个 skill 的职责、触发/转交边界与周期复审清单。
+- `scripts/check_skills.py`：pre-commit `check-skills` 门禁，校验 skill 的 frontmatter、死引用、技术栈一致性（防 Python/RAG 模板腐化）、孤儿目录。
+- `agents-tree-sync` skill：维护 `AGENTS.md`（= `.ai/prompts/project.md`）中的"当前项目结构"树。
 
 当 `.ai/` 下的 skill、项目入口或协作规则发生变化时，应同步更新对应的 `docs/development/*` 文档，避免 Agent 与贡献者看到不同版本的流程说明。

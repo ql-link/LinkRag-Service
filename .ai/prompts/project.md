@@ -61,6 +61,27 @@ ToLink 采用 “Java 管理端 + Python RAG 执行端” 协作模式：
 - Python 端负责文档解析、RAG 执行、LLM 调用、解析产物生成与部分状态推进。
 - 两端通过 MySQL、MQ、OSS/MinIO 和必要的内部 HTTP 接口协作。
 
+### 1.5 当前项目结构
+
+> 骨架 + 关键入口，由 `agents-tree-sync` skill 维护。`docs/` 内部结构变化不在此树同步。
+
+```
+toLink-Service/
+├── link-api/                Controller、Spring Boot 启动入口、接口层配置与测试
+├── link-service/            业务逻辑（用户 / LLM 配置 / 数据集 / 知识文件 / 解析任务 / 用量）
+├── link-model/              Entity、请求/响应 DTO、枚举、统一响应模型
+├── link-mapper/             MyBatis-Plus Mapper
+├── link-core/               异常体系、全局异常处理、认证上下文、加密与工具
+├── link-components/         横向组件
+│   ├── toLink-components-mq/     MQ 抽象与多厂商适配
+│   ├── toLink-components-oss/    OSS / MinIO 对象存储
+│   └── toLink-components-redis/  Redis 缓存
+├── docs/                    架构 / 契约 / 指南 / 流程文档
+├── .ai/                     AI 入口（prompts/project.md）与 skills/
+├── .specs/                  需求产物（brief/acceptance/TD/report，本地不入库）
+└── scripts/                 AI 资产链接与文档同步校验
+```
+
 ---
 
 ## 二、Spec-as-Test 工作流

@@ -13,7 +13,7 @@ issue 建立后，再进入 `brief.md` 阶段梳理范围、边界和风险。
 
 ## 1. brief.md
 
-路径：`docs/<需求名>/brief.md`
+路径：`.specs/<需求名>/brief.md`
 
 职责：
 
@@ -29,7 +29,7 @@ issue 建立后，再进入 `brief.md` 阶段梳理范围、边界和风险。
 
 ## 2. acceptance.feature
 
-路径：`docs/<需求名>/acceptance.feature`
+路径：`.specs/<需求名>/acceptance.feature`
 
 职责：
 
@@ -41,7 +41,7 @@ issue 建立后，再进入 `brief.md` 阶段梳理范围、边界和风险。
 
 ## 3. technical_design.md
 
-路径：`docs/<需求名>/technical_design.md`
+路径：`.specs/<需求名>/technical_design.md`
 
 职责：
 
@@ -56,6 +56,7 @@ issue 建立后，再进入 `brief.md` 阶段梳理范围、边界和风险。
 ```bash
 python3 scripts/check_ai_links.py
 python3 scripts/check_docs_sync.py --working
+python3 scripts/check_skills.py
 mvn test
 ```
 
@@ -63,4 +64,4 @@ mvn test
 
 ## 5. 旧流程清理
 
-旧七阶段模块文档和旧组件约定目录已移除。后续新增需求、技术设计和测试说明只使用 `docs/<需求名>/` 下的 Spec-as-Test 产物；跨模块稳定知识沉淀到 `docs/architecture`、`docs/reference`、`docs/guides` 或 `docs/development`。
+旧七阶段模块文档和旧组件约定目录已移除。后续新增需求、技术设计和测试说明只使用 `.specs/<需求名>/` 下的 Spec-as-Test 产物；跨模块稳定知识沉淀到 `docs/architecture`、`docs/reference`、`docs/guides` 或 `docs/development`。

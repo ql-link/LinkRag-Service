@@ -36,5 +36,7 @@ docs/ToLink-前端API文档.md
 
 .kiro/
 
-# feature 临时工作目录（brief/acceptance/TD/report/blog，不进 repo）
-.specs/
+# feature 临时工作目录（brief/acceptance/TD/report/blog）。
+# 只保留 README.md 入库，其余为本地工作产物、合并后清理。
+/.specs/*
+!/.specs/README.md
