@@ -38,8 +38,8 @@
 | [deployment.md](ops/deployment.md) | 部署指南 |
 | [integration.md](ops/integration.md) | 跨端联调 |
 
-### [development/](development/) — 开发流程
-分支、提交、测试、文档同步、spec-as-test 等贡献者规范，详见 [development/README.md](development/README.md) 与 [contributing.md](contributing.md)。
+### 开发流程 → [contributing.md](contributing.md)
+分支、提交、测试、文档同步、spec-as-test 等贡献者规范见 [contributing.md](contributing.md)，完整约定在 [../CLAUDE.md](../CLAUDE.md)。
 
 ### 数据库脚本 → [`../scripts/db/`](../scripts/db/)
 `schema.sql`（建表）、`init.sql`（初始化数据）已移至仓库根 `scripts/db/`。

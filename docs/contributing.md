@@ -1,12 +1,12 @@
 # Contributing — toLink-Service
 
-贡献者入口。本文件是**总纲 + 路由**，详细规范在 [development/](development/) 各文件，可执行环节大多有对应 skill。
+贡献者入口。本文件是**总纲 + 路由**：流程总览见此，完整约定在 [CLAUDE.md](../CLAUDE.md) 与对应 skill。
 
 ## 开发流程：Spec-as-Test
 
 新需求按 `brief.md → acceptance.feature → technical_design.md → Code + Tests` 推进，每阶段有门禁（前一个冻结才进下一个）。
 
-- 手册：[development/spec_as_test_handbook.md](development/spec_as_test_handbook.md)
+- 流程与阶段门禁详见 [CLAUDE.md「二、Spec-as-Test」](../CLAUDE.md)
 - 产物放 `.specs/<需求名>/`（本地工作产物，不进 repo，合并后清理）
 - skill：`brief-generator` → `acceptance-generator` → `technical-design` → `implementation-execution`
 
@@ -14,12 +14,12 @@
 
 - 分支前缀：`feature/` `fix/` `refactor/` `docs/` `chore/` + 英文 kebab-case
 - 提交信息用 Conventional Commits（`feat` / `fix` / `refactor` / `docs` / `chore`）
-- 详见 [development/branching_and_pr.md](development/branching_and_pr.md)；发 PR 用 `branch-pr-workflow` skill
+- 发 PR 用 `branch-pr-workflow` skill（含分支命名约定与 PR 描述模板）
 
 ## 测试
 
 - 全量 `mvn test`；单模块 `mvn -pl <module> test`
-- 规范见 [development/testing.md](development/testing.md)；写/补测试用 `auto-test`，跑全量用 `run-all-tests`
+- 规范见 [internals/testing.md](internals/testing.md)；写/补测试用 `auto-test`，跑全量用 `run-all-tests`
 
 ## 文档同步（机器强制）
 
@@ -28,7 +28,7 @@
 - API / DTO 变更 → `docs/api/api_contracts.md`
 - Entity / 数据库脚本 → `docs/api/mysql_schema.md`
 - MQ 消息 / 消费者 → `docs/api/mq_contracts.md`、`docs/internals/mq_module.md`
-- 机制详见 [development/doc_sync.md](development/doc_sync.md)，规则在 `.claude/doc-sync-rules.yaml`
+- 规则在 `.claude/doc-sync-rules.yaml`，由 pre-commit 三道门禁强制
 
 提交前自检：
 

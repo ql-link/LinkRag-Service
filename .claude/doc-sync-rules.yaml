@@ -19,10 +19,9 @@ rules:
       - scripts/setup_ai_links.py
       - scripts/check_ai_links.py
     must_update:
-      - docs/development/spec_as_test_handbook.md
-      - docs/development/documentation_architecture.md
+      - docs/contributing.md
     severity: warning
-    rationale: AI 入口和 skill 变化需要同步开发流程说明，避免 Agent 使用过期流程。
+    rationale: AI 入口和 skill 变化需要同步贡献者流程说明，避免 Agent 使用过期流程。
 
   - id: doc-sync-rule-docs
     description: 文档同步脚本或规则变更
@@ -32,7 +31,7 @@ rules:
       - .pre-commit-config.yaml
       - .github/workflows/docs-sync.yml
     must_update:
-      - docs/development/doc_sync.md
+      - docs/contributing.md
     severity: warning
     rationale: 机器规则或执行方式变化需要让贡献者知道。
 
@@ -147,6 +146,6 @@ rules:
       - link-*/src/test/**/*.java
       - link-components/**/src/test/**/*.java
     must_update:
-      - docs/development/testing.md
+      - docs/internals/testing.md
     severity: warning
     rationale: 测试结构变化应同步测试规范。

@@ -76,13 +76,13 @@ brief.md -> acceptance.feature -> technical_design.md -> Code + Tests
 
 - `.ai/` 是 AI 资产唯一物理来源。
 - `AGENTS.md`、`CLAUDE.md`、`.claude/skills`、`.agent/skills` 通过 symlink 指向 `.ai`。
-- 新需求默认写入 `docs/<需求名>/`。
-- 旧七阶段模块文档已移除，新需求统一进入 `docs/<需求名>/`。
+- 新需求默认写入 `.specs/<需求名>/`。
+- 旧七阶段模块文档已移除，新需求统一进入 `.specs/<需求名>/`。
 
 ## 7. 推荐阅读顺序
 
 1. `AGENTS.md` 或 `CLAUDE.md`
-2. `docs/development/spec_as_test_handbook.md`
+2. `docs/contributing.md`
 3. `docs/internals/project_structure.md`
 4. `docs/api/api_contracts.md`
 5. 与任务相关的 internals/api/ops 文档

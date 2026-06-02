@@ -113,7 +113,7 @@ mvn -pl link-service test
 brief.md -> acceptance.feature -> technical_design.md -> Code + Tests
 ```
 
-入口文档为 `AGENTS.md` / `CLAUDE.md`，二者均指向 `.ai/prompts/project.md`。旧七阶段文档目录已移除，新需求统一使用 `docs/<需求名>/brief.md`、`acceptance.feature`、`technical_design.md`。
+入口文档为 `AGENTS.md` / `CLAUDE.md`，二者均指向 `.ai/prompts/project.md`。旧七阶段文档目录已移除，新需求统一使用 `.specs/<需求名>/brief.md`、`acceptance.feature`、`technical_design.md`。
 
 常用校验：
 

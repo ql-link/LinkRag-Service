@@ -127,10 +127,11 @@ toLink-Service/
 
 | 目录 | 职责 |
 | --- | --- |
-| `docs/internals/` | 项目结构、模块边界、主要业务链路、组件架构 |
+| `docs/internals/` | 项目结构、模块边界、主要业务链路、组件架构、测试约定 |
 | `docs/api/` | API、MySQL schema、MQ 消息、错误码等契约 |
 | `docs/ops/` | 启动、配置、部署、联调指南 |
-| `docs/development/` | Spec-as-Test、测试、分支 PR、文档同步等开发流程 |
+
+开发流程（Spec-as-Test、分支 PR、issue 同步）不再单列文档目录，统一由本文档「二」与对应 skill 承接，贡献者入口见 `docs/contributing.md`。
 
 ### 3.1 按任务查阅
 
@@ -143,8 +144,9 @@ toLink-Service/
 | 修改 Redis 缓存 | `docs/internals/cache_module.md` |
 | 修改 OSS / 文件上传 | `docs/internals/object_storage_module.md` + `docs/internals/document_file_module.md` |
 | 修改配置 | `docs/ops/configuration.md` |
-| 新需求开发 | `docs/development/spec_as_test_handbook.md` |
-| 提 issue / 同步 Linear 与 GitHub | `docs/development/issue_tracking_workflow.md` |
+| 写 / 补测试 | `docs/internals/testing.md` + `auto-test` skill |
+| 新需求开发 | 本文档「二、Spec-as-Test 工作流」+ `brief-generator` skill |
+| 提 issue / 同步 Linear 与 GitHub | `cowork-issue-sync` skill |
 
 ---
 
@@ -157,8 +159,8 @@ toLink-Service/
 - Controller / API DTO 变更 → `docs/api/api_contracts.md`
 - Entity / 数据库脚本变更 → `docs/api/mysql_schema.md`
 - MQ 消息或消费者/生产者变更 → `docs/api/mq_contracts.md`、`docs/internals/mq_module.md`
-- Redis / OSS / 配置变更 → 对应 architecture 或 guides 文档
-- `.ai`、入口文档、同步脚本变更 → `docs/development/*`
+- Redis / OSS / 配置变更 → 对应 internals 或 ops 文档
+- `.ai`、入口文档、同步脚本变更 → `docs/contributing.md`
 
 提交前建议执行：
 

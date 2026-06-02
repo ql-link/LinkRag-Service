@@ -1,6 +1,6 @@
 ---
 name: doc-maintenance-sync
-description: 当修改 AGENTS.md/CLAUDE.md、docs/api、docs/internals、docs/ops、docs/development，或代码变更影响这些文档记录的 API、MySQL schema、MQ 契约、Redis 缓存、OSS、错误码、模块架构、配置时，检查并同步更新对应文档，保证项目文档自动维护。
+description: 当修改 AGENTS.md/CLAUDE.md、docs/api、docs/internals、docs/ops，或代码变更影响这些文档记录的 API、MySQL schema、MQ 契约、Redis 缓存、OSS、错误码、模块架构、配置时，检查并同步更新对应文档，保证项目文档自动维护。
 when_to_use: "当用户要求修改项目文档，或代码/配置/数据库/MQ/API/Redis/OSS 改动会导致 docs 下的架构、约定、参考资料不准确时激活。触发示例：'改了 API 记得更新文档'、'新增错误码'、'调整数据模型'、'修改 MQ 消息结构'、'更新 AGENTS'、'同步文档'、'维护项目说明'"
 ---
 
@@ -8,7 +8,7 @@ when_to_use: "当用户要求修改项目文档，或代码/配置/数据库/MQ/
 
 ## 目标
 
-让项目文档跟随真实代码自动同步，避免 `AGENTS.md`、`docs/api/`、`docs/internals/`、`docs/ops/`、`docs/development/` 之间出现过期说明。
+让项目文档跟随真实代码自动同步，避免 `AGENTS.md`、`docs/api/`、`docs/internals/`、`docs/ops/` 之间出现过期说明。
 
 本 skill 不是要求每次改代码都重写全部文档，而是要求在相关契约变化时做最小必要同步。
 
