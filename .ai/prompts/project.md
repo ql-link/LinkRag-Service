@@ -19,7 +19,7 @@
 | Mapper | `link-mapper/src/main/java/com/qingluo/link/mapper` |
 | Redis / MQ / OSS 组件 | `link-components/` |
 | 全局异常、认证上下文、工具类 | `link-core/src/main/java/com/qingluo/link/core` |
-| 数据库脚本 | `docs/db/schema.sql`、`docs/db/init.sql` |
+| 数据库脚本 | `scripts/db/schema.sql`、`scripts/db/init.sql` |
 
 ### 1.2 常用命令
 
@@ -127,22 +127,22 @@ toLink-Service/
 
 | 目录 | 职责 |
 | --- | --- |
-| `docs/architecture/` | 项目结构、模块边界、主要业务链路、组件架构 |
-| `docs/reference/` | API、MySQL schema、MQ 消息、错误码等契约 |
-| `docs/guides/` | 启动、配置、部署、联调指南 |
+| `docs/internals/` | 项目结构、模块边界、主要业务链路、组件架构 |
+| `docs/api/` | API、MySQL schema、MQ 消息、错误码等契约 |
+| `docs/ops/` | 启动、配置、部署、联调指南 |
 | `docs/development/` | Spec-as-Test、测试、分支 PR、文档同步等开发流程 |
 
 ### 3.1 按任务查阅
 
 | 任务 | 先读 |
 | --- | --- |
-| 理解项目结构 | `docs/architecture/project_structure.md` |
-| 修改接口 | `docs/reference/api_contracts.md` + 对应 Controller |
-| 修改表、Entity、Mapper | `docs/reference/mysql_schema.md` + `docs/db/schema.sql` + Entity |
-| 修改 MQ | `docs/reference/mq_contracts.md` + `docs/architecture/mq_module.md` |
-| 修改 Redis 缓存 | `docs/architecture/cache_module.md` |
-| 修改 OSS / 文件上传 | `docs/architecture/object_storage_module.md` + `docs/architecture/document_file_module.md` |
-| 修改配置 | `docs/guides/configuration.md` |
+| 理解项目结构 | `docs/internals/project_structure.md` |
+| 修改接口 | `docs/api/api_contracts.md` + 对应 Controller |
+| 修改表、Entity、Mapper | `docs/api/mysql_schema.md` + `scripts/db/schema.sql` + Entity |
+| 修改 MQ | `docs/api/mq_contracts.md` + `docs/internals/mq_module.md` |
+| 修改 Redis 缓存 | `docs/internals/cache_module.md` |
+| 修改 OSS / 文件上传 | `docs/internals/object_storage_module.md` + `docs/internals/document_file_module.md` |
+| 修改配置 | `docs/ops/configuration.md` |
 | 新需求开发 | `docs/development/spec_as_test_handbook.md` |
 | 提 issue / 同步 Linear 与 GitHub | `docs/development/issue_tracking_workflow.md` |
 
@@ -154,9 +154,9 @@ toLink-Service/
 
 高风险变更必须同步文档：
 
-- Controller / API DTO 变更 → `docs/reference/api_contracts.md`
-- Entity / 数据库脚本变更 → `docs/reference/mysql_schema.md`
-- MQ 消息或消费者/生产者变更 → `docs/reference/mq_contracts.md`、`docs/architecture/mq_module.md`
+- Controller / API DTO 变更 → `docs/api/api_contracts.md`
+- Entity / 数据库脚本变更 → `docs/api/mysql_schema.md`
+- MQ 消息或消费者/生产者变更 → `docs/api/mq_contracts.md`、`docs/internals/mq_module.md`
 - Redis / OSS / 配置变更 → 对应 architecture 或 guides 文档
 - `.ai`、入口文档、同步脚本变更 → `docs/development/*`
 

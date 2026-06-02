@@ -43,7 +43,7 @@ rules:
       - link-model/src/main/java/**/dto/request/**/*.java
       - link-model/src/main/java/**/dto/response/**/*.java
     must_update:
-      - docs/reference/api_contracts.md
+      - docs/api/api_contracts.md
     severity: warning
     rationale: API 路由、入参、出参变化影响前端和外部调用方。
 
@@ -51,10 +51,10 @@ rules:
     description: Entity 或数据库脚本变更
     when_changed:
       - link-model/src/main/java/**/dto/entity/**/*.java
-      - docs/db/schema.sql
-      - docs/db/init.sql
+      - scripts/db/schema.sql
+      - scripts/db/init.sql
     must_update:
-      - docs/reference/mysql_schema.md
+      - docs/api/mysql_schema.md
     severity: error
     rationale: MySQL schema 是 Java/Python 协作和数据持久化契约。
 
@@ -65,8 +65,8 @@ rules:
       - link-core/src/main/java/**/exception/**/*.java
       - link-core/src/main/java/**/handler/**/*.java
     must_update:
-      - docs/reference/error_codes.md
-      - docs/reference/api_contracts.md
+      - docs/api/error_codes.md
+      - docs/api/api_contracts.md
     severity: warning
     rationale: 错误语义变化会影响接口调用方。
 
@@ -77,8 +77,8 @@ rules:
       - link-service/src/main/java/**/mq/**/*.java
       - link-components/toLink-components-mq/src/main/java/**/model/**/*.java
     must_update:
-      - docs/reference/mq_contracts.md
-      - docs/architecture/mq_module.md
+      - docs/api/mq_contracts.md
+      - docs/internals/mq_module.md
     severity: error
     rationale: MQ 是 Java/Python 和缓存补偿链路的重要契约。
 
@@ -88,7 +88,7 @@ rules:
       - link-components/toLink-components-redis/**/*.java
       - link-service/src/main/java/**/cache/**/*.java
     must_update:
-      - docs/architecture/cache_module.md
+      - docs/internals/cache_module.md
     severity: warning
     rationale: 缓存 key、TTL、删除策略变化需要同步说明。
 
@@ -99,8 +99,8 @@ rules:
       - link-service/src/main/java/**/oss/**/*.java
       - link-service/src/main/java/**/OssApplicationService*.java
     must_update:
-      - docs/architecture/object_storage_module.md
-      - docs/guides/configuration.md
+      - docs/internals/object_storage_module.md
+      - docs/ops/configuration.md
     severity: warning
     rationale: OSS 公私有边界和配置变化影响文件访问。
 
@@ -113,8 +113,8 @@ rules:
       - link-service/src/main/java/**/DocumentParse*.java
       - link-model/src/main/java/**/Document*.java
     must_update:
-      - docs/architecture/document_file_module.md
-      - docs/guides/integration.md
+      - docs/internals/document_file_module.md
+      - docs/ops/integration.md
     severity: warning
     rationale: 文件解析链路横跨 Java、Python、MQ、OSS，需要保持说明同步。
 
@@ -125,7 +125,7 @@ rules:
       - link-service/src/main/java/**/config/**/*.java
       - link-components/**/config/**/*.java
     must_update:
-      - docs/guides/configuration.md
+      - docs/ops/configuration.md
     severity: warning
     rationale: 配置项变化影响部署和本地启动。
 
@@ -136,7 +136,7 @@ rules:
       - link-*/pom.xml
       - link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
     must_update:
-      - docs/architecture/project_structure.md
+      - docs/internals/project_structure.md
       - README.md
     severity: warning
     rationale: 项目结构变化需要同步入口文档。

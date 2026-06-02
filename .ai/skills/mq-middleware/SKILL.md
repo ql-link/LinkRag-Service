@@ -12,7 +12,7 @@ MQ 模块位于 `link-components/toLink-components-mq`，通过接口 + AutoConf
 
 **强制同步要求**：凡涉及 MQ 模块操作（新增/修改/删除消息模型、消费者、Topic、厂商适配逻辑、配置项），完成代码修改后必须：
 
-1. 同步更新 `docs/reference/mq_contracts.md` 中的消息清单与字段说明。
+1. 同步更新 `docs/api/mq_contracts.md` 中的消息清单与字段说明。
 2. 同步更新本 Skill 的"当前消息清单"。
 3. 若本次修改未改变上述内容，在交付说明中注明"已检查 mq-middleware Skill，无需更新"。
 
@@ -182,6 +182,6 @@ public class RawConsumer implements MQMsgReceiver {
 
 新增或修改消息模型后必须：
 
-1. 更新 `docs/reference/mq_contracts.md` 的消息清单与字段说明
+1. 更新 `docs/api/mq_contracts.md` 的消息清单与字段说明
 2. 更新本 Skill 第 2 节"当前消息清单"
 3. 若涉及 Python 端，通知 Python 侧同步消费/发送逻辑

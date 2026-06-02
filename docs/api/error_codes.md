@@ -11,7 +11,7 @@
 
 - 新增业务错误优先扩展 `ErrorCode`。
 - Controller 不直接拼装异常响应，交给全局异常处理。
-- 对外错误语义变化需同步 `docs/reference/api_contracts.md`。
+- 对外错误语义变化需同步 `docs/api/api_contracts.md`。
 
 ## 召回错误码（recall-gateway）
 
@@ -25,4 +25,4 @@
   `RECALL_INTERNAL_AUTH_FAILED` / `RECALL_ALL_SOURCES_FAILED` / `RECALL_TIMEOUT` / `RECALL_UPSTREAM_ERROR`），
   `data: {"code","message"}`，不含内部堆栈。Python 已知错误码透传，未知/非 2xx 兜底 `RECALL_UPSTREAM_ERROR`。
 
-详见 `docs/reference/api_contracts.md` 的 Recall 章节。
+详见 `docs/api/api_contracts.md` 的 Recall 章节。

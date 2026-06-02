@@ -83,6 +83,6 @@ brief.md -> acceptance.feature -> technical_design.md -> Code + Tests
 
 1. `AGENTS.md` 或 `CLAUDE.md`
 2. `docs/development/spec_as_test_handbook.md`
-3. `docs/architecture/project_structure.md`
-4. `docs/reference/api_contracts.md`
-5. 与任务相关的 architecture/reference/guides 文档
+3. `docs/internals/project_structure.md`
+4. `docs/api/api_contracts.md`
+5. 与任务相关的 internals/api/ops 文档

@@ -3,8 +3,8 @@
 ## 本地启动
 
 ```bash
-mysql -h <DB_HOST> -u root -p < docs/db/schema.sql
-mysql -h <DB_HOST> -u root -p tolink_rag_db < docs/db/init.sql
+mysql -h <DB_HOST> -u root -p < scripts/db/schema.sql
+mysql -h <DB_HOST> -u root -p tolink_rag_db < scripts/db/init.sql
 mvn spring-boot:run -pl link-api
 ```
 

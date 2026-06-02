@@ -24,8 +24,8 @@ python3 scripts/check_docs_sync.py --base origin/dev
 
 ## 规则原则
 
-- API、数据库、MQ 这类对接契约使用 `error`，漏同步会阻止提交或合并。
-- 内部架构说明使用 `warning`，提醒同步但不默认阻塞。
+- API、数据库、MQ 这类对接契约（落在 `docs/api/`）使用 `error`，漏同步会阻止提交或合并。
+- 内部架构说明（`docs/internals/`）使用 `warning`，提醒同步但不默认阻塞。
 - `.ai`、入口文档、同步脚本变更必须同步开发流程文档。
 - skill 变更由 `check_skills.py`（pre-commit `check-skills` 门禁）校验 frontmatter、死引用、技术栈一致性与孤儿目录。
 

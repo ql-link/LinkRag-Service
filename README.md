@@ -50,8 +50,8 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 ### 1. 初始化数据库
 
 ```bash
-mysql -h <DB_HOST> -u root -p < docs/db/schema.sql
-mysql -h <DB_HOST> -u root -p tolink_rag_db < docs/db/init.sql
+mysql -h <DB_HOST> -u root -p < scripts/db/schema.sql
+mysql -h <DB_HOST> -u root -p tolink_rag_db < scripts/db/init.sql
 ```
 
 ### 2. 配置环境变量
@@ -103,7 +103,7 @@ mvn -pl link-service test
 | OSS File | `/api/v1/oss-files/{bizType}` |
 | Internal | `/api/v1/internal/files/{fileId}/content`、`/api/v1/internal/parse-tasks/{taskId}/events` |
 
-完整契约见 `docs/reference/api_contracts.md`。
+完整契约见 `docs/api/api_contracts.md`。
 
 ## AI 协作流程
 

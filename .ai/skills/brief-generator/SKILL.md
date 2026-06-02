@@ -23,7 +23,7 @@ when_to_use: "新需求、先分析、写 brief、需求理解、业务流程梳
 
 1. `AGENTS.md`
 2. `project_info.md`
-3. 与需求相关的 architecture/reference/guides 文档
+3. 与需求相关的 internals/api/ops 文档
 4. 相关 Controller / Service / Entity / Mapper / 组件入口
 5. 同业务域已有 brief / acceptance / technical_design（若存在）
 

@@ -64,4 +64,4 @@ mvn test
 
 ## 5. 旧流程清理
 
-旧七阶段模块文档和旧组件约定目录已移除。后续新增需求、技术设计和测试说明只使用 `.specs/<需求名>/` 下的 Spec-as-Test 产物；跨模块稳定知识沉淀到 `docs/architecture`、`docs/reference`、`docs/guides` 或 `docs/development`。
+旧七阶段模块文档和旧组件约定目录已移除。后续新增需求、技术设计和测试说明只使用 `.specs/<需求名>/` 下的 Spec-as-Test 产物；跨模块稳定知识沉淀到 `docs/internals`、`docs/api`、`docs/ops` 或 `docs/development`。
