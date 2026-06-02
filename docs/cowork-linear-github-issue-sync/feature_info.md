@@ -6,11 +6,11 @@
 | 中文名 | Cowork Skill：Linear 与 GitHub issue 手动双向同步 |
 | 来源 | 当前对话需求：取消 Linear team 对 GitHub 的自动关联，改为通过 Cowork Skill 手动完成 Linear → GitHub issue 同步 |
 | 分支 | feature/ai-workflow-skills（现有分支继续演进） |
-| 当前阶段 | brief 草稿待确认（2026-06-02） |
-| brief.md | 已生成（2026-06-02，待冻结） |
-| acceptance.feature | 未开始 |
-| technical_design.md | 未开始 |
-| implementation_report.md | 未开始 |
+| 当前阶段 | PR 待合并（2026-06-02） |
+| brief.md | 已生成（2026-06-02） |
+| acceptance.feature | 跳过（直接实现为 skill，无需 Cucumber 场景） |
+| technical_design.md | 跳过（skill 体系不需要 TD，以 SKILL.md 为设计文档） |
+| implementation_report.md | 完成（2026-06-02） |
 
 ## 已确认业务约束
 
@@ -21,7 +21,7 @@
 | GitHub 仓库映射 | 直接映射：`ql-link/LinkRag` / `ql-link/LinkRag-Service` / `ql-link/LinkRag-Web` |
 | 创建顺序 | 先创建 Linear issue，再创建 GitHub issue |
 | 负责人 | Linear 与 GitHub 双写，同一个人 |
-| 回链方式 | 正文和 comment 都放对方链接 |
+| 回链方式 | Linear links 区域存 GitHub URL；GitHub 正文末尾存 Linear URL |
 | 标签体系 | 以 Linear 为主；Linear 缺失时允许补充 |
 
 ## 阶段记录
