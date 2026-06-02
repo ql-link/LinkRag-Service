@@ -14,6 +14,12 @@ public class CacheConsistencyProperties {
     public static final String PREFIX = "tolink.cache-consistency";
 
     private boolean enabled = true;
+    /**
+     * 兼容保留字段。
+     *
+     * <p>当前仅保留用于配置绑定兼容；主流程第一次删缓存的失败语义
+     * 已统一为“数据库写成功后不再改变请求结果”，不再由该字段决定是否抛错。</p>
+     */
     private boolean syncDeleteRequired = true;
     private long syncDeleteMaxWaitMs = 600L;
     private long syncDeleteRetryIntervalMs = 100L;
