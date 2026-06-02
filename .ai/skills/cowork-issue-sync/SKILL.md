@@ -184,12 +184,16 @@ Linear 与 GitHub 使用固定映射，不降级到其他标签：
 
 禁止在项目不明确时盲猜 project 或 repo。
 
-### 步骤 2：整理 issue 类型与正文，确认负责人
+### 步骤 2：整理 issue 类型与正文
 
 - 判断 issue 类型：`Bug` / `Feature` / `Improvement`
 - 从当前对话中提取背景、目标、边界、影响范围、相关位置
-- 生成中文标题和结构化正文
-- 调用 `list_users`（team = `QIngluo`）获取团队成员，列出 `name`（`displayName`）供用户选择，等待用户确认后再继续
+- 生成中文标题和结构化正文，输出给用户预览
+
+### 步骤 2.5：确认负责人
+
+- 调用 `list_users`（team = `QIngluo`）获取当前团队成员
+- 列出成员 `displayName` 供用户选择，**等待用户回复后**再继续后续步骤
 
 ### 步骤 3：创建 Linear issue
 
