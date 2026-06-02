@@ -22,6 +22,8 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
+- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`（须与 `llm_system_provider.supported_models` 中的能力词汇表一致）。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。
+- `llm_user_config` 一条用户配置按模型支持的能力展开为多行（一个能力一行），唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability)`；默认配置按 `capability` 维度维护，并有 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑按能力切换查询。
 - Java 端和 Python RAG 端共享数据库时，字段语义必须在本文件或模块文档中明确。
 - `document_original_file` 只保存上传事实，不保存解析状态或解析产物。
 - `document_parse_file.latest_parse_task_id` 指向 `document_parsed_log.task_id`；Markdown 产物定位由 Python 写入 `document_parsed_log`。

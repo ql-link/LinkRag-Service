@@ -13,12 +13,12 @@ public interface UserLLMConfigService {
     /**
      * 获取用户所有配置
      */
-    List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, Boolean isActive);
+    List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, String capability, Boolean isActive);
 
     /**
-     * 创建配置
+     * 创建配置（按模型支持的能力展开，可能返回多条）
      */
-    UserLLMConfigDTO createConfig(Long userId, CreateConfigRequest request);
+    List<UserLLMConfigDTO> createConfig(Long userId, CreateConfigRequest request);
 
     /**
      * 更新配置
@@ -31,7 +31,17 @@ public interface UserLLMConfigService {
     void deleteConfig(Long userId, Long configId);
 
     /**
-     * 获取用户默认配置
+     * 获取用户默认配置（CHAT 能力）
      */
     UserLLMConfigDTO getDefaultConfig(Long userId);
+
+    /**
+     * 获取用户某个能力的默认配置
+     */
+    UserLLMConfigDTO getDefaultConfig(Long userId, String capability);
+
+    /**
+     * 设置用户某个能力的默认配置
+     */
+    void setDefaultConfig(Long userId, Long configId, String capability);
 }

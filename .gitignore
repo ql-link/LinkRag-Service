@@ -20,6 +20,8 @@ release.properties
 **/application-local.yml
 **/application-local.yaml
 !link-api/src/main/resources/application-local.yml
+**/application-dev.yml
+**/application-dev.yaml
 **/application-personal.yml
 **/application-personal.yaml
 
@@ -40,3 +42,6 @@ docs/ToLink-前端API文档.md
 # 只保留 README.md 入库，其余为本地工作产物、合并后清理。
 /.specs/*
 !/.specs/README.md
+
+# 本地运行配置（不入库）
+/link-api/src/main/resources/application-local.yml

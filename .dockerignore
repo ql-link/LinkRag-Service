@@ -1,0 +1,13 @@
+**/target
+.git
+.github
+.idea
+.vscode
+.agent
+.ai
+.claude
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example

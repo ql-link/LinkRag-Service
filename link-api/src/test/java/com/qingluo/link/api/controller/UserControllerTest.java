@@ -89,7 +89,8 @@ class UserControllerTest {
      * 测试用户 ID
      */
     private static final Long TEST_USER_ID = 99998L;
-    private static final Long CONFLICT_USER_ID = 99997L;
+    // 99997 与 AdminControllerProviderTest 的 ADMIN_USER_ID 冲突（共享 H2 内存库），改用未占用的 99990
+    private static final Long CONFLICT_USER_ID = 99990L;
 
     /**
      * 测试用户名
@@ -119,6 +120,10 @@ class UserControllerTest {
      */
     @BeforeAll
     void setup() {
+        // 防御性清理：共享 H2 内存库可能残留同 id 数据，先删除自己用到的 id
+        sysUserMapper.deleteById(TEST_USER_ID);
+        sysUserMapper.deleteById(CONFLICT_USER_ID);
+
         // 创建测试用户
         SysUser user = new SysUser();
         user.setId(TEST_USER_ID);
