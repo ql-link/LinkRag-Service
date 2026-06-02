@@ -201,6 +201,28 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 > 本地 `application-local.yml` 使用固定示例密钥联调；`internal-jwt-secret` 为空时召回会在签发 JWT 阶段失败（500），生产/dev 部署必须配置该密钥且与 Python 验签端一致。
 
+## 4.15 缓存一致性（tolink.cache-consistency.*）
+
+缓存一致性由 `CacheConsistencyProperties` 绑定，前缀为 `tolink.cache-consistency`。
+
+| 配置项 | 用途 | 默认值 | 备注 |
+|------|------|--------|------|
+| `tolink.cache-consistency.enabled` | 是否启用统一缓存一致性组件 | `true` | 关闭后主流程首删直接跳过 |
+| `tolink.cache-consistency.sync-delete-required` | 兼容保留字段 | `true` | 仅保留配置绑定兼容，不再控制主流程首删失败是否抛错 |
+| `tolink.cache-consistency.sync-delete-max-wait-ms` | 单次删缓存的总重试预算（毫秒） | `600` | 首删与补偿删共用 |
+| `tolink.cache-consistency.sync-delete-retry-interval-ms` | 删缓存失败后的重试间隔（毫秒） | `100` | 首删与补偿删共用 |
+| `tolink.cache-consistency.null-cache-ttl-seconds` | 空值缓存 TTL（秒） | `60` | 读保护使用 |
+| `tolink.cache-consistency.ttl-jitter-seconds` | TTL 抖动上限（秒） | `300` | 读保护使用 |
+| `tolink.cache-consistency.load-wait-ms` | 并发回源等待时间（毫秒） | `50` | 读保护使用 |
+
+补充说明：
+
+- 主流程第一次删缓存的时机：
+  - 事务内写路径：事务提交后 `afterCommit` 执行
+  - 无事务写路径：数据库写成功后立即执行
+- 只要数据库写已经成功，第一次删缓存失败都不会再改变请求结果，而是记录日志并依赖 `tolink.cache.evict` 补偿链路最终收敛。
+- CDC / MQ 驱动的第二次补偿删除仍保持强失败语义：删除失败时抛异常，由消费重试机制继续收敛。
+
 ## 5. 本地开发快速启动
 
 ### 前置条件
