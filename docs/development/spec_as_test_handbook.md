@@ -2,6 +2,15 @@
 
 toLink-Service 使用 `brief.md → acceptance.feature → technical_design.md → Code + Tests`。
 
+## 0. 需求进入方式
+
+默认先把需求登记成 issue，再进入 Spec-as-Test：
+
+- 需要 Linear 与 GitHub 双向同步时，使用 `cowork-issue-sync`
+- 只需要 GitHub issue 时，使用 `issue-writer`
+
+issue 建立后，再进入 `brief.md` 阶段梳理范围、边界和风险。
+
 ## 1. brief.md
 
 路径：`docs/<需求名>/brief.md`
