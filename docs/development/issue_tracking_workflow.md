@@ -38,7 +38,7 @@ Linear team 固定为 `QIngluo`（team key `LINK`）。
 4. 确认负责人：从当前团队成员中选 1 人，并同步到两边。
 5. 创建 Linear issue：先落 team 与 project，拿到 key 和 URL。
 6. 创建 GitHub issue：正文直接带上 Linear 链接。
-7. 补全回链：更新 Linear 正文写入 GitHub 链接，并在 Linear 下发一条 comment。
+7. 补全回链：更新 Linear 正文写入 GitHub issue URL。
 8. 返回结果：给出两边链接、负责人、标签与部分失败说明。
 
 ## 标签规则
@@ -51,5 +51,5 @@ Linear team 固定为 `QIngluo`（team key `LINK`）。
 
 - Linear 创建失败：终止，不创建 GitHub issue。
 - GitHub 创建失败：保留已建 Linear issue，并报告失败。
-- comment 或正文回链失败：不回滚主 issue，但必须显式报告“回链不完整”。
+- Linear 正文更新失败：不回滚主 issue，但必须显式报告 GitHub 链接未写入。
 - assignee 失败：不回滚 issue，但要在结果中说明哪一边分配失败。

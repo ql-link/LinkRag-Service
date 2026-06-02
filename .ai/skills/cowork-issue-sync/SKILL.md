@@ -203,14 +203,11 @@ GitHub issue 需同步：
 - issue number
 - issue URL
 
-### 步骤 5：在 Linear 补全 GitHub 链接
+### 步骤 5：在 Linear 正文补全 GitHub 链接
 
-创建完成后，在 Linear 一侧补齐回链：
+创建完成后，更新 Linear 正文，写入 GitHub issue URL。
 
-- 更新 Linear 正文，写入 GitHub issue URL
-- 在 Linear 下发一条 comment，说明 GitHub issue 已创建并附链接
-
-GitHub issue 无需写入 Linear 链接，也无需额外 comment。
+GitHub issue 无需写入 Linear 链接，也无需额外 comment；Linear 也不发 comment。
 
 ### 步骤 6：报告结果
 
@@ -228,13 +225,13 @@ GitHub issue 无需写入 Linear 链接，也无需额外 comment。
 
 - Linear 创建失败：终止流程，不创建 GitHub issue
 - Linear 成功但 GitHub 创建失败：保留 Linear issue，并明确报告 GitHub 失败
-- comment 或正文更新失败：不回滚主 issue，报告“主记录已创建，但回链不完整”
+- Linear 正文更新失败：不回滚主 issue，报告”主记录已创建，但 Linear 正文中的 GitHub 链接未写入”
 - GitHub assignee 失败：不回滚 issue，报告分配失败并给出待人工处理项
 
 ## 8. 质量门禁
 
 - 项目归属必须准确，不可把 issue 发到错误仓库
-- Linear 必须包含 GitHub issue 链接（正文与 comment 各一处）；GitHub issue 无需包含 Linear 链接
+- Linear 正文必须包含 GitHub issue 链接；GitHub issue 无需包含 Linear 链接
 - 标题不能空泛，正文不能缺失核心背景和边界
 - 负责人必须在两边保持同一人
 - 若有部分失败，必须显式报告，不能假装全成功
