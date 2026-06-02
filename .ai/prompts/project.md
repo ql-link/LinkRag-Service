@@ -98,8 +98,7 @@ ToLink 采用 “Java 管理端 + Python RAG 执行端” 协作模式：
 | 检查中间件 / 跨模块契约 | `contract-guard` |
 | 提交前 review / 质量门禁 | `code-review-and-quality` |
 | 从 dev 创建分支并发 PR | `branch-pr-workflow` |
-| 提 bug issue 或新需求 issue（默认 Linear + GitHub 双向同步） | `cowork-issue-sync` |
-| 只提 GitHub issue / Linear 不可用时降级 | `issue-writer` |
+| 提 bug issue 或新需求 issue | `cowork-issue-sync` |
 
 ---
 

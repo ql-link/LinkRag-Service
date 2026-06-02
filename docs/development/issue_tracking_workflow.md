@@ -9,7 +9,7 @@
 - 由 Agent 识别当前对话所属项目
 - 自动映射到对应的 Linear project 与 GitHub 仓库
 - 先创建 Linear issue，再创建 GitHub issue
-- 在正文和 comment 中双向回链
+- 在 Linear 正文和 comment 中写入 GitHub issue 链接
 - 把同一个负责人同步到两边
 
 ## 项目映射
@@ -26,8 +26,7 @@ Linear team 固定为 `QIngluo`（team key `LINK`）。
 
 | 场景 | skill |
 | --- | --- |
-| 默认提 issue，需要 Linear 与 GitHub 双向同步 | `cowork-issue-sync` |
-| 只需要 GitHub issue | `issue-writer` |
+| 提 issue（默认） | `cowork-issue-sync` |
 | issue 明确后进入需求分析 | `brief-generator` |
 | 实现完成后提交与发 PR | `branch-pr-workflow` |
 
@@ -39,7 +38,7 @@ Linear team 固定为 `QIngluo`（team key `LINK`）。
 4. 确认负责人：从当前团队成员中选 1 人，并同步到两边。
 5. 创建 Linear issue：先落 team 与 project，拿到 key 和 URL。
 6. 创建 GitHub issue：正文直接带上 Linear 链接。
-7. 补全回链：更新 Linear 正文中的 GitHub 链接，并在两边 comment 中互相回链。
+7. 补全回链：更新 Linear 正文写入 GitHub 链接，并在 Linear 下发一条 comment。
 8. 返回结果：给出两边链接、负责人、标签与部分失败说明。
 
 ## 标签规则
