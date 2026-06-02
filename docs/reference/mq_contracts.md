@@ -44,7 +44,7 @@ Python 在发送结果前先写入 `document_parsed_log` 与 `document_parse_fil
 
 ## parse_result 消费接收兜底
 
-消息体不变，仅强化 Java 消费侧的接收健壮性（详见 `docs/parse-result-consumer-resilience/`）：
+消息体不变，仅强化 Java 消费侧的接收健壮性：
 
 - **专用容器工厂**：`parse_result` 使用专用 `ConcurrentKafkaListenerContainerFactory`（bean `parseResultKafkaListenerContainerFactory`）+ `SeekToCurrentErrorHandler`；`tolink.cache.evict` 等其他消费者仍走 Boot 默认工厂，互不影响。
 - **失败分类**：`task_id`/状态/归属不匹配（`NonRetryableParseResultException`）与坏 JSON（`IllegalArgumentException`/`DeserializationException`）判为不可重试，立即告警+提交跳过；`document_parsed_log` 暂不存在（`ParseResultPendingException`）与基础设施异常带退避重试（指数退避，最多 3 次，1s→×2→上限 10s），耗尽后告警+跳过。
