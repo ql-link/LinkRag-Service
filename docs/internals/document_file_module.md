@@ -30,7 +30,7 @@
 - **同名重建/重传**：两表唯一键纳入判别列 `deleted_seq`（活=0 / 删=自身 id），软删死行退出“活名额”，删后可无限次重建 / 重传同名（详见 `docs/api/mysql_schema.md`）。
 - **会话/消息物理删**：删数据集级联物理删名下 `chat_conversation` + `chat_message`（衍生数据不保留；`chat_conversation` 已移除软删字段）。
 - **解析域交 Python**：`document_parse_file` / `document_parsed_log` 与 Python 侧 OSS 产物的删除交 Python；Java 删除路径不再触碰 parse 两表（已移除原 `deleteParseRecords`）。
-- **通知 Python（占位）**：删除事务提交后（afterCommit）预留发送点（载荷含被软删 `original_file_id`），本次仅留痕、不落 MQ producer / Python 侧（单独立项）。
+- **通知 Python（已落地）**：删除事务提交后（afterCommit）经 `tolink.rag.document_delete` 投递删除通知（删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别）；生产侧 `DocumentDeleteNotifier` 尽力发——发送失败/发送器缺失仅告警吞掉、不影响已提交的删除、无 DLQ（字段与约定见 `docs/reference/mq_contracts.md`）。Python 侧消费删衍生产物在另一仓库，发布需两端协调（点对点队列，消费端就绪前 producer 不单独上生产）。
 - **读路径**：软删后列表 / 详情 / 同名校验经 `@TableLogic` 自动过滤；内部原文件接口对软删文件返回 404。
 
 ## 链路摘要

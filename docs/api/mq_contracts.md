@@ -11,6 +11,7 @@ MQ 实现事实来源：
 | 消息模型 | Topic/Queue | 方向 | 说明 |
 | --- | --- | --- | --- |
 | `DocumentParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 文档解析任务 |
+| `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | Java -> Python | 删除通知（通知 Python 删衍生产物） |
 | `DocumentParseResultMQ` | `tolink.rag.parse_result` | Python -> Java | 解析终态结果 |
 | `RagCacheSyncMQ` | `tolink.rag.cache_sync` | Java -> Python | 用户 LLM 配置缓存同步 |
 | `CacheCompensationMQ` | `tolink.cache.evict` | 补偿生产者 -> Java | 缓存补偿删除 |
