@@ -29,6 +29,7 @@ mvn -pl link-service test
 - 外部 MySQL、Redis、Kafka、MinIO、第三方 API 在单元测试中默认 Mock。
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。
 - 缓存一致性组件改造优先在 `link-service/src/test/java/com/qingluo/link/service/cache/CacheConsistencyServiceTest.java` 承接，至少覆盖：事务提交后首删、事务回滚不删、无事务立即删、首删失败不改请求结果、补偿第二删强失败语义，以及同事务多次触发下的 key 去重结果。
+- LLM 配置改造测试：能力白名单与 `supported_capabilities` 解析由 `LLMCapabilityServiceImplTest` 承接；用户配置单能力写入、Java 缓存清理与 RAG cache-sync 通知由 `UserLLMConfigServiceImplTest` 承接；管理端厂商能力字段校验由 `AdminProviderServiceImplTest` 承接；模型列表后端代理（认证头、响应解析、禁止 API Key 进入 URL）由 `ProviderModelFetchServiceImplTest` 使用 `MockWebServer` 承接；AES-256-GCM 与 Python 密文格式兼容性由 `ApiKeyEncryptServiceTest` 固定向量承接。
 - 文档文件上传配置运行时来源为 Redis；Controller 测试应 Mock 或重置 `DocumentFileConfigCacheService`，不再依赖数据库配置表。
 - 解析链路测试需覆盖 schema 初始化、扁平 MQ 契约、上传初始化 `document_parse_file`、解析投递事务回滚、重复提交拦截、结果归属校验和 SSE 转发；Java 端不应在结果消费测试中回写 Python 负责的终态字段。
 - parse_result 消费兜底测试：失败分类与当前任务过滤用 Mockito 单测（`DocumentParseResultServiceImplTest`、`DocumentParseStuckScannerTest`、`ParseResultKafkaConfigTest`）；“坏消息不阻塞后续 / 缓存补偿隔离”用 `@EmbeddedKafka` 集成测试（`ParseResultConsumerEmbeddedKafkaTest`，按 `*Test` 命名以纳入 Surefire）。所有用例须断言 Java 不写业务表（`verify(...never()).updateById`）。

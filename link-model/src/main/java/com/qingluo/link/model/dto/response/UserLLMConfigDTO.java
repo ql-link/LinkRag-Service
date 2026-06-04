@@ -48,6 +48,15 @@ public class UserLLMConfigDTO {
     @Schema(description = "是否为默认配置", example = "false")
     private Boolean isDefault;
 
+    @Schema(description = "是否为系统预设配置", example = "false")
+    private Boolean systemPreset;
+
+    @Schema(description = "当前用户是否可编辑", example = "true")
+    private Boolean editable;
+
+    @Schema(description = "当前用户是否可选择使用", example = "true")
+    private Boolean selectable;
+
     @Schema(description = "超时时间(毫秒)", example = "60000")
     private Integer timeoutMs;
 

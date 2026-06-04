@@ -30,9 +30,9 @@ public class SystemProvider {
     @TableField("api_base_url")
     private String apiBaseUrl;
 
-    @Schema(description = "支持的模型列表")
-    @TableField("supported_models")
-    private String supportedModels;
+    @Schema(description = "支持的能力列表", example = "[\"CHAT\",\"EMBEDDING\"]")
+    @TableField("supported_capabilities")
+    private String supportedCapabilities;
 
     @Schema(description = "配置Schema")
     @TableField("config_schema")

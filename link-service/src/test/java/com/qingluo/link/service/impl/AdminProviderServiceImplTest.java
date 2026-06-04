@@ -11,6 +11,7 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.response.PageResult;
+import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.impl.admin.AdminProviderServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ class AdminProviderServiceImplTest {
 
     @Mock
     private CacheConsistencyService cacheConsistencyService;
+
+    @Mock
+    private LLMCapabilityService llmCapabilityService;
 
     @InjectMocks
     private AdminProviderServiceImpl adminProviderService;
@@ -65,9 +69,11 @@ class AdminProviderServiceImplTest {
         request.setProviderType("openai");
         request.setProviderName("OpenAI");
         request.setApiBaseUrl("https://api.openai.com/v1");
+        request.setSupportedCapabilities("[\"CHAT\"]");
         request.setIsActive(true);
         request.setPriority(100);
         given(systemProviderMapper.selectCount(any())).willReturn(0L);
+        given(llmCapabilityService.parseSupportedCapabilities("[\"CHAT\"]")).willReturn(List.of("CHAT"));
 
         adminProviderService.createProvider(request);
 

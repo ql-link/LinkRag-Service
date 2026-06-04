@@ -22,8 +22,11 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
-- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`（须与 `llm_system_provider.supported_models` 中的能力词汇表一致）。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。
-- `llm_user_config` 一条用户配置按模型支持的能力展开为多行（一个能力一行），唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability)`；默认配置按 `capability` 维度维护，并有 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑按能力切换查询。
+- `llm_system_provider.supported_capabilities`（Entity `SystemProvider.supportedCapabilities`）为 JSON 数组，只记录厂商支持的能力维度，不记录模型名。模型列表通过 Java 后端按 `config_schema.modelFetch` 临时拉取并仅用于前端展示。
+- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`（须与 `llm_system_provider.supported_capabilities` 的能力词汇表一致）。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。
+- `llm_user_config` 一条用户配置只对应用户选择的一个能力，不再按模型支持能力展开多行。唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability)`；默认配置按 `capability` 维度维护，`default_capability` 生成列与 `uk_user_default_capability (user_id, default_capability)` 保证同一用户同一能力最多一个启用默认配置。
+- `llm_user_config.user_id=0` 表示系统预设配置，不代表真实用户。平台至少需要维护 `CHAT` 和 `EMBEDDING` 两条启用默认预设；普通用户未配置默认能力时，Python RAG 端按能力回退读取 `user_id=0`。普通用户可选择系统预设，但 Java 用户接口不允许修改或删除系统预设，并对模型名、API Key、base URL 等细节脱敏。
+- `llm_user_config.api_key` 必须写入 AES-256-GCM 密文：`base64(iv + ciphertext_with_gcm_tag)`，IV 12 字节，GCM tag 16 字节；密钥为 `LLM_SECRET`/`tolink.llm.api-key.secret` UTF-8 bytes 截断到 32 字节，不足右侧补 `\0`，与 Python RAG 端保持一致。
 - Java 端和 Python RAG 端共享数据库时，字段语义必须在本文件或模块文档中明确。
 - `document_original_file` 只保存上传事实，不保存解析状态或解析产物。
 - `document_parse_file.latest_parse_task_id` 指向 `document_parsed_log.task_id`；Markdown 产物定位由 Python 写入 `document_parsed_log`。

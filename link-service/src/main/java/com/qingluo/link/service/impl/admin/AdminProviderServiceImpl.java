@@ -13,6 +13,7 @@ import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.AdminProviderService;
+import com.qingluo.link.service.LLMCapabilityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,6 +27,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
     private final SystemProviderMapper systemProviderMapper;
     private final CacheConsistencyService cacheConsistencyService;
+    private final LLMCapabilityService llmCapabilityService;
 
     @Override
     /**
@@ -51,12 +53,14 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         if (count > 0) {
             throw new BusinessException(ErrorCode.DUPLICATE_USER_CONFIG, "厂商类型已存在");
         }
+        rejectDeprecatedSupportedModels(request.getSupportedModels());
+        llmCapabilityService.parseSupportedCapabilities(request.getSupportedCapabilities());
 
         SystemProvider provider = new SystemProvider();
         provider.setProviderType(request.getProviderType());
         provider.setProviderName(request.getProviderName());
         provider.setApiBaseUrl(request.getApiBaseUrl());
-        provider.setSupportedModels(request.getSupportedModels());
+        provider.setSupportedCapabilities(request.getSupportedCapabilities());
         provider.setConfigSchema(request.getConfigSchema());
         provider.setIsActive(request.getIsActive());
         provider.setPriority(request.getPriority());
@@ -81,8 +85,10 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         if (StringUtils.hasText(request.getApiBaseUrl())) {
             provider.setApiBaseUrl(request.getApiBaseUrl());
         }
-        if (request.getSupportedModels() != null) {
-            provider.setSupportedModels(request.getSupportedModels());
+        rejectDeprecatedSupportedModels(request.getSupportedModels());
+        if (request.getSupportedCapabilities() != null) {
+            llmCapabilityService.parseSupportedCapabilities(request.getSupportedCapabilities());
+            provider.setSupportedCapabilities(request.getSupportedCapabilities());
         }
         if (request.getConfigSchema() != null) {
             provider.setConfigSchema(request.getConfigSchema());
@@ -96,6 +102,12 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
         systemProviderMapper.updateById(provider);
         cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
+    }
+
+    private void rejectDeprecatedSupportedModels(String supportedModels) {
+        if (supportedModels != null) {
+            throw new BusinessException(ErrorCode.INVALID_PROVIDER_CONFIG, "supportedModels 已废弃，请使用 supportedCapabilities");
+        }
     }
 
     @Override

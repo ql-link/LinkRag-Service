@@ -12,6 +12,7 @@ MQ 实现事实来源：
 | --- | --- | --- | --- |
 | `DocumentParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 文档解析任务 |
 | `DocumentParseResultMQ` | `tolink.rag.parse_result` | Python -> Java | 解析终态结果 |
+| `RagCacheSyncMQ` | `tolink.rag.cache_sync` | Java -> Python | 用户 LLM 配置缓存同步 |
 | `CacheCompensationMQ` | `tolink.cache.evict` | 补偿生产者 -> Java | 缓存补偿删除 |
 
 ## 契约要求
@@ -41,6 +42,18 @@ MQ 实现事实来源：
 - `parse_finished_at`
 
 Python 在发送结果前先写入 `document_parsed_log` 与 `document_parse_file`；Java 消费结果只校验归属并转发 SSE，不回写终态。
+
+## LLM 配置缓存同步消息
+
+`RagCacheSyncMQ` 使用扁平 JSON，字段为：
+
+- `user_id`：必填，变更配置所属用户。
+- `config_id`：配置 ID；`invalidate` 时必填。
+- `action`：`refresh` 或 `invalidate`。
+
+发送时机：Java 用户 LLM 配置新增、更新、设置默认后，在数据库事务 `afterCommit` 发送 `refresh`；删除后发送 `invalidate`。Python RAG 端消费 `tolink.rag.cache_sync` 后清理该用户配置缓存和 ModelFactory 客户端缓存。该消息不携带 API Key 或明文敏感信息。
+
+`user_id=0` 是系统预设配置的缓存同步信号，不代表真实用户。Python 收到 `user_id=0 + action=refresh` 时应清理全量 LLM 配置缓存、系统 provider 缓存和全部 ModelFactory client 缓存，因为任意用户都可能在没有个人默认配置时回退到系统预设。
 
 ## parse_result 消费接收兜底
 

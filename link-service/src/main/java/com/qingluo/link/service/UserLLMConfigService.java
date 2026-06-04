@@ -16,9 +16,9 @@ public interface UserLLMConfigService {
     List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, String capability, Boolean isActive);
 
     /**
-     * 创建配置（按模型支持的能力展开，可能返回多条）
+     * 创建指定能力的一条配置。
      */
-    List<UserLLMConfigDTO> createConfig(Long userId, CreateConfigRequest request);
+    UserLLMConfigDTO createConfig(Long userId, CreateConfigRequest request);
 
     /**
      * 更新配置

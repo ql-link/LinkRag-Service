@@ -26,7 +26,8 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/v1/llm/providers` | 可用厂商与模型能力 |
+| GET | `/api/v1/llm/providers?capability=CHAT` | 指定能力下可用厂商 |
+| POST | `/api/v1/llm/providers/{providerId}/models` | 临时拉取厂商模型列表 |
 | GET | `/api/v1/llm/configs` | 用户配置列表 |
 | POST | `/api/v1/llm/configs` | 创建用户配置 |
 | GET | `/api/v1/llm/configs/default` | 默认配置 |
@@ -39,9 +40,11 @@
 
 > `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。
 >
-> 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
+> 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）必须传 `capability`，返回支持该能力的启用厂商（`ProviderDTO`）。系统厂商表只记录 `supported_capabilities`，不记录模型名。
 >
-> `POST /api/v1/llm/configs` 按模型支持的全部能力展开为多条配置并返回列表；`GET /api/v1/llm/configs` 支持 `capability` 过滤；`GET /configs/default`、`PATCH /configs/{id}/default` 按 `capability` 维度维护默认配置。无效能力标识返回错误码 `10011`。
+> 用户选择厂商后，前端调用 `POST /api/v1/llm/providers/{providerId}/models`，请求体包含 `apiKey` 和可选 `customApiBaseUrl`。Java 后端按 `llm_system_provider.config_schema.modelFetch` 代理请求上游模型列表，结果只用于前端展示，不落库；拉取失败或厂商未配置拉取规则时，前端允许用户手动填写模型名。
+>
+> `POST /api/v1/llm/configs` 只按用户选择的 `capability` 创建单条用户配置并返回 `UserLLMConfigDTO`；Java 校验厂商支持该能力，但不校验模型是否匹配能力。`GET /api/v1/llm/configs` 支持 `capability` 过滤，并在启用查询下追加 `user_id=0` 系统预设摘要。系统预设 DTO 会返回 `systemPreset=true`、`editable=false`、`selectable=true`，并隐藏 `modelName`、`apiKeyMasked`、`customApiBaseUrl`、`extraConfig`。`GET /configs/default`、`PATCH /configs/{id}/default` 按 `capability` 维度维护默认配置；选择系统预设时只清空当前用户个人默认，不修改 `user_id=0` 行。无效能力标识返回错误码 `10011`，修改或删除系统预设返回 `10017`。
 
 ## Chat
 

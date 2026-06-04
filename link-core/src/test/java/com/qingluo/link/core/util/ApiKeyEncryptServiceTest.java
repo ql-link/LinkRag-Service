@@ -14,9 +14,8 @@ class ApiKeyEncryptServiceTest {
 
     @Test
     void Should_EncryptAndDecrypt_When_ValidKeyProvided() {
-        // 设置测试用密钥（64位十六进制 = 32字节）
         ReflectionTestUtils.setField(encryptService, "secretKey",
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+            "secret-for-python-compatible-test");
 
         String original = "sk-test-api-key-12345";
         String encrypted = encryptService.encrypt(original);
@@ -26,6 +25,16 @@ class ApiKeyEncryptServiceTest {
 
         String decrypted = encryptService.decrypt(encrypted);
         assertEquals(original, decrypted);
+    }
+
+    @Test
+    void Should_DecryptPythonCiphertext_When_PythonCompatibleFormatProvided() {
+        ReflectionTestUtils.setField(encryptService, "secretKey",
+            "secret-for-python-compatible-test");
+
+        String encryptedByPython = "AAECAwQFBgcICQoLuWL+OuJBDdSJ+pFk4H8mZRDGPEgwvXATbsN9RnzNIUTLhXYc9Q==";
+
+        assertEquals("sk-test-api-key-12345", encryptService.decrypt(encryptedByPython));
     }
 
     @Test

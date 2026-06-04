@@ -11,6 +11,9 @@ import javax.validation.constraints.NotBlank;
 @Schema(description = "创建LLM配置请求")
 public class CreateConfigRequest {
 
+    @Schema(description = "厂商ID", example = "10000")
+    private Long providerId;
+
     @NotBlank(message = "厂商类型不能为空")
     @Schema(description = "厂商类型", example = "openai")
     private String providerType;
@@ -27,7 +30,8 @@ public class CreateConfigRequest {
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
 
-    @Schema(description = "模型能力，可选，如CHAT/OCR/EMBEDDING；不传则按模型支持的全部能力展开", example = "CHAT")
+    @NotBlank(message = "模型能力不能为空")
+    @Schema(description = "模型能力，如CHAT/OCR/EMBEDDING", example = "CHAT")
     private String capability;
 
     @Schema(description = "自定义API地址，可选", example = "https://api.openai.com/v1")

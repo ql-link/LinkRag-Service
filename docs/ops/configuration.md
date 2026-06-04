@@ -150,7 +150,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
-| `LLM_SECRET` | API Key 加密密钥（64 位十六进制） | 是（dev） | 无 | `your-llm-secret-here` |
+| `LLM_SECRET` | API Key 加密密钥（UTF-8 字符串，截断/补零到 32 字节） | 是（dev） | 无 | `your-llm-secret-here` |
 
 ### 4.12 线程池（THREAD_POOL_*）
 

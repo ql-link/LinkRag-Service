@@ -27,6 +27,12 @@ public enum ErrorCode {
     DUPLICATE_USER_CONFIG(10009, "用户已存在该厂商相同模型的配置", 409),
     DOCUMENT_FILE_CONFIG_INVALID(10010, "文档文件上传配置不合法", 400),
     INVALID_MODEL_CAPABILITY(10011, "模型能力标识无效", 400),
+    INVALID_PROVIDER_CONFIG(10012, "厂商配置不合法", 400),
+    MODEL_FETCH_UNSUPPORTED(10013, "该厂商不支持自动拉取模型列表", 400),
+    MODEL_FETCH_FAILED(10014, "模型列表拉取失败，请手动填写模型名", 502),
+    INVALID_API_BASE_URL(10015, "API 地址不合法", 400),
+    PROVIDER_CAPABILITY_UNSUPPORTED(10016, "厂商不支持指定能力", 400),
+    SYSTEM_PRESET_READONLY(10017, "系统预设配置不可修改", 403),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),

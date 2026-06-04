@@ -137,7 +137,7 @@ class ConfigControllerTest {
         provider.setProviderType("openai_config");  // 使用唯一 type 避免冲突
         provider.setProviderName("OpenAI");
         provider.setApiBaseUrl("https://api.openai.com/v1");
-        provider.setSupportedModels("[\"gpt-4\", \"gpt-3.5-turbo\"]");
+        provider.setSupportedCapabilities("[\"CHAT\"]");
         provider.setIsActive(true);
         provider.setPriority(50);
         systemProviderMapper.insert(provider);
@@ -174,6 +174,7 @@ class ConfigControllerTest {
      *   <li>configName: "我的GPT-4"</li>
      *   <li>apiKey: "sk-test123456789"（会经过 AES-256-GCM 加密存储）</li>
      *   <li>modelName: "gpt-4"</li>
+     *   <li>capability: "CHAT"</li>
      *   <li>priority: 50</li>
      *   <li>isDefault: true</li>
      * </ul>
@@ -195,6 +196,7 @@ class ConfigControllerTest {
                 "\"configName\":\"我的GPT-4\"," +
                 "\"apiKey\":\"sk-test123456789\"," +
                 "\"modelName\":\"gpt-4\"," +
+                "\"capability\":\"CHAT\"," +
                 "\"priority\":50," +
                 "\"isDefault\":true" +
                 "}";
@@ -205,10 +207,9 @@ class ConfigControllerTest {
                 .content(requestJson))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
-            .andExpect(jsonPath("$.data").isArray())
-            .andExpect(jsonPath("$.data[0].configName").value("我的GPT-4"))
-            .andExpect(jsonPath("$.data[0].providerType").value("openai_config"))
-            .andExpect(jsonPath("$.data[0].capability").value("CHAT"))
+            .andExpect(jsonPath("$.data.configName").value("我的GPT-4"))
+            .andExpect(jsonPath("$.data.providerType").value("openai_config"))
+            .andExpect(jsonPath("$.data.capability").value("CHAT"))
             .andReturn();
     }
 

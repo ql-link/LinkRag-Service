@@ -155,7 +155,7 @@ class AdminControllerTest {
         provider.setProviderType("anthropic");
         provider.setProviderName("Anthropic");
         provider.setApiBaseUrl("https://api.anthropic.com/v1");
-        provider.setSupportedModels("[\"claude-3\", \"claude-2\"]");
+        provider.setSupportedCapabilities("[\"CHAT\"]");
         provider.setIsActive(true);
         provider.setPriority(50);
         systemProviderMapper.insert(provider);

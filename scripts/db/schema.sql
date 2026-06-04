@@ -1,31 +1,31 @@
 -- ===============================================
 -- 1. 初始化系统厂商数据 (2026 真实可靠配置)
 -- ===============================================
-INSERT INTO llm_system_provider (provider_type, provider_name, api_base_url, supported_models, config_schema, is_active, priority)
+INSERT INTO llm_system_provider (provider_type, provider_name, api_base_url, supported_capabilities, config_schema, is_active, priority)
 VALUES
     ('openai', 'OpenAI', 'https://api.openai.com/v1',
-     '{"gpt-4o":["CHAT","OCR","VISION"], "gpt-4-turbo":["CHAT"], "o1-preview":["REASONING"]}',
-     '{"temperature":{"type":"float","default":0.7,"min":0,"max":2}, "max_tokens":{"type":"int","default":2000,"min":1,"max":128000}}',
+     '["CHAT","EMBEDDING","OCR","VISION","REASONING","CODE","TOOL_CALLING"]',
+     '{"modelFetch":{"enabled":true,"method":"GET","urlTemplate":"{baseUrl}/models","auth":{"type":"bearer"},"response":{"itemsPath":"data","idPath":"id","displayNamePath":"id","ownedByPath":"owned_by"}},"temperature":{"type":"float","default":0.7,"min":0,"max":2},"max_tokens":{"type":"int","default":2000,"min":1,"max":128000}}',
      TRUE, 100),
 
-    ('claude', 'Anthropic Claude', 'https://api.anthropic.com/v1',
-     '{"claude-3-5-sonnet":["CHAT","OCR"], "claude-3-opus":["CHAT"]}',
-     '{"temperature":{"type":"float","default":0.7,"min":0,"max":1}, "max_tokens":{"type":"int","default":4000,"min":1,"max":200000}}',
+    ('anthropic', 'Anthropic Claude', 'https://api.anthropic.com/v1',
+     '["CHAT","OCR","VISION","REASONING","TOOL_CALLING"]',
+     '{"modelFetch":{"enabled":true,"method":"GET","urlTemplate":"{baseUrl}/models","auth":{"type":"api_key_header","headerName":"x-api-key"},"headers":{"anthropic-version":"2023-06-01"},"response":{"itemsPath":"data","idPath":"id","displayNamePath":"display_name","ownedByPath":"type"}},"temperature":{"type":"float","default":0.7,"min":0,"max":1},"max_tokens":{"type":"int","default":4000,"min":1,"max":200000}}',
      TRUE, 95),
 
     ('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1',
-     '{"deepseek-v3":["CHAT"], "deepseek-coder":["CHAT","CODE"]}',
-     '{"temperature":{"type":"float","default":1.0,"min":0,"max":2}, "max_tokens":{"type":"int","default":2000,"min":1,"max":8192}}',
+     '["CHAT","CODE","REASONING"]',
+     '{"modelFetch":{"enabled":true,"method":"GET","urlTemplate":"{baseUrl}/models","auth":{"type":"bearer"},"response":{"itemsPath":"data","idPath":"id","displayNamePath":"id","ownedByPath":"owned_by"}},"temperature":{"type":"float","default":1.0,"min":0,"max":2},"max_tokens":{"type":"int","default":2000,"min":1,"max":8192}}',
      TRUE, 90),
 
     ('glm', '智谱 AI (Zhipu)', 'https://open.bigmodel.cn/api/paas/v4',
-     '{"glm-4v":["CHAT","VISION"], "glm-4-plus":["CHAT"]}',
-     '{"temperature":{"type":"float","default":0.9,"min":0.01,"max":0.99}, "top_p":{"type":"float","default":0.7,"min":0.01,"max":0.99}}',
+     '["CHAT","EMBEDDING","OCR","VISION","TOOL_CALLING"]',
+     '{"modelFetch":{"enabled":true,"method":"GET","urlTemplate":"{baseUrl}/models","auth":{"type":"bearer"},"response":{"itemsPath":"data","idPath":"id","displayNamePath":"id","ownedByPath":"owned_by"}},"temperature":{"type":"float","default":0.9,"min":0.01,"max":0.99},"top_p":{"type":"float","default":0.7,"min":0.01,"max":0.99}}',
      TRUE, 85),
 
-    ('aliyun', '通义千问 (DashScope)', 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-     '{"qwen-max":["CHAT"], "qwen-plus":["CHAT"], "qwen-turbo":["CHAT"]}',
-     '{"temperature":{"type":"float","default":0.8,"min":0,"max":2}}',
+    ('qwen', '通义千问 (DashScope)', 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+     '["CHAT","EMBEDDING","OCR","VISION","RERANK","TOOL_CALLING"]',
+     '{"modelFetch":{"enabled":true,"method":"GET","urlTemplate":"{baseUrl}/models","auth":{"type":"bearer"},"response":{"itemsPath":"data","idPath":"id","displayNamePath":"id","ownedByPath":"owned_by"}},"temperature":{"type":"float","default":0.8,"min":0,"max":2}}',
      TRUE, 80);
 
 -- ===============================================
@@ -39,5 +39,4 @@ VALUES ('admin', '$2a$10$EasYxZ6ZB.YqlgDI8XnH4uuFow/KHNVnTLhXhOoBvhPTMK.FdrvEW',
 -- 3. 可选：初始化一个测试用户的 LLM 配置 (示例)
 -- ===============================================
 -- 假设管理员 ID 为 10000，DeepSeek 厂商 ID 为 10002
-INSERT INTO llm_user_config (user_id, provider_id, provider_type, provider_name, config_name, api_key, model_name, is_default)
-VALUES (10000, 10002, 'deepseek', 'DeepSeek', '我的测试配置', 'sk-xxxxxxxxxxxx', 'deepseek-v3', TRUE);
+-- API Key 字段必须写入 AES-256-GCM 密文；此处不再内置明文示例配置。

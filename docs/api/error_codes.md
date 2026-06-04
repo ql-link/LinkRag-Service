@@ -15,7 +15,13 @@
 
 ## LLM 配置错误码（10001-10999）
 
-- `INVALID_MODEL_CAPABILITY(10011/400)`：模型能力标识无效（合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`，须与 `llm_system_provider.supported_models` 的能力词汇表一致），用于用户侧厂商/配置接口的能力参数校验与厂商能力解析。其余 `MODEL_NOT_SUPPORTED(10008)`、`DUPLICATE_USER_CONFIG(10009)` 等以 `ErrorCode.java` 为准。
+- `INVALID_MODEL_CAPABILITY(10011/400)`：模型能力标识无效（合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`，须与 `llm_system_provider.supported_capabilities` 的能力词汇表一致）。
+- `INVALID_PROVIDER_CONFIG(10012/400)`：系统厂商配置不合法，例如 `supported_capabilities` 不是 JSON 数组、仍提交废弃字段 `supportedModels`、或模型拉取规则不合法。
+- `MODEL_FETCH_UNSUPPORTED(10013/400)`：该厂商没有启用自动拉取模型列表，前端应允许用户手动填写模型名。
+- `MODEL_FETCH_FAILED(10014/502)`：Java 后端代理请求上游模型列表失败，前端应提示失败并允许手动填写模型名。
+- `INVALID_API_BASE_URL(10015/400)`：模型列表代理请求的 base URL 不合法或命中 SSRF 防护。
+- `PROVIDER_CAPABILITY_UNSUPPORTED(10016/400)`：创建用户配置时，所选厂商不支持请求的能力。
+- `SYSTEM_PRESET_READONLY(10017/403)`：普通用户接口尝试修改或删除 `user_id=0` 系统预设配置。
 - `GlobalExceptionHandler` 新增对 `MissingServletRequestParameterException` 的处理：缺少必填查询参数统一返回 400 `缺少必填参数: <name>`。
 
 ## 召回错误码（recall-gateway）

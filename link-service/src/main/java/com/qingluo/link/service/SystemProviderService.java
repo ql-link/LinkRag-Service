@@ -1,7 +1,9 @@
 package com.qingluo.link.service;
 
 import com.qingluo.link.model.dto.entity.SystemProvider;
-import com.qingluo.link.model.dto.response.ProviderModelDTO;
+import com.qingluo.link.model.dto.request.FetchProviderModelsRequest;
+import com.qingluo.link.model.dto.response.ProviderDTO;
+import com.qingluo.link.model.dto.response.ProviderModelListDTO;
 import java.util.List;
 
 /**
@@ -15,9 +17,14 @@ public interface SystemProviderService {
     List<SystemProvider> getActiveProviders();
 
     /**
-     * 按能力查询用户侧可用厂商与模型。
+     * 按能力查询用户侧可用厂商。
      */
-    List<ProviderModelDTO> getActiveProviderModels(String capability);
+    List<ProviderDTO> getActiveProvidersByCapability(String capability);
+
+    /**
+     * 拉取厂商模型列表。
+     */
+    ProviderModelListDTO fetchProviderModels(Long providerId, FetchProviderModelsRequest request);
 
     /**
      * 根据 providerType 获取厂商
@@ -28,4 +35,9 @@ public interface SystemProviderService {
      * 根据 providerType 获取启用厂商。
      */
     SystemProvider getActiveByProviderType(String providerType);
+
+    /**
+     * 根据 providerId 获取启用厂商。
+     */
+    SystemProvider getActiveByProviderId(Long providerId);
 }

@@ -26,7 +26,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/llm/configs")
 @RequiredArgsConstructor
-@Tag(name = "LLM配置接口", description = "用户LLM配置的增删改查，支持openai/claude/deepseek/glm/aliyun等厂商")
+@Tag(name = "LLM配置接口", description = "用户LLM配置的增删改查，支持openai/anthropic/deepseek/glm/qwen等厂商")
 public class ConfigController {
 
     private final UserLLMConfigService userLLMConfigService;
@@ -53,12 +53,12 @@ public class ConfigController {
      * 创建用户LLM配置
      *
      * @param request 配置信息（providerType, apiKey, modelName等）
-     * @return 创建的配置信息（按模型支持的能力展开，可能多条）
+     * @return 创建的配置信息
      */
     @PostMapping
     @SaCheckLogin
     @Operation(summary = "创建LLM配置", description = "新增一个LLM API配置，API Key会自动加密存储")
-    public Result<List<UserLLMConfigDTO>> createConfig(
+    public Result<UserLLMConfigDTO> createConfig(
             @Valid @RequestBody CreateConfigRequest request) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         return Result.success(userLLMConfigService.createConfig(userId, request));

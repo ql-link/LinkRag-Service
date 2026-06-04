@@ -8,6 +8,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Base64;
 
 /**
@@ -33,8 +34,7 @@ public class ApiKeyEncryptService {
             byte[] iv = new byte[GCM_IV_LENGTH];
             new SecureRandom().nextBytes(iv);
 
-            SecretKeySpec keySpec = new SecretKeySpec(
-                hexToBytes(secretKey), "AES");
+            SecretKeySpec keySpec = new SecretKeySpec(deriveAesKey(), "AES");
             GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
@@ -66,8 +66,7 @@ public class ApiKeyEncryptService {
             System.arraycopy(combined, 0, iv, 0, GCM_IV_LENGTH);
             System.arraycopy(combined, GCM_IV_LENGTH, cipherText, 0, cipherText.length);
 
-            SecretKeySpec keySpec = new SecretKeySpec(
-                hexToBytes(secretKey), "AES");
+            SecretKeySpec keySpec = new SecretKeySpec(deriveAesKey(), "AES");
             GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
@@ -92,14 +91,12 @@ public class ApiKeyEncryptService {
                apiKey.substring(apiKey.length() - 4);
     }
 
-    private byte[] hexToBytes(String hex) {
-        if (hex == null || hex.length() % 2 != 0) {
-            throw new IllegalArgumentException("Invalid hex string");
-        }
-        byte[] bytes = new byte[hex.length() / 2];
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
-        }
-        return bytes;
+    /**
+     * 与 Python RAG 端保持一致：
+     * API_KEY_ENCRYPTION_SECRET UTF-8 bytes 截断到 32 字节，不足右侧补 0。
+     */
+    private byte[] deriveAesKey() {
+        byte[] raw = secretKey == null ? new byte[0] : secretKey.getBytes(StandardCharsets.UTF_8);
+        return Arrays.copyOf(raw, 32);
     }
 }

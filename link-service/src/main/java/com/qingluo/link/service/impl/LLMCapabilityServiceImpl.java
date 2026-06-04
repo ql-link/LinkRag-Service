@@ -12,25 +12,18 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * LLM 模型能力解析服务实现。
- *
- * <p>新数据使用 {"model":["CHAT"]} 结构；为了兼容旧测试和旧数据，若读取到
- * ["gpt-4"] 这类数组结构，则按 CHAT 能力处理。</p>
+ * LLM 能力解析服务实现。
  */
 @Service
 @RequiredArgsConstructor
 public class LLMCapabilityServiceImpl implements LLMCapabilityService {
 
-    private static final String DEFAULT_LEGACY_CAPABILITY = "CHAT";
     private static final Set<String> SUPPORTED_CAPABILITIES = Set.of(
             "CHAT", "EMBEDDING", "OCR", "VISION", "REASONING", "CODE",
             "TOOL_CALLING", "RERANK"
@@ -39,47 +32,34 @@ public class LLMCapabilityServiceImpl implements LLMCapabilityService {
     private final ObjectMapper objectMapper;
 
     @Override
-    public Map<String, List<String>> parseSupportedModels(String supportedModels) {
-        if (!StringUtils.hasText(supportedModels)) {
-            return Map.of();
+    public List<String> parseSupportedCapabilities(String supportedCapabilities) {
+        if (!StringUtils.hasText(supportedCapabilities)) {
+            return List.of();
         }
         try {
-            JsonNode root = objectMapper.readTree(supportedModels);
+            JsonNode root = objectMapper.readTree(supportedCapabilities);
             if (root.isTextual()) {
-                return parseSupportedModels(root.asText());
-            }
-            if (root.isObject()) {
-                Map<String, List<String>> raw = objectMapper.convertValue(
-                        root, new TypeReference<Map<String, List<String>>>() {
-                        });
-                Map<String, List<String>> normalized = new LinkedHashMap<>();
-                raw.forEach((model, capabilities) ->
-                        normalized.put(model, normalizeCapabilities(capabilities)));
-                return normalized;
+                return parseSupportedCapabilities(root.asText());
             }
             if (root.isArray()) {
-                Map<String, List<String>> legacyModels = new LinkedHashMap<>();
-                for (JsonNode node : root) {
-                    if (node.isTextual() && StringUtils.hasText(node.asText())) {
-                        legacyModels.put(node.asText(), List.of(DEFAULT_LEGACY_CAPABILITY));
-                    }
-                }
-                return legacyModels;
+                List<String> raw = objectMapper.convertValue(root, new TypeReference<List<String>>() {
+                });
+                return normalizeCapabilities(raw);
             }
         } catch (JsonProcessingException ex) {
-            throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "厂商模型能力配置不合法");
+            throw new BusinessException(ErrorCode.INVALID_PROVIDER_CONFIG, "厂商能力配置不合法");
         }
-        throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "厂商模型能力配置不合法");
+        throw new BusinessException(ErrorCode.INVALID_PROVIDER_CONFIG, "厂商能力配置必须是 JSON 数组");
     }
 
     @Override
-    public List<String> getModelCapabilities(SystemProvider provider, String modelName) {
-        Map<String, List<String>> supportedModels = parseSupportedModels(provider.getSupportedModels());
-        List<String> capabilities = supportedModels.get(modelName);
-        if (capabilities == null || capabilities.isEmpty()) {
-            throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED);
+    public void ensureProviderSupports(SystemProvider provider, String capability) {
+        validateCapability(capability);
+        String normalized = capability.toUpperCase(Locale.ROOT);
+        List<String> capabilities = parseSupportedCapabilities(provider.getSupportedCapabilities());
+        if (!capabilities.contains(normalized)) {
+            throw new BusinessException(ErrorCode.PROVIDER_CAPABILITY_UNSUPPORTED);
         }
-        return capabilities;
     }
 
     @Override
@@ -108,6 +88,6 @@ public class LLMCapabilityServiceImpl implements LLMCapabilityService {
             }
             normalized.add(value);
         }
-        return new ArrayList<>(normalized);
+        return List.copyOf(normalized);
     }
 }

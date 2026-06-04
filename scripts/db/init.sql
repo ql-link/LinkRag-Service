@@ -28,10 +28,10 @@ CREATE TABLE IF NOT EXISTS sys_user (
 -- 2. LLM 系统级厂商配置表
 CREATE TABLE IF NOT EXISTS llm_system_provider (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '厂商唯一标识',
-    provider_type   VARCHAR(32)    NOT NULL COMMENT '厂商类型：openai/claude/glm/deepseek',
+    provider_type   VARCHAR(32)    NOT NULL COMMENT '厂商类型：openai/anthropic/glm/deepseek/qwen',
     provider_name   VARCHAR(64)    NOT NULL COMMENT '厂商展示名称，如 "OpenAI"',
     api_base_url    VARCHAR(512)   NOT NULL COMMENT '官方默认 API 地址',
-    supported_models JSON           COMMENT '支持模型与能力映射',
+    supported_capabilities JSON     COMMENT '支持能力列表，如 ["CHAT","EMBEDDING"]',
     config_schema   JSON           COMMENT '配置参数 Schema',
     is_active       BOOLEAN        NOT NULL DEFAULT TRUE COMMENT '是否启用',
     priority        INT            NOT NULL DEFAULT 50 COMMENT '厂商优先级（1-100）',
@@ -58,14 +58,18 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     timeout_ms          INT             DEFAULT 60000 COMMENT '超时时间(毫秒)',
     max_retries         INT             DEFAULT 3 COMMENT '最大重试次数',
     stream_enabled      BOOLEAN         DEFAULT TRUE COMMENT '是否支持流式输出',
-    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '🆕专用能力标识：CHAT/EMBEDDING/RERANK/OCR',
+    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/RERANK/OCR',
+    default_capability  VARCHAR(32) GENERATED ALWAYS AS (
+        CASE WHEN is_active = TRUE AND is_default = TRUE THEN capability ELSE NULL END
+    ) STORED COMMENT '默认配置唯一约束辅助列',
     extra_config        JSON            COMMENT '扩展配置',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     UNIQUE KEY uk_user_provider_model_capability (user_id, provider_id, model_name, capability),
+    UNIQUE KEY uk_user_default_capability (user_id, default_capability),
     INDEX idx_user_active_default (user_id, is_active, is_default),
-    INDEX idx_user_provider_cap (user_id, provider_type, capability) -- 🆕 新增：支撑按能力快速切换的查询索引
+    INDEX idx_user_provider_cap (user_id, provider_type, capability)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '用户级 LLM 配置表';
 
 
