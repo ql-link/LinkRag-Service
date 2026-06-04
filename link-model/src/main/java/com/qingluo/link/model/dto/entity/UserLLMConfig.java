@@ -73,8 +73,9 @@ public class UserLLMConfig {
     @TableField("stream_enabled")
     private Boolean streamEnabled = true;
 
-    @Schema(description = "能力列表")
-    private String capabilities;
+    @Schema(description = "专用能力标识：CHAT/EMBEDDING/RERANK/OCR", example = "CHAT")
+    @TableField("capability")
+    private String capability = "CHAT";
 
     @Schema(description = "额外配置")
     @TableField("extra_config")

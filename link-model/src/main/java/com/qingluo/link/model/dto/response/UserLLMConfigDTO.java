@@ -30,8 +30,8 @@ public class UserLLMConfigDTO {
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
 
-    @Schema(description = "能力列表")
-    private String capabilities;
+    @Schema(description = "专用能力标识：CHAT/EMBEDDING/RERANK/OCR", example = "CHAT")
+    private String capability;
 
     @Schema(description = "API Key(脱敏)")
     private String apiKeyMasked;

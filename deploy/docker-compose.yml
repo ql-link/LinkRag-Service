@@ -1,0 +1,23 @@
+# 部署用 compose：引用本机 docker build 出来的镜像并启动
+# 真实配置（含密钥）不进镜像/不进 git，运行时从挂载的 ../config 注入
+# 用法：TAG=xxx docker compose -f deploy/docker-compose.yml up -d
+services:
+  tolink-service:
+    image: tolink-service:${TAG:-latest}
+    container_name: tolink-service
+    restart: always
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      # 让 Spring 额外加载挂载进来的外部配置，优先级高于 jar 内打包的同名文件
+      - SPRING_CONFIG_ADDITIONAL_LOCATION=file:/app/config/
+    volumes:
+      # 宿主 /opt/tolink/toLink-Service/config/application-dev.yml -> 容器 /app/config/
+      - ../config:/app/config:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - tolink-app-net
+
+networks:
+  tolink-app-net:
+    external: true
