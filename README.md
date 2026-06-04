@@ -68,8 +68,8 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 ### 1. 初始化数据库
 
 ```bash
-mysql -h <DB_HOST> -u root -p < docs/db/schema.sql
-mysql -h <DB_HOST> -u root -p tolink_rag_db < docs/db/init.sql
+mysql -h <DB_HOST> -u root -p < scripts/db/schema.sql
+mysql -h <DB_HOST> -u root -p tolink_rag_db < scripts/db/init.sql
 ```
 
 ### 2. 配置环境变量
@@ -132,7 +132,7 @@ docker compose up -d
 | OSS File | `/api/v1/oss-files/{bizType}` |
 | Internal | `/api/v1/internal/files/{fileId}/content`、`/api/v1/internal/parse-tasks/{taskId}/events` |
 
-完整契约见 `docs/reference/api_contracts.md`。
+完整契约见 `docs/api/api_contracts.md`。
 
 ## AI 协作流程
 
@@ -142,7 +142,7 @@ docker compose up -d
 brief.md -> acceptance.feature -> technical_design.md -> Code + Tests
 ```
 
-入口文档为 `AGENTS.md` / `CLAUDE.md`，二者均指向 `.ai/prompts/project.md`。旧七阶段文档目录已移除，新需求统一使用 `docs/<需求名>/brief.md`、`acceptance.feature`、`technical_design.md`。
+入口文档为 `AGENTS.md` / `CLAUDE.md`，二者均指向 `.ai/prompts/project.md`。旧七阶段文档目录已移除，新需求统一使用 `.specs/<需求名>/brief.md`、`acceptance.feature`、`technical_design.md`。
 
 常用校验：
 

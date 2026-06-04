@@ -27,3 +27,12 @@ repos:
         always_run: true
         stages: [pre-commit]
         description: Ensure .claude/.agent/CLAUDE.md/AGENTS.md remain symlinks into .ai/.
+
+      - id: check-skills
+        name: Agent skills validation
+        entry: python3 scripts/check_skills.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        description: Validate .ai/skills/*/SKILL.md (frontmatter, dead refs, stack blacklist, orphan dirs).
