@@ -126,11 +126,6 @@ public class DatasetServiceImpl implements DatasetService {
     public void delete(Long userId, Long datasetId) {
         Dataset dataset = getOwnedDataset(userId, datasetId);
 
-        // 收集名下活文件 id（@TableLogic 自动只返回未软删行），供提交后通知 Python 删其衍生产物使用。
-        List<Long> originalFileIds = documentOriginalFileMapper.selectList(new LambdaQueryWrapper<DocumentOriginalFile>()
-                .eq(DocumentOriginalFile::getDatasetId, dataset.getId()))
-            .stream().map(DocumentOriginalFile::getId).toList();
-
         // 软删名下原文件：不删 OSS 对象、不物理删行；deleted_seq 置为各行自身 id，使死行退出唯一键“活名额”，
         // 支持删后同名重传（实体带 @TableLogic，MP 对 wrapper update 自动追加 is_deleted=0，只软删当前活行）。
         documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
@@ -154,25 +149,25 @@ public class DatasetServiceImpl implements DatasetService {
             .set(Dataset::getIsDeleted, true)
             .set(Dataset::getDeletedSeq, dataset.getId()));
 
-        // 事务提交后再通知 Python 删衍生产物（占位）；回滚则不通知，避免对未真正删除的数据误通知。
-        notifyPythonAfterCommit(originalFileIds, datasetId, userId);
+        // 事务提交后再通知 Python 删衍生产物（dataset 范围，Python 按 datasetId 删名下全部）；回滚则不通知，避免对未真正删除的数据误通知。
+        notifyDatasetDeletedAfterCommit(datasetId, userId);
     }
 
     /**
-     * 删除事务提交后触发删除通知发送点（占位）；处于事务中则注册 afterCommit（回滚不发），
-     * 无事务时（如单元测试）直接调用。沿用上传链路的 afterCommit 模式。
+     * 删除事务提交后通知 Python 删除该数据集名下全部衍生产物（dataset 范围）；处于事务中则注册 afterCommit
+     * （回滚不发），无事务时（如单元测试）直接调用。沿用上传链路的 afterCommit 模式。
      */
-    private void notifyPythonAfterCommit(List<Long> originalFileIds, Long datasetId, Long userId) {
+    private void notifyDatasetDeletedAfterCommit(Long datasetId, Long userId) {
         if (TransactionSynchronizationManager.isActualTransactionActive()
             && TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    deleteNotifier.notifyAfterDelete(originalFileIds, datasetId, userId);
+                    deleteNotifier.notifyDatasetDeleted(datasetId, userId);
                 }
             });
         } else {
-            deleteNotifier.notifyAfterDelete(originalFileIds, datasetId, userId);
+            deleteNotifier.notifyDatasetDeleted(datasetId, userId);
         }
     }
 

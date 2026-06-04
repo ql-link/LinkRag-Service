@@ -11,6 +11,7 @@ MQ 实现事实来源：
 | 消息模型 | Topic/Queue | 方向 | 说明 |
 | --- | --- | --- | --- |
 | `DocumentParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 文档解析任务 |
+| `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | Java -> Python | 删除通知（通知 Python 删衍生产物） |
 | `DocumentParseResultMQ` | `tolink.rag.parse_result` | Python -> Java | 解析终态结果 |
 | `CacheCompensationMQ` | `tolink.cache.evict` | 补偿生产者 -> Java | 缓存补偿删除 |
 
@@ -41,6 +42,28 @@ MQ 实现事实来源：
 - `parse_finished_at`
 
 Python 在发送结果前先写入 `document_parsed_log` 与 `document_parse_file`；Java 消费结果只校验归属并转发 SSE，不回写终态。
+
+## 删除通知字段
+
+`DocumentDeleteNotifyMQ`（topic `tolink.rag.document_delete`，`QUEUE` 点对点）使用扁平 JSON，按删除范围 `delete_type` 分流：
+
+- `delete_type`：`dataset` 或 `file`（范围判别）。
+- `dataset_id`、`user_id`：两种范围都必填。
+- `original_file_id`：仅 `delete_type=file` 必填；`dataset` 范围不下发（值为 null，fastjson 省略该键）。
+
+样例：
+
+- dataset：`{"delete_type":"dataset","dataset_id":10,"user_id":100}`
+- file：`{"delete_type":"file","dataset_id":200,"user_id":100,"original_file_id":1}`
+
+语义与约定：
+
+- **删数据集**发 `dataset` 范围（仅 `dataset_id`）：Python 按 `dataset_id` 删该数据集名下全部衍生产物（`document_parse_file` / `document_parsed_log` 行 + OSS 清洗文件/Markdown/向量）；删超大数据集消息体恒定，不下发文件 id 列表。
+- **删文件**发 `file` 范围（`original_file_id`）：Python 按该 id 删对应衍生产物。
+- 发送时机：删除事务 afterCommit（回滚不发）。发送前完整性校验：`delete_type` 合法、`dataset_id`/`user_id` 非空、`file` 范围 `original_file_id` 非空，缺字段不投递。
+- 可靠性：Java 生产侧**尽力发**——发送失败仅告警留痕并吞掉、不影响已提交的删除，**无 DLQ、无对账兜底**（接受偶尔漏发，漏发的衍生产物为惰性垃圾、不影响活记录）。
+- 幂等：Python 按 id 删天然幂等（删二次 no-op、删不存在产物 no-op），故消息**不带去重/追踪字段**。
+- Python 侧消费与删除实现在另一仓库；发布需两端协调（点对点队列，消费端就绪前 producer 不单独上生产，避免无消费者积压）。
 
 ## parse_result 消费接收兜底
 

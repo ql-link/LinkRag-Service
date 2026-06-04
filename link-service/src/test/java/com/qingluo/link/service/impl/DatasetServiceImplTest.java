@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
@@ -29,7 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * 数据集隐性删除单元测试：软删原文件/数据集（不删 OSS、不物理删行），物理删会话/消息，
- * 提交后通知 Python（占位）。无真实事务时 notifyPythonAfterCommit 走直接调用分支。
+ * 提交后通知 Python 删衍生产物（dataset 范围）。无真实事务时 notifyDatasetDeletedAfterCommit 走直接调用分支。
  */
 @ExtendWith(MockitoExtension.class)
 class DatasetServiceImplTest {
@@ -67,7 +68,6 @@ class DatasetServiceImplTest {
         conversation.setId(99L);
         conversation.setDatasetId(10L);
         given(datasetMapper.selectOne(any())).willReturn(buildDataset(10L, 100L));
-        given(documentOriginalFileMapper.selectList(any())).willReturn(List.of(buildFile(1L), buildFile(2L)));
         given(chatConversationMapper.selectList(any())).willReturn(List.of(conversation));
 
         datasetService.delete(100L, 10L);
@@ -85,30 +85,30 @@ class DatasetServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_NotifyPythonWithCascadedFileIds_When_DeleteDatasetCommitted")
-    void Should_NotifyPythonWithCascadedFileIds_When_DeleteDatasetCommitted() {
+    @DisplayName("Should_NotifyDatasetScope_When_DeleteDatasetCommitted")
+    void Should_NotifyDatasetScope_When_DeleteDatasetCommitted() {
         given(datasetMapper.selectOne(any())).willReturn(buildDataset(10L, 100L));
-        given(documentOriginalFileMapper.selectList(any())).willReturn(List.of(buildFile(1L), buildFile(2L)));
         given(chatConversationMapper.selectList(any())).willReturn(List.of());
 
         datasetService.delete(100L, 10L);
 
-        // 占位通知载荷含级联出的整批 original_file_id + datasetId + userId
-        verify(deleteNotifier).notifyAfterDelete(List.of(1L, 2L), 10L, 100L);
+        // dataset 范围通知：仅按 datasetId + userId 投递一条，不下发文件 id（与名下文件数量无关）。
+        // 生产侧不再枚举文件，故该断言同时覆盖「多文件仍一条」「空数据集仍发」。
+        verify(deleteNotifier, times(1)).notifyDatasetDeleted(10L, 100L);
+        verify(deleteNotifier, never()).notifyFileDeleted(any(), any(), any());
     }
 
     @Test
     @DisplayName("Should_NotNotifyPython_When_SoftDeleteFails")
     void Should_NotNotifyPython_When_SoftDeleteFails() {
         given(datasetMapper.selectOne(any())).willReturn(buildDataset(10L, 100L));
-        given(documentOriginalFileMapper.selectList(any())).willReturn(List.of(buildFile(1L)));
         given(documentOriginalFileMapper.update(any(), any())).willThrow(new RuntimeException("db fail"));
 
         assertThatThrownBy(() -> datasetService.delete(100L, 10L))
             .isInstanceOf(RuntimeException.class);
 
         // 删除中途异常（事务将回滚），不触发 Python 删除通知
-        verify(deleteNotifier, never()).notifyAfterDelete(any(), any(), any());
+        verify(deleteNotifier, never()).notifyDatasetDeleted(any(), any());
     }
 
     @Test
@@ -122,7 +122,7 @@ class DatasetServiceImplTest {
 
         verify(documentOriginalFileMapper, never()).update(any(), any());
         verify(datasetMapper, never()).update(any(), any());
-        verify(deleteNotifier, never()).notifyAfterDelete(any(), any(), any());
+        verify(deleteNotifier, never()).notifyDatasetDeleted(any(), any());
     }
 
     private Dataset buildDataset(Long datasetId, Long userId) {
@@ -132,9 +132,4 @@ class DatasetServiceImplTest {
         return dataset;
     }
 
-    private DocumentOriginalFile buildFile(Long id) {
-        DocumentOriginalFile file = new DocumentOriginalFile();
-        file.setId(id);
-        return file;
-    }
 }

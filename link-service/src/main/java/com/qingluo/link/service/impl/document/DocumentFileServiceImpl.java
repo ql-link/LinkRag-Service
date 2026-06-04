@@ -217,26 +217,25 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             .set(DocumentOriginalFile::getIsDeleted, true)
             .set(DocumentOriginalFile::getDeletedSeq, record.getId()));
 
-        // 事务提交后再通知 Python 删衍生产物（占位）；回滚则不通知。
-        notifyPythonAfterCommit(record.getId(), record.getDatasetId(), userId);
+        // 事务提交后再通知 Python 删衍生产物（file 范围，Python 按 original_file_id 删该文件产物）；回滚则不通知。
+        notifyFileDeletedAfterCommit(record.getId(), record.getDatasetId(), userId);
     }
 
     /**
-     * 删除事务提交后触发删除通知发送点（占位）；处于事务中则注册 afterCommit（回滚不发），
+     * 删除事务提交后通知 Python 删除该原文件的衍生产物（file 范围）；处于事务中则注册 afterCommit（回滚不发），
      * 无事务时（如单元测试）直接调用。沿用上传链路的 afterCommit 模式。
      */
-    private void notifyPythonAfterCommit(Long originalFileId, Long datasetId, Long userId) {
-        List<Long> ids = List.of(originalFileId);
+    private void notifyFileDeletedAfterCommit(Long originalFileId, Long datasetId, Long userId) {
         if (TransactionSynchronizationManager.isActualTransactionActive()
             && TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    deleteNotifier.notifyAfterDelete(ids, datasetId, userId);
+                    deleteNotifier.notifyFileDeleted(originalFileId, datasetId, userId);
                 }
             });
         } else {
-            deleteNotifier.notifyAfterDelete(ids, datasetId, userId);
+            deleteNotifier.notifyFileDeleted(originalFileId, datasetId, userId);
         }
     }
 
