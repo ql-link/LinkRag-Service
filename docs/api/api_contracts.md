@@ -65,6 +65,7 @@
 | DELETE | `/api/v1/datasets/{datasetId}` | 删除数据集 |
 | POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件（异步：立即返回 `uploadStatus=UPLOADING`） |
 | GET | `/api/v1/datasets/{datasetId}/files` | 文件列表（支持按 `uploadStatus` 过滤，前端据此轮询上传终态） |
+| GET | `/api/v1/files/recent` | 当前用户全局最近文档列表 |
 | GET | `/api/v1/files/{fileId}` | 文件详情 |
 | DELETE | `/api/v1/files/{fileId}` | 删除文件 |
 | POST | `/api/v1/files/{fileId}/parse` | 提交解析 |

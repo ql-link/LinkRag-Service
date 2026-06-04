@@ -399,6 +399,55 @@ class DocumentFileControllerTest {
     }
 
     @Test
+    void Should_ListRecentDocumentFilesAcrossDatasets_When_FilesBelongToCurrentUser() throws Exception {
+        Long anotherDatasetId = createDataset(userId, "recent_dataset_" + System.nanoTime());
+        Long otherUserId = createUser("recent_other_" + System.nanoTime());
+        Long otherDatasetId = createDataset(otherUserId, "recent_other_dataset_" + System.nanoTime());
+
+        Long oldFileId = insertDocumentFile(userId, datasetId, "old.txt", "2026-01-01 10:00:00");
+        Long firstSameTimeFileId = insertDocumentFile(userId, datasetId, "same-a.txt", "2026-01-02 10:00:00");
+        Long secondSameTimeFileId = insertDocumentFile(userId, anotherDatasetId, "same-b.txt", "2026-01-02 10:00:00");
+        insertDocumentFile(otherUserId, otherDatasetId, "other-user-newer.txt", "2026-01-03 10:00:00");
+
+        mockMvc.perform(get("/api/v1/files/recent")
+                .param("page", "1")
+                .param("pageSize", "2")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.total").value(3))
+            .andExpect(jsonPath("$.data.page").value(1))
+            .andExpect(jsonPath("$.data.pageSize").value(2))
+            .andExpect(jsonPath("$.data.items[0].id").value(secondSameTimeFileId))
+            .andExpect(jsonPath("$.data.items[0].datasetId").value(anotherDatasetId))
+            .andExpect(jsonPath("$.data.items[1].id").value(firstSameTimeFileId));
+
+        mockMvc.perform(get("/api/v1/files/recent")
+                .param("page", "2")
+                .param("pageSize", "2")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].id").value(oldFileId))
+            .andExpect(jsonPath("$.data.items.length()").value(1));
+    }
+
+    @Test
+    void Should_ReturnEmptyRecentDocumentList_When_CurrentUserHasNoDocumentFiles() throws Exception {
+        Long emptyUserId = createUser("recent_empty_" + System.nanoTime());
+        StpUtil.login(emptyUserId);
+        String emptyToken = StpUtil.getTokenValue();
+
+        mockMvc.perform(get("/api/v1/files/recent")
+                .header("satoken", emptyToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.total").value(0))
+            .andExpect(jsonPath("$.data.page").value(1))
+            .andExpect(jsonPath("$.data.pageSize").value(5))
+            .andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
+    @Test
     void Should_Allow_ReuploadSameOriginalFilename_After_Delete() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "repeat.txt", MediaType.TEXT_PLAIN_VALUE, "first".getBytes(StandardCharsets.UTF_8));
@@ -640,6 +689,38 @@ class DocumentFileControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         return objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
+    }
+
+    private Long createUser(String username) {
+        jdbcTemplate.update("""
+                INSERT INTO sys_user (username, password_hash, nickname, email, role, status)
+                VALUES (?, ?, ?, ?, 'USER', 1)
+                """, username, passwordEncoder.encode("password123"), username, username + "@test.com");
+        return jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE username = ?", Long.class, username);
+    }
+
+    private Long createDataset(Long ownerUserId, String name) {
+        jdbcTemplate.update("""
+                INSERT INTO dataset (user_id, name, description, status)
+                VALUES (?, ?, 'recent document dataset', 'ACTIVE')
+                """, ownerUserId, name);
+        return jdbcTemplate.queryForObject("SELECT id FROM dataset WHERE user_id = ? AND name = ?",
+            Long.class, ownerUserId, name);
+    }
+
+    private Long insertDocumentFile(Long ownerUserId, Long ownerDatasetId, String filename, String createdAt) {
+        jdbcTemplate.update("""
+                INSERT INTO document_original_file (
+                    dataset_id, user_id, original_filename, file_suffix, file_size, bucket_name,
+                    upload_status, is_upload_success, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            ownerDatasetId, ownerUserId, filename, "txt", 1L, "local-private",
+            "success", true, createdAt, createdAt);
+        return jdbcTemplate.queryForObject("""
+                SELECT id FROM document_original_file
+                WHERE user_id = ? AND dataset_id = ? AND original_filename = ?
+                """, Long.class, ownerUserId, ownerDatasetId, filename);
     }
 
     @TestConfiguration

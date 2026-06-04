@@ -192,6 +192,21 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         return new PageResult<>(records.stream().map(this::toDTO).toList(), pageInfo.getTotal(), page, pageSize);
     }
 
+    /**
+     * 查询当前用户全局最近文档文件列表。
+     */
+    @Override
+    public PageResult<DocumentFileDTO> listRecent(Long userId, int page, int pageSize) {
+        PageHelper.startPage(page, pageSize);
+        LambdaQueryWrapper<DocumentOriginalFile> wrapper = new LambdaQueryWrapper<DocumentOriginalFile>()
+            .eq(DocumentOriginalFile::getUserId, userId)
+            .orderByDesc(DocumentOriginalFile::getCreatedAt)
+            .orderByDesc(DocumentOriginalFile::getId);
+        List<DocumentOriginalFile> records = documentOriginalFileMapper.selectList(wrapper);
+        PageInfo<DocumentOriginalFile> pageInfo = new PageInfo<>(records);
+        return new PageResult<>(records.stream().map(this::toDTO).toList(), pageInfo.getTotal(), page, pageSize);
+    }
+
     @Override
     /**
      * 查询文档文件详情。
