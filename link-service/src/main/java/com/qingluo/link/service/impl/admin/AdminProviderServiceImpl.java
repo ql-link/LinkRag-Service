@@ -56,8 +56,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         provider.setProviderType(request.getProviderType());
         provider.setProviderName(request.getProviderName());
         provider.setApiBaseUrl(request.getApiBaseUrl());
-        provider.setSupportedModels(request.getSupportedModels());
-        provider.setConfigSchema(request.getConfigSchema());
         provider.setIsActive(request.getIsActive());
         provider.setPriority(request.getPriority());
 
@@ -80,12 +78,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
         if (StringUtils.hasText(request.getApiBaseUrl())) {
             provider.setApiBaseUrl(request.getApiBaseUrl());
-        }
-        if (request.getSupportedModels() != null) {
-            provider.setSupportedModels(request.getSupportedModels());
-        }
-        if (request.getConfigSchema() != null) {
-            provider.setConfigSchema(request.getConfigSchema());
         }
         if (request.getIsActive() != null) {
             provider.setIsActive(request.getIsActive());

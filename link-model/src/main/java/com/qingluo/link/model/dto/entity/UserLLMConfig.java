@@ -8,6 +8,10 @@ import java.time.LocalDateTime;
 /**
  * 用户级 LLM 配置表
  * 对应表：llm_user_config
+ *
+ * <p>下游 Python 直读本表，按 (user_id, capability, is_default, is_active) 取生效配置。
+ * 系统预设与用户自配统一汇入本表，是唯一生效源。一个 (用户,厂商,模型,能力) 一行，
+ * 同厂商多行共用同一个厂商级 api_key。</p>
  */
 @Data
 @TableName("llm_user_config")
@@ -30,56 +34,36 @@ public class UserLLMConfig {
     @TableField("provider_type")
     private String providerType;
 
-    @Schema(description = "厂商名称", example = "OpenAI")
-    @TableField("provider_name")
-    private String providerName;
-
-    @Schema(description = "配置名称", example = "我的OpenAI配置")
-    @TableField("config_name")
-    private String configName;
-
-    @Schema(description = "API Key")
+    @Schema(description = "API Key（厂商级，加密存储）")
     @TableField("api_key")
     private String apiKey;
 
-    @Schema(description = "自定义API地址")
-    @TableField("custom_api_base_url")
-    private String customApiBaseUrl;
+    /** 实际生效地址：用户填了用自定义，没填则展开时灌厂商默认，保证下游直读总能拿到可用地址。 */
+    @Schema(description = "API地址")
+    @TableField("api_base_url")
+    private String apiBaseUrl;
 
     @Schema(description = "模型名称", example = "gpt-4")
     @TableField("model_name")
     private String modelName;
 
-    @Schema(description = "优先级", example = "50")
-    private Integer priority = 50;
-
-    @Schema(description = "是否启用", example = "true")
-    @TableField("is_active")
-    private Boolean isActive = true;
-
-    @Schema(description = "是否为默认配置", example = "false")
-    @TableField("is_default")
-    private Boolean isDefault = false;
-
-    @Schema(description = "超时时间(毫秒)", example = "60000")
-    @TableField("timeout_ms")
-    private Integer timeoutMs = 60000;
-
-    @Schema(description = "最大重试次数", example = "3")
-    @TableField("max_retries")
-    private Integer maxRetries = 3;
-
-    @Schema(description = "是否启用流式响应", example = "true")
-    @TableField("stream_enabled")
-    private Boolean streamEnabled = true;
-
     @Schema(description = "专用能力标识：CHAT/EMBEDDING/RERANK/OCR", example = "CHAT")
     @TableField("capability")
     private String capability = "CHAT";
 
-    @Schema(description = "额外配置")
-    @TableField("extra_config")
-    private String extraConfig;
+    /** 模型启停 + 生效过滤双重语义：关停某模型即把它全部能力行置 false，既退出候选、又取不到为生效。 */
+    @Schema(description = "是否启用", example = "true")
+    @TableField("is_active")
+    private Boolean isActive = true;
+
+    @Schema(description = "该能力是否生效（单用户单能力唯一）", example = "false")
+    @TableField("is_default")
+    private Boolean isDefault = false;
+
+    /** 系统预设行：只读常备备选，禁止删除/改内容，仅可按能力切换是否生效。 */
+    @Schema(description = "是否为系统预设行（只读）", example = "false")
+    @TableField("is_system_preset")
+    private Boolean isSystemPreset = false;
 
     @Schema(description = "创建时间")
     @TableField("created_at")

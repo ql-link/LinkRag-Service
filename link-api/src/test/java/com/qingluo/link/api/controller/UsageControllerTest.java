@@ -139,7 +139,6 @@ class UsageControllerTest {
         provider.setProviderType("openai");
         provider.setProviderName("OpenAI");
         provider.setApiBaseUrl("https://api.openai.com/v1");
-        provider.setSupportedModels("[\"gpt-4\", \"gpt-3.5-turbo\"]");
         provider.setIsActive(true);
         provider.setPriority(50);
         systemProviderMapper.insert(provider);

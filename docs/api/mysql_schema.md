@@ -7,8 +7,10 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | 表 | Entity | 业务域 |
 | --- | --- | --- |
 | `sys_user` | `SysUser` | 用户、角色、状态 |
-| `llm_system_provider` | `SystemProvider` | 系统 LLM 厂商 |
-| `llm_user_config` | `UserLLMConfig` | 用户 LLM API Key 配置 |
+| `llm_system_provider` | `SystemProvider` | 系统 LLM 厂商（瘦身，去 `supported_models`/`config_schema`） |
+| `llm_provider_model` | `ProviderModel` | 厂商→模型→能力目录（取代 `supported_models` JSON） |
+| `llm_system_preset` | `SystemPreset` | 系统预设模板（自带加密平台 Key） |
+| `llm_user_config` | `UserLLMConfig` | 用户 LLM 配置（下游唯一生效源；预设与自配统一汇入） |
 | `llm_usage_log` | `UsageLog` | LLM 用量记录 |
 | `chat_conversation` | `ChatConversation` | 对话 |
 | `chat_message` | `ChatMessage` | 消息 |
@@ -22,8 +24,10 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
-- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`（须与 `llm_system_provider.supported_models` 中的能力词汇表一致）。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。
-- `llm_user_config` 一条用户配置按模型支持的能力展开为多行（一个能力一行），唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability)`；默认配置按 `capability` 维度维护，并有 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑按能力切换查询。
+- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。
+- 厂商→模型→能力目录迁至 `llm_provider_model`（一个模型多能力=多行，唯一键 `uk_provider_model_cap (provider_id, model_name, capability)`），`llm_system_provider` 已去掉 `supported_models` / `config_schema` JSON。用户「配置厂商」即按该表展开整厂商 (模型, 能力) 写入 `llm_user_config`。
+- `llm_system_preset`（自带加密平台 Key，唯一键 `uk_preset_provider_model_cap`）在用户注册时复制进 `llm_user_config`（`is_system_preset=true`、`is_default=true`），作为常备只读备选；`provider_type` / `api_base_url` 复制时由 `provider_id` join 厂商表取得，本表不冗余。
+- `llm_user_config` 一条配置按 (模型, 能力) 展开为多行，唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability, is_system_preset)`（含 `is_system_preset`，使同 (厂商,模型,能力) 的平台预设行与用户自配行可并存）。`is_active` 兼表「模型启停」与「生效过滤」，`is_default` 表按能力生效（单用户单能力唯一），`is_system_preset` 标记只读预设行；`api_base_url`（原 `custom_api_base_url`）空值由展开时灌厂商默认。已删字段：`provider_name` / `config_name` / `priority` / `timeout_ms` / `max_retries` / `stream_enabled` / `extra_config`。按能力切换查询由 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑。
 - Java 端和 Python RAG 端共享数据库时，字段语义必须在本文件或模块文档中明确。
 - `document_original_file` 只保存上传事实，不保存解析状态或解析产物。
 - `document_parse_file.latest_parse_task_id` 指向 `document_parsed_log.task_id`；Markdown 产物定位由 Python 写入 `document_parsed_log`。
