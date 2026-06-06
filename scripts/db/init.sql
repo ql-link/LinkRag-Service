@@ -264,3 +264,12 @@ ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_pipeline AUTO_INCREMENT = 10000;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 初始数据（LLM 厂商 + 模型目录）
+-- 运行完本文件后，执行 seed_llm_providers.sql 写入初始厂商与模型数据：
+--   SOURCE scripts/db/seed_llm_providers.sql;
+-- seed_llm_providers.sql 由 scripts/import_ragflow_configs.py 自动生成，
+-- 需要重新生成时：
+--   python3 scripts/import_ragflow_configs.py [ragflow-configs-dir]
+-- ─────────────────────────────────────────────────────────────────────────────
