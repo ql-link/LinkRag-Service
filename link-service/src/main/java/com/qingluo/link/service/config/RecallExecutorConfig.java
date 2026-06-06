@@ -2,6 +2,7 @@ package com.qingluo.link.service.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.core.security.InternalJwtSigner;
+import com.qingluo.link.core.security.RecallSessionJwtSigner;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -51,5 +52,25 @@ public class RecallExecutorConfig {
     @Bean
     public InternalJwtSigner recallJwtSigner(ObjectMapper objectMapper) {
         return new InternalJwtSigner(properties.getInternalJwtSecret(), properties.getJwtExpSeconds(), objectMapper);
+    }
+
+    /**
+     * 前端直连召回的 session JWT 签发器（LINK-104）：使用独立密钥。
+     *
+     * <p>启动期强校验（brief 决策⑥）：session 密钥非空且 ≠ 内部召回密钥（密码学隔离），否则 fail-fast，
+     * 避免运行期签出无效或隔离失效的 token。</p>
+     */
+    @Bean
+    public RecallSessionJwtSigner recallSessionJwtSigner(ObjectMapper objectMapper) {
+        String sessionSecret = properties.getSessionJwtSecret();
+        if (sessionSecret == null || sessionSecret.isEmpty()) {
+            throw new IllegalStateException(
+                "tolink.recall.session-jwt-secret 未配置（RECALL_SESSION_JWT_SECRET）：召回 session token 无法签发");
+        }
+        if (sessionSecret.equals(properties.getInternalJwtSecret())) {
+            throw new IllegalStateException(
+                "tolink.recall.session-jwt-secret 必须与 internal-jwt-secret 不同（密码学隔离）");
+        }
+        return new RecallSessionJwtSigner(sessionSecret, properties.getSessionJwtExpSeconds(), objectMapper);
     }
 }
