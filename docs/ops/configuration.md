@@ -190,6 +190,9 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `RAG_PYTHON_BASE_URL` | Python RAG 服务地址（拼接 `/api/v1/internal/recall/stream`） | 否 | `http://tolink-rag:8000` |
 | `RECALL_INTERNAL_JWT_SECRET` | 内部 JWT HS256 密钥（须与 Python 验签端一致；生产用密钥管理系统） | 是（dev） | 空 |
 | `RECALL_JWT_EXP_SECONDS` | 内部 JWT 有效期（秒） | 否 | `30` |
+| `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致，**必须 ≠ `RECALL_INTERNAL_JWT_SECRET`**，否则启动失败） | 是 | 空 |
+| `RECALL_SESSION_JWT_EXP_SECONDS` | session token 有效期（秒），Python 强制校验 `exp` | 否 | `30` |
+| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python 召回地址（公网/网关），用于拼接响应 `streamUrl`；独立于内部 `RAG_PYTHON_BASE_URL` | 否 | `http://localhost:8000` |
 | `RECALL_STREAM_TIMEOUT_MS` | 召回整体超时（毫秒，作为 okhttp callTimeout） | 否 | `60000` |
 | `RECALL_EMITTER_TIMEOUT_BUFFER_MS` | SseEmitter 超时相对整体超时的缓冲（毫秒）；emitter 超时 = stream-timeout-ms + 本值，使上游超时先触发并发出 `RECALL_TIMEOUT`，避免前端流被静默关闭 | 否 | `5000` |
 | `RECALL_CONNECT_TIMEOUT_MS` | 连接 Python 超时（毫秒） | 否 | `3000` |
@@ -200,6 +203,8 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `RECALL_EXECUTOR_QUEUE_CAPACITY` | 召回转发线程池队列容量 | 否 | `64` |
 
 > 本地 `application-local.yml` 使用固定示例密钥联调；`internal-jwt-secret` 为空时召回会在签发 JWT 阶段失败（500），生产/dev 部署必须配置该密钥且与 Python 验签端一致。
+>
+> `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空或等于 `internal-jwt-secret` 时直接 fail-fast（密码学隔离），因此启用本服务必须配置一个非空且与内部密钥不同的 session 密钥。
 
 ## 4.15 缓存一致性（tolink.cache-consistency.*）
 
