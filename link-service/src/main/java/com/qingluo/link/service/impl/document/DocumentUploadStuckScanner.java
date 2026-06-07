@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl.document;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
+import com.qingluo.link.core.trace.TraceContext;
 import com.qingluo.link.service.config.DocumentUploadAsyncProperties;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,23 +33,28 @@ public class DocumentUploadStuckScanner {
 
     @Scheduled(fixedDelayString = "${tolink.document-file.upload-async.scan-interval-ms:60000}")
     public void scan() {
-        LocalDateTime cutoff = LocalDateTime.now().minus(properties.getStuckThreshold());
-        List<DocumentOriginalFile> stuck = documentOriginalFileMapper.selectList(
-            new LambdaQueryWrapper<DocumentOriginalFile>()
-                .eq(DocumentOriginalFile::getUploadStatus, UPLOADING)
-                .lt(DocumentOriginalFile::getCreatedAt, cutoff));
-        if (stuck == null || stuck.isEmpty()) {
-            return;
-        }
-        for (DocumentOriginalFile record : stuck) {
-            // 单条隔离，避免一条异常中断整批扫描。
-            try {
-                statusWriter.markUploadFailed(record.getId(), "上传超时，请重试");
-                log.warn("Upload stuck in uploading over threshold, marked failed. recordId={}, datasetId={}, createdAt={}",
-                    record.getId(), record.getDatasetId(), record.getCreatedAt());
-            } catch (Exception e) {
-                log.warn("Mark stuck upload failed for one record, recordId={}", record.getId(), e);
+        TraceContext.startNew();
+        try {
+            LocalDateTime cutoff = LocalDateTime.now().minus(properties.getStuckThreshold());
+            List<DocumentOriginalFile> stuck = documentOriginalFileMapper.selectList(
+                new LambdaQueryWrapper<DocumentOriginalFile>()
+                    .eq(DocumentOriginalFile::getUploadStatus, UPLOADING)
+                    .lt(DocumentOriginalFile::getCreatedAt, cutoff));
+            if (stuck == null || stuck.isEmpty()) {
+                return;
             }
+            for (DocumentOriginalFile record : stuck) {
+                // 单条隔离，避免一条异常中断整批扫描。
+                try {
+                    statusWriter.markUploadFailed(record.getId(), "上传超时，请重试");
+                    log.warn("Upload stuck in uploading over threshold, marked failed. recordId={}, datasetId={}, createdAt={}",
+                        record.getId(), record.getDatasetId(), record.getCreatedAt());
+                } catch (Exception e) {
+                    log.warn("Mark stuck upload failed for one record, recordId={}", record.getId(), e);
+                }
+            }
+        } finally {
+            TraceContext.clear();
         }
     }
 }

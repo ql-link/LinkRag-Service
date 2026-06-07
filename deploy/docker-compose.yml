@@ -13,6 +13,8 @@ services:
     volumes:
       # 宿主 /opt/tolink/toLink-Service/config/application-prod.yml -> 容器 /app/config/
       - ../config:/app/config:ro
+      # 日志持久化：容器 /app/logs（logback 按天文件夹输出）-> 宿主 /opt/tolink/toLink-Service/logs
+      - ../logs:/app/logs
     ports:
       - "8080:8080"
     networks:

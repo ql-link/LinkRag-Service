@@ -22,6 +22,11 @@ mvn -pl link-service test
 - 根 `pom.xml` 固定 Maven Surefire `2.22.2`，确保各模块的 JUnit 5 测试都会执行。
 - 提交前使用 `mvn clean test`；删除或移动 Java 类后，干净构建可避免旧 `target/classes` 影响结果。
 
+## 日志与可观测测试
+
+- 链路追踪/访问/审计组件在 `link-core/src/test/java/com/qingluo/link/core/` 下用纯 JUnit/Mockito + `MockHttpServletRequest/Response` 承接：`trace/TraceContextTest`（traceId 生成、白名单防注入、MDC 读写清理）、`trace/TraceIdFilterTest`（复用/新建/注入拒绝/响应头/请求后清理）、`trace/MdcTaskDecoratorTest`（透传与执行后清理，含异常路径）、`web/AccessLogFilterTest`（放行/不吞异常/文档静态路径跳过）、`log/AuditLogTest`（写入 `AUDIT` logger + `action=` 前缀 + 占位渲染，用 logback `ListAppender` 断言）。
+- 审计埋点调用 `AuthContext.getCurrentUserId()` 取操作人，该方法在无 Web 上下文/未登录时降级返回 `null`（不抛异常），故 Service 纯单测无需搭建 sa-token 上下文。
+
 ## Spec-as-Test 要求
 
 - `acceptance.feature` 中的每个 Scenario 必须在 TD 中映射到测试。

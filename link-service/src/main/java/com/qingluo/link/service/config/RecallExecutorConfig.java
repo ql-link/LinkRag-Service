@@ -3,6 +3,7 @@ package com.qingluo.link.service.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.core.security.InternalJwtSigner;
 import com.qingluo.link.core.security.RecallSessionJwtSigner;
+import com.qingluo.link.core.trace.MdcTaskDecorator;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +35,8 @@ public class RecallExecutorConfig {
         executor.setQueueCapacity(properties.getExecutorQueueCapacity());
         executor.setThreadNamePrefix("recall-stream-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        // 透传提交线程的 MDC（含 traceId），召回转发日志与发起请求同链路
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
         return executor;
     }

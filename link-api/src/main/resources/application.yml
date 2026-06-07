@@ -20,7 +20,7 @@ sa-token:
   token-mode: uuid
 logging:
   level:
-    com.qingluo.link: debug
+    com.qingluo.link: ${LOG_LEVEL:info}
 
 thread-pool:
   document-upload:

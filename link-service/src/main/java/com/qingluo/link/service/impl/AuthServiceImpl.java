@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl;
 import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.core.exception.ConflictException;
+import com.qingluo.link.core.log.AuditLog;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.LoginRequest;
@@ -45,12 +46,15 @@ public class AuthServiceImpl implements AuthService {
         SysUser user = sysUserMapper.selectByAccount(account);
 
         if (user == null) {
+            AuditLog.event("LOGIN_FAIL", "account={}, reason=USER_NOT_FOUND", account);
             throw AuthException.userNotFound();
         }
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            AuditLog.event("LOGIN_FAIL", "userId={}, account={}, reason=INVALID_PASSWORD", user.getId(), account);
             throw AuthException.invalidPassword();
         }
         if (user.getStatus() != 1) {
+            AuditLog.event("LOGIN_FAIL", "userId={}, account={}, reason=ACCOUNT_DISABLED", user.getId(), account);
             throw AuthException.accountDisabled();
         }
 
@@ -59,6 +63,7 @@ public class AuthServiceImpl implements AuthService {
         sysUserMapper.updateById(user);
         userCacheService.put(user.getId(), toDTO(user));
 
+        AuditLog.event("LOGIN_SUCCESS", "userId={}, account={}", user.getId(), account);
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
     }
 
@@ -95,6 +100,7 @@ public class AuthServiceImpl implements AuthService {
         StpUtil.login(user.getId());
         userCacheService.put(user.getId(), toDTO(user));
 
+        AuditLog.event("REGISTER", "userId={}, username={}", user.getId(), username);
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
     }
 
@@ -103,7 +109,9 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public void logout() {
+        Object loginId = StpUtil.getLoginIdDefaultNull();
         StpUtil.logout();
+        AuditLog.event("LOGOUT", "userId={}", loginId == null ? "-" : loginId);
     }
 
     /**
