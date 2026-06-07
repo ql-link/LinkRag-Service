@@ -11,6 +11,8 @@ public interface DocumentFileService {
 
     PageResult<DocumentFileDTO> list(Long userId, Long datasetId, String uploadStatus, int page, int pageSize);
 
+    PageResult<DocumentFileDTO> listRecent(Long userId, int page, int pageSize);
+
     DocumentFileDTO detail(Long userId, Long fileId);
 
     void delete(Long userId, Long fileId);
