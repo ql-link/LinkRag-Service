@@ -33,6 +33,12 @@ public class GlobalExceptionHandler {
             .body(Result.error(401, "未登录或登录已过期"));
     }
 
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<Result<Object>> handleSecurityException(SecurityException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(Result.error(401, "未登录或登录已过期"));
+    }
+
     @ExceptionHandler(NotRoleException.class)
     public ResponseEntity<Result<Object>> handleNotRoleException(NotRoleException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
