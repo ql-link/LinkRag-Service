@@ -1,8 +1,9 @@
 package com.qingluo.link.api.controller;
 
 import com.qingluo.link.core.util.AuthContext;
-import com.qingluo.link.model.dto.request.CreateConfigRequest;
-import com.qingluo.link.model.dto.request.UpdateConfigRequest;
+import com.qingluo.link.model.dto.request.SelectEffectiveModelRequest;
+import com.qingluo.link.model.dto.request.SetupProviderRequest;
+import com.qingluo.link.model.dto.request.ToggleModelRequest;
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.model.dto.response.UserLLMConfigDTO;
 import com.qingluo.link.service.UserLLMConfigService;
@@ -18,29 +19,26 @@ import java.util.List;
 
 /**
  * LLM配置控制器
- * <p>提供用户 LLM 配置的创建、查询、修改、删除功能</p>
+ *
+ * <p>用户 LLM 配置两步流：①配置厂商（选厂商 + 填厂商级 Key，自动展开该厂商全部模型能力）；
+ * ②按能力选生效模型。模型启停为独立动作。系统预设只读、仅可按能力切换生效。</p>
  *
  * @author qingluo
- * @since 2024-01-01
  */
 @RestController
 @RequestMapping("/api/v1/llm/configs")
 @RequiredArgsConstructor
-@Tag(name = "LLM配置接口", description = "用户LLM配置的增删改查，支持openai/claude/deepseek/glm/aliyun等厂商")
+@Tag(name = "LLM配置接口", description = "用户LLM配置：配置厂商、模型启停、按能力选生效、系统预设")
 public class ConfigController {
 
     private final UserLLMConfigService userLLMConfigService;
 
     /**
-     * 获取用户LLM配置列表
-     *
-     * @param providerType 厂商类型过滤（可选，如openai）
-     * @param isActive     启用状态过滤（可选）
-     * @return 配置列表（包含脱敏后的apiKeyMasked）
+     * 获取用户LLM配置列表（含系统预设行）。
      */
     @GetMapping
     @SaCheckLogin
-    @Operation(summary = "获取LLM配置列表", description = "获取当前用户配置的所有LLM API信息，包含已禁用的配置")
+    @Operation(summary = "获取LLM配置列表", description = "获取当前用户的全部 LLM 配置，包含已禁用与系统预设，Key 脱敏")
     public Result<List<UserLLMConfigDTO>> getConfigs(
             @Parameter(description = "厂商类型，如openai") @RequestParam(required = false) String providerType,
             @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam(required = false) String capability,
@@ -50,29 +48,46 @@ public class ConfigController {
     }
 
     /**
-     * 创建用户LLM配置
-     *
-     * @param request 配置信息（providerType, apiKey, modelName等）
-     * @return 创建的配置信息（按模型支持的能力展开，可能多条）
+     * 配置厂商（第一步）：选厂商 + 填厂商级 Key，自动展开该厂商全部模型能力。
      */
-    @PostMapping
+    @PostMapping("/setup-provider")
     @SaCheckLogin
-    @Operation(summary = "创建LLM配置", description = "新增一个LLM API配置，API Key会自动加密存储")
-    public Result<List<UserLLMConfigDTO>> createConfig(
-            @Valid @RequestBody CreateConfigRequest request) {
+    @Operation(summary = "配置厂商", description = "选厂商并填厂商级 Key，系统自动加载该厂商全部模型；重复配置同厂商更新其 Key")
+    public Result<List<UserLLMConfigDTO>> setupProvider(@Valid @RequestBody SetupProviderRequest request) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(userLLMConfigService.createConfig(userId, request));
+        return Result.success(userLLMConfigService.setupProvider(userId, request));
     }
 
     /**
-     * 查询某能力默认配置。
-     *
-     * @param capability 模型能力
-     * @return 当前用户该能力的默认配置
+     * 模型启停（独立窗口）：按厂商 + 模型批量启停该模型全部能力行。
+     */
+    @PatchMapping("/toggle-model")
+    @SaCheckLogin
+    @Operation(summary = "模型启停", description = "按厂商+模型批量启停该模型全部能力；关闭后按能力选生效时不再展示")
+    public Result<Void> toggleModel(@Valid @RequestBody ToggleModelRequest request) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        userLLMConfigService.toggleModel(userId, request);
+        return Result.ok(null);
+    }
+
+    /**
+     * 按能力选生效模型（第二步）：为某能力选定一个启用模型生效，自动解除原生效。
+     */
+    @PutMapping("/effective")
+    @SaCheckLogin
+    @Operation(summary = "按能力选生效模型", description = "为某能力选定一个启用模型生效，单用户单能力生效唯一")
+    public Result<Void> selectEffectiveModel(@Valid @RequestBody SelectEffectiveModelRequest request) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        userLLMConfigService.selectEffectiveModel(userId, request);
+        return Result.ok(null);
+    }
+
+    /**
+     * 查询某能力的生效配置。
      */
     @GetMapping("/default")
     @SaCheckLogin
-    @Operation(summary = "查询某能力默认配置", description = "按能力查询当前用户默认LLM配置")
+    @Operation(summary = "查询某能力生效配置", description = "按能力查询当前用户的生效 LLM 配置")
     public Result<UserLLMConfigDTO> getDefaultConfig(
             @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam String capability) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
@@ -80,15 +95,11 @@ public class ConfigController {
     }
 
     /**
-     * 设置某能力默认配置。
-     *
-     * @param id         配置ID
-     * @param capability 模型能力
-     * @return 无返回内容
+     * 设置某能力生效配置（按配置 ID，含切换到/切回系统预设）。
      */
     @PatchMapping("/{id}/default")
     @SaCheckLogin
-    @Operation(summary = "设置某能力默认配置", description = "将当前用户的一条能力配置设置为该能力默认")
+    @Operation(summary = "设置某能力生效配置", description = "将当前用户的一条配置设为该能力生效，支持切换到或切回系统预设")
     public Result<Void> setDefaultConfig(
             @Parameter(description = "配置ID") @PathVariable Long id,
             @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam String capability) {
@@ -98,32 +109,11 @@ public class ConfigController {
     }
 
     /**
-     * 更新用户LLM配置
-     *
-     * @param id      配置ID
-     * @param request 更新内容（apiKey, priority, isActive等）
-     * @return 无返回内容
-     */
-    @PatchMapping("/{id}")
-    @SaCheckLogin
-    @Operation(summary = "更新LLM配置", description = "部分更新配置字段，支持修改API Key（会重新加密）")
-    public Result<Void> updateConfig(
-            @Parameter(description = "配置ID") @PathVariable Long id,
-            @Valid @RequestBody UpdateConfigRequest request) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        userLLMConfigService.updateConfig(userId, id, request);
-        return Result.ok(null);
-    }
-
-    /**
-     * 删除用户LLM配置
-     *
-     * @param id 配置ID
-     * @return 无返回内容
+     * 删除用户LLM配置；系统预设只读不可删。
      */
     @DeleteMapping("/{id}")
     @SaCheckLogin
-    @Operation(summary = "删除LLM配置", description = "删除指定的LLM配置，删除后影响新对话使用")
+    @Operation(summary = "删除LLM配置", description = "删除指定的 LLM 配置；系统预设为只读，删除被拒")
     public Result<Void> deleteConfig(@Parameter(description = "配置ID") @PathVariable Long id) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         userLLMConfigService.deleteConfig(userId, id);

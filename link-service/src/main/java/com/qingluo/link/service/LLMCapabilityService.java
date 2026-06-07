@@ -1,21 +1,15 @@
 package com.qingluo.link.service;
 
-import com.qingluo.link.model.dto.entity.SystemProvider;
-
-import java.util.List;
-import java.util.Map;
-
 /**
- * LLM 模型能力解析服务。
+ * LLM 模型能力校验服务。
  *
- * <p>负责把系统厂商表中的 supported_models JSON 转换为稳定的模型能力目录，
- * 并统一校验能力值和模型能力匹配关系。</p>
+ * <p>模型能力目录已迁至 llm_provider_model 正表，本服务不再解析 supported_models JSON，
+ * 仅统一校验能力词汇是否在受支持集合内。</p>
  */
 public interface LLMCapabilityService {
 
-    Map<String, List<String>> parseSupportedModels(String supportedModels);
-
-    List<String> getModelCapabilities(SystemProvider provider, String modelName);
-
+    /**
+     * 校验能力标识是否受支持，非法时抛出 INVALID_MODEL_CAPABILITY。
+     */
     void validateCapability(String capability);
 }

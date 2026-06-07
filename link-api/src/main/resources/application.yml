@@ -18,10 +18,9 @@ sa-token:
   is-concurrent: true
   is-share: false
   token-mode: uuid
-
 logging:
   level:
-    com.qingluo.link: debug
+    com.qingluo.link: ${LOG_LEVEL:info}
 
 thread-pool:
   document-upload:

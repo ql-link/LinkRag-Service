@@ -7,12 +7,14 @@ services:
     container_name: tolink-service
     restart: always
     environment:
-      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       # 让 Spring 额外加载挂载进来的外部配置，优先级高于 jar 内打包的同名文件
       - SPRING_CONFIG_ADDITIONAL_LOCATION=file:/app/config/
     volumes:
-      # 宿主 /opt/tolink/toLink-Service/config/application-dev.yml -> 容器 /app/config/
+      # 宿主 /opt/tolink/toLink-Service/config/application-prod.yml -> 容器 /app/config/
       - ../config:/app/config:ro
+      # 日志持久化：容器 /app/logs（logback 按天文件夹输出）-> 宿主 /opt/tolink/toLink-Service/logs
+      - ../logs:/app/logs
     ports:
       - "8080:8080"
     networks:

@@ -51,6 +51,14 @@ public class DocumentFileController {
         return Result.success(documentFileService.list(userId, datasetId, uploadStatus, page, pageSize));
     }
 
+    @GetMapping("/api/v1/files/recent")
+    @SaCheckLogin
+    public Result<PageResult<DocumentFileDTO>> recent(@RequestParam(defaultValue = "1") int page,
+                                                       @RequestParam(defaultValue = "5") int pageSize) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(documentFileService.listRecent(userId, page, pageSize));
+    }
+
     @GetMapping("/api/v1/files/{fileId}")
     @SaCheckLogin
     public Result<DocumentFileDTO> detail(@PathVariable Long fileId) {

@@ -2,7 +2,11 @@ package com.qingluo.link.api.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import com.qingluo.link.core.util.AuthContext;
+import com.qingluo.link.model.dto.entity.ProviderModel;
+import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.request.AddProviderModelRequest;
+import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
@@ -15,12 +19,16 @@ import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.service.AdminDocumentFileConfigService;
 import com.qingluo.link.service.AdminProviderService;
 import com.qingluo.link.service.AdminUserService;
+import com.qingluo.link.service.ProviderModelService;
+import com.qingluo.link.service.SystemPresetService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 管理员控制器
@@ -39,6 +47,8 @@ public class AdminController {
     private final AdminUserService adminUserService;
     private final AdminProviderService adminProviderService;
     private final AdminDocumentFileConfigService adminDocumentFileConfigService;
+    private final ProviderModelService providerModelService;
+    private final SystemPresetService systemPresetService;
 
     // ---- 用户管理 ----
 
@@ -174,6 +184,73 @@ public class AdminController {
             @Parameter(description = "厂商ID") @PathVariable Long id,
             @Parameter(description = "是否启用") @RequestParam boolean isActive) {
         adminProviderService.toggleActive(id, isActive);
+        return Result.success(null);
+    }
+
+    // ---- 厂商模型能力目录管理 ----
+
+    /**
+     * 向厂商模型能力目录新增一条模型能力（已存在则确保上架）。
+     */
+    @PostMapping("/providers/{providerId}/models")
+    @Operation(summary = "新增厂商模型能力", description = "向某厂商的模型能力目录新增一条 (模型, 能力)")
+    public Result<ProviderModel> addProviderModel(
+            @Parameter(description = "厂商ID") @PathVariable Long providerId,
+            @RequestBody @Validated AddProviderModelRequest request) {
+        return Result.success(
+                providerModelService.addModelCapability(providerId, request.getModelName(), request.getCapability()));
+    }
+
+    /**
+     * 删除一条厂商模型能力目录项。
+     */
+    @DeleteMapping("/provider-models/{id}")
+    @Operation(summary = "删除厂商模型能力", description = "从模型能力目录删除一条 (模型, 能力)")
+    public Result<Void> deleteProviderModel(@Parameter(description = "目录项ID") @PathVariable Long id) {
+        providerModelService.deleteModelCapability(id);
+        return Result.success(null);
+    }
+
+    /**
+     * 上/下架一条厂商模型能力目录项。
+     */
+    @PatchMapping("/provider-models/{id}/active")
+    @Operation(summary = "上下架厂商模型能力", description = "切换某条模型能力目录项的上架状态")
+    public Result<Void> toggleProviderModel(
+            @Parameter(description = "目录项ID") @PathVariable Long id,
+            @Parameter(description = "是否上架") @RequestParam boolean isActive) {
+        providerModelService.toggleModelCapability(id, isActive);
+        return Result.success(null);
+    }
+
+    // ---- 系统预设管理 ----
+
+    /**
+     * 列出全部系统预设（平台 Key 脱敏返回）。
+     */
+    @GetMapping("/system-presets")
+    @Operation(summary = "查询系统预设列表", description = "列出全部系统预设，平台 Key 脱敏返回")
+    public Result<List<SystemPreset>> listSystemPresets() {
+        return Result.success(systemPresetService.listPresets());
+    }
+
+    /**
+     * 新增系统预设（平台 Key 入库前加密）。
+     */
+    @PostMapping("/system-presets")
+    @Operation(summary = "新增系统预设", description = "预配一条整套可用配置，平台 Key 入库前加密")
+    public Result<Void> createSystemPreset(@RequestBody @Validated CreatePresetRequest request) {
+        systemPresetService.createPreset(request);
+        return Result.success(null);
+    }
+
+    /**
+     * 删除系统预设。
+     */
+    @DeleteMapping("/system-presets/{id}")
+    @Operation(summary = "删除系统预设", description = "删除一条系统预设")
+    public Result<Void> deleteSystemPreset(@Parameter(description = "预设ID") @PathVariable Long id) {
+        systemPresetService.deletePreset(id);
         return Result.success(null);
     }
 }

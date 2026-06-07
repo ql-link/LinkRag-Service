@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl;
 import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.core.exception.ConflictException;
+import com.qingluo.link.core.log.AuditLog;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.LoginRequest;
@@ -13,10 +14,12 @@ import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
+import com.qingluo.link.service.SystemPresetService;
 import com.qingluo.link.service.cache.UserCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -32,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
     private final SysUserMapper sysUserMapper;
     private final PasswordEncoder passwordEncoder;
     private final UserCacheService userCacheService;
+    private final SystemPresetService systemPresetService;
 
     /**
      * 校验账号密码并创建登录态，成功后同步刷新最后登录时间。
@@ -42,12 +46,15 @@ public class AuthServiceImpl implements AuthService {
         SysUser user = sysUserMapper.selectByAccount(account);
 
         if (user == null) {
+            AuditLog.event("LOGIN_FAIL", "account={}, reason=USER_NOT_FOUND", account);
             throw AuthException.userNotFound();
         }
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            AuditLog.event("LOGIN_FAIL", "userId={}, account={}, reason=INVALID_PASSWORD", user.getId(), account);
             throw AuthException.invalidPassword();
         }
         if (user.getStatus() != 1) {
+            AuditLog.event("LOGIN_FAIL", "userId={}, account={}, reason=ACCOUNT_DISABLED", user.getId(), account);
             throw AuthException.accountDisabled();
         }
 
@@ -56,6 +63,7 @@ public class AuthServiceImpl implements AuthService {
         sysUserMapper.updateById(user);
         userCacheService.put(user.getId(), toDTO(user));
 
+        AuditLog.event("LOGIN_SUCCESS", "userId={}, account={}", user.getId(), account);
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
     }
 
@@ -63,6 +71,7 @@ public class AuthServiceImpl implements AuthService {
      * 注册新用户并自动登录，同时初始化最后登录时间。
      */
     @Override
+    @Transactional
     public AuthResult register(RegisterRequest request) {
         String username = normalizeRequired(request.getUsername());
         SysUser existUser = sysUserMapper.selectByUsername(username);
@@ -86,9 +95,12 @@ public class AuthServiceImpl implements AuthService {
         user.setLastLoginAt(LocalDateTime.now());
 
         sysUserMapper.insert(user);
+        // 注册即写入系统预设，实现开箱即用；失败则随事务回滚、阻断注册
+        systemPresetService.applyPresetsForNewUser(user.getId());
         StpUtil.login(user.getId());
         userCacheService.put(user.getId(), toDTO(user));
 
+        AuditLog.event("REGISTER", "userId={}, username={}", user.getId(), username);
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
     }
 
@@ -97,7 +109,9 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public void logout() {
+        Object loginId = StpUtil.getLoginIdDefaultNull();
         StpUtil.logout();
+        AuditLog.event("LOGOUT", "userId={}", loginId == null ? "-" : loginId);
     }
 
     /**

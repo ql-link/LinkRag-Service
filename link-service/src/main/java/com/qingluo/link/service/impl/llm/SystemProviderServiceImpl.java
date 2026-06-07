@@ -4,22 +4,29 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.SystemProviderMapper;
+import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.response.ModelCapabilityDTO;
 import com.qingluo.link.model.dto.response.ProviderModelDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
+import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.SystemProviderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * 系统厂商服务实现
+ * 系统厂商服务实现。
+ *
+ * <p>用户侧目录数据来源由 supported_models JSON 切换为 llm_provider_model 正表，
+ * 按厂商聚合「模型→能力」对外展示。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -27,6 +34,7 @@ public class SystemProviderServiceImpl implements SystemProviderService {
 
     private final SystemProviderMapper systemProviderMapper;
     private final LLMCapabilityService llmCapabilityService;
+    private final ProviderModelService providerModelService;
 
     @Override
     /**
@@ -81,13 +89,15 @@ public class SystemProviderServiceImpl implements SystemProviderService {
     }
 
     /**
-     * 将厂商实体转换为用户侧厂商模型 DTO，并按能力过滤模型。
+     * 将厂商及其上架模型能力行聚合为用户侧 DTO：同一模型的多条能力归并为能力列表。
      */
     private ProviderModelDTO toProviderModelDTO(SystemProvider provider, String capability) {
-        Map<String, List<String>> supportedModels =
-                llmCapabilityService.parseSupportedModels(provider.getSupportedModels());
-        List<ModelCapabilityDTO> models = supportedModels.entrySet().stream()
-                .filter(entry -> capability == null || entry.getValue().contains(capability))
+        List<ProviderModel> rows = providerModelService.listActiveModels(provider.getId(), capability);
+        Map<String, List<String>> grouped = new LinkedHashMap<>();
+        for (ProviderModel row : rows) {
+            grouped.computeIfAbsent(row.getModelName(), k -> new ArrayList<>()).add(row.getCapability());
+        }
+        List<ModelCapabilityDTO> models = grouped.entrySet().stream()
                 .map(entry -> new ModelCapabilityDTO(entry.getKey(), entry.getValue()))
                 .toList();
         return new ProviderModelDTO(provider.getProviderType(), provider.getProviderName(), models);

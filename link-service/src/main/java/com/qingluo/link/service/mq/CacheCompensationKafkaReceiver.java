@@ -2,6 +2,7 @@ package com.qingluo.link.service.mq.kafka;
 
 import com.qingluo.link.components.mq.MQMsgReceiver;
 import com.qingluo.link.components.mq.constant.MQVenderChoose;
+import com.qingluo.link.core.trace.TraceContext;
 import com.qingluo.link.service.mq.CacheCompensationMQ;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +32,12 @@ public class CacheCompensationKafkaReceiver implements MQMsgReceiver {
             groupId = "${tolink.cache-consistency.consumer.group-id:tolink-cache-evict}"
     )
     public void receive(String msg) {
-        log.info("收到缓存补偿 MQ 消息");
-        receiver.receive(CacheCompensationMQ.parseMsg(msg));
+        TraceContext.startNew();
+        try {
+            log.info("收到缓存补偿 MQ 消息");
+            receiver.receive(CacheCompensationMQ.parseMsg(msg));
+        } finally {
+            TraceContext.clear();
+        }
     }
 }

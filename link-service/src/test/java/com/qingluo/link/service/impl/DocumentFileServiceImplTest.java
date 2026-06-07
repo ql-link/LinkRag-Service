@@ -31,7 +31,6 @@ import com.qingluo.link.service.impl.document.DocumentUploadTempStorage;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Set;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -108,8 +107,8 @@ class DocumentFileServiceImplTest {
         // 不删 OSS 对象、不清本地缓存
         verify(ossService, never()).deleteFile(any(), any());
         verify(privateFileResolver, never()).evictPrivateFile(any());
-        // 提交后通知 Python（占位），载荷含该文件 id + datasetId + userId
-        verify(deleteNotifier).notifyAfterDelete(List.of(1L), 200L, 100L);
+        // 提交后通知 Python 删衍生产物（file 范围）：original_file_id + datasetId + userId
+        verify(deleteNotifier).notifyFileDeleted(1L, 200L, 100L);
     }
 
     @Test
@@ -122,7 +121,7 @@ class DocumentFileServiceImplTest {
             .hasMessage("文件不存在或无权访问");
 
         verify(documentOriginalFileMapper, never()).update(any(), any());
-        verify(deleteNotifier, never()).notifyAfterDelete(any(), any(), any());
+        verify(deleteNotifier, never()).notifyFileDeleted(any(), any(), any());
     }
 
     @Test

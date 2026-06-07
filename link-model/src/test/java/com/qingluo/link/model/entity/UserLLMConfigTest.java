@@ -26,19 +26,13 @@ class UserLLMConfigTest {
         assertFieldExists("userId");
         assertFieldExists("providerId");
         assertFieldExists("providerType");
-        assertFieldExists("providerName");
-        assertFieldExists("configName");
         assertFieldExists("apiKey");
-        assertFieldExists("customApiBaseUrl");
+        assertFieldExists("apiBaseUrl");
         assertFieldExists("modelName");
-        assertFieldExists("priority");
+        assertFieldExists("capability");
         assertFieldExists("isActive");
         assertFieldExists("isDefault");
-        assertFieldExists("timeoutMs");
-        assertFieldExists("maxRetries");
-        assertFieldExists("streamEnabled");
-        assertFieldExists("capability");
-        assertFieldExists("extraConfig");
+        assertFieldExists("isSystemPreset");
         assertFieldExists("createdAt");
         assertFieldExists("updatedAt");
     }
@@ -56,10 +50,8 @@ class UserLLMConfigTest {
         UserLLMConfig config = new UserLLMConfig();
         assertTrue(config.getIsActive());
         assertFalse(config.getIsDefault());
-        assertEquals(60000, config.getTimeoutMs());
-        assertEquals(3, config.getMaxRetries());
-        assertTrue(config.getStreamEnabled());
-        assertEquals(50, config.getPriority());
+        assertFalse(config.getIsSystemPreset());
+        assertEquals("CHAT", config.getCapability());
     }
 
     private void assertFieldExists(String fieldName) throws Exception {

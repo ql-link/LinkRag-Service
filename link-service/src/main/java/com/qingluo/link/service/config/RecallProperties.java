@@ -23,6 +23,21 @@ public class RecallProperties {
     /** 内部 JWT 短有效期（秒）。 */
     private long jwtExpSeconds = 30L;
 
+    /**
+     * 前端直连召回的 session JWT HS256 独立密钥（LINK-104）；与 Python {@code RECALL_SESSION_JWT_SECRET} 一致。
+     * <b>必须 ≠ {@link #internalJwtSecret}</b>（密码学隔离），且非空——启动期由 RecallExecutorConfig 强校验。
+     */
+    private String sessionJwtSecret = "";
+
+    /** session JWT 短有效期（秒），建议 30s（Python 强制校验 exp）。 */
+    private long sessionJwtExpSeconds = 30L;
+
+    /**
+     * 前端可见的 Python 召回地址（公网/网关），独立于内部 {@link #pythonBaseUrl}。
+     * 响应 streamUrl = sessionStreamBaseUrl + /api/v1/recall/stream。
+     */
+    private String sessionStreamBaseUrl = "http://localhost:8000";
+
     /** 等待 Python stream 的整体超时（毫秒），作为 okhttp callTimeout。 */
     private long streamTimeoutMs = 60_000L;
 

@@ -6,6 +6,8 @@ import com.qingluo.link.components.redis.service.CacheConsistencyService;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
+import com.qingluo.link.core.log.AuditLog;
+import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
@@ -56,13 +58,13 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         provider.setProviderType(request.getProviderType());
         provider.setProviderName(request.getProviderName());
         provider.setApiBaseUrl(request.getApiBaseUrl());
-        provider.setSupportedModels(request.getSupportedModels());
-        provider.setConfigSchema(request.getConfigSchema());
         provider.setIsActive(request.getIsActive());
         provider.setPriority(request.getPriority());
 
         systemProviderMapper.insert(provider);
         cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, request.getProviderType());
+        AuditLog.event("PROVIDER_CREATE", "operatorId={}, providerId={}, providerType={}",
+                AuthContext.getCurrentUserId(), provider.getId(), request.getProviderType());
     }
 
     @Override
@@ -80,12 +82,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
         if (StringUtils.hasText(request.getApiBaseUrl())) {
             provider.setApiBaseUrl(request.getApiBaseUrl());
-        }
-        if (request.getSupportedModels() != null) {
-            provider.setSupportedModels(request.getSupportedModels());
-        }
-        if (request.getConfigSchema() != null) {
-            provider.setConfigSchema(request.getConfigSchema());
         }
         if (request.getIsActive() != null) {
             provider.setIsActive(request.getIsActive());
@@ -110,6 +106,8 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
         systemProviderMapper.deleteById(id);
         cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
+        AuditLog.event("PROVIDER_DELETE", "operatorId={}, providerId={}, providerType={}",
+                AuthContext.getCurrentUserId(), id, provider.getProviderType());
     }
 
     @Override
