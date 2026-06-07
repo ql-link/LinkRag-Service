@@ -186,6 +186,8 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 **访问日志**：`AccessLogFilter`（排在 `TraceIdFilter` 之后）统一为全部 HTTP 端点记录一行 `方法 路径 status=… cost=…ms userId=… ip=…`，用专用 logger 名 `ACCESS`（可单独调级，如 `logging.level.ACCESS=warn` 降噪）。在 `finally` 落日志，正常/异常均记录；userId 尽力获取（未登录记 `-`）；异步请求（SSE）只计建流耗时；Swagger/接口文档/静态资源路径跳过。
 
+**审计日志**：`AuditLog`（专用 logger 名 `AUDIT`，统一 `action=` 前缀，复用 traceId）为安全/高危动作留痕——登录成功/失败（`LOGIN_SUCCESS`/`LOGIN_FAIL`）、注册（`REGISTER`）、登出（`LOGOUT`）、改用户状态/角色（`USER_STATUS_CHANGE`/`USER_ROLE_CHANGE`，记操作人+目标+前后值）、配置厂商 Key（`LLM_PROVIDER_SETUP`）、删配置（`LLM_CONFIG_DELETE`）、厂商增删（`PROVIDER_CREATE`/`PROVIDER_DELETE`）。**仅记标识与结果，严禁记录明文密码、API Key、token**。可经 `logging.level.AUDIT` 单独调级或拆独立 appender。
+
 ### 4.14 召回网关（RECALL_* / RAG_PYTHON_BASE_URL）
 
 用户态召回 SSE 网关配置，前缀 `tolink.recall`（`RecallProperties`）：

@@ -6,6 +6,8 @@ import com.qingluo.link.components.redis.service.CacheConsistencyService;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
+import com.qingluo.link.core.log.AuditLog;
+import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
@@ -61,6 +63,8 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
         systemProviderMapper.insert(provider);
         cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, request.getProviderType());
+        AuditLog.event("PROVIDER_CREATE", "operatorId={}, providerId={}, providerType={}",
+                AuthContext.getCurrentUserId(), provider.getId(), request.getProviderType());
     }
 
     @Override
@@ -102,6 +106,8 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
         systemProviderMapper.deleteById(id);
         cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
+        AuditLog.event("PROVIDER_DELETE", "operatorId={}, providerId={}, providerType={}",
+                AuthContext.getCurrentUserId(), id, provider.getProviderType());
     }
 
     @Override

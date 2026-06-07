@@ -6,6 +6,7 @@ import com.qingluo.link.components.redis.service.CacheConsistencyService;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
+import com.qingluo.link.core.log.AuditLog;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
@@ -115,6 +116,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
         cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
         result.forEach(config -> cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, config.getId()));
+        // 审计：厂商级 Key 配置/更新（只记标识与影响行数，绝不记 Key 明文/密文）
+        AuditLog.event("LLM_PROVIDER_SETUP", "userId={}, providerType={}, providerId={}, configRows={}",
+                userId, provider.getProviderType(), provider.getId(), result.size());
         return result.stream().map(this::toDTO).toList();
     }
 
@@ -185,6 +189,8 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         userLLMConfigMapper.deleteById(configId);
         cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, configId);
         cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
+        AuditLog.event("LLM_CONFIG_DELETE", "userId={}, configId={}, providerType={}, modelName={}, capability={}",
+                userId, configId, config.getProviderType(), config.getModelName(), config.getCapability());
     }
 
     @Override

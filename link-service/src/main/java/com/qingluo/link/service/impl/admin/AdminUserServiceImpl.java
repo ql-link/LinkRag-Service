@@ -3,6 +3,8 @@ package com.qingluo.link.service.impl.admin;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qingluo.link.core.exception.NotFoundException;
+import com.qingluo.link.core.log.AuditLog;
+import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.UpdateUserRoleRequest;
@@ -53,9 +55,12 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (user == null) {
             throw NotFoundException.userNotFound();
         }
+        Integer oldStatus = user.getStatus();
         user.setStatus(request.getStatus());
         sysUserMapper.updateById(user);
         userCacheService.evict(userId);
+        AuditLog.event("USER_STATUS_CHANGE", "operatorId={}, targetUserId={}, {}->{}",
+                AuthContext.getCurrentUserId(), userId, oldStatus, request.getStatus());
     }
 
     @Override
@@ -68,9 +73,12 @@ public class AdminUserServiceImpl implements AdminUserService {
             throw NotFoundException.userNotFound();
         }
         UserRole.of(request.getRole());
+        String oldRole = user.getRole();
         user.setRole(request.getRole());
         sysUserMapper.updateById(user);
         userCacheService.evict(userId);
+        AuditLog.event("USER_ROLE_CHANGE", "operatorId={}, targetUserId={}, {}->{}",
+                AuthContext.getCurrentUserId(), userId, oldRole, request.getRole());
     }
 
     /**
