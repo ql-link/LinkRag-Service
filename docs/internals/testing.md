@@ -27,6 +27,7 @@ mvn -pl link-service test
 - `acceptance.feature` 中的每个 Scenario 必须在 TD 中映射到测试。
 - Java 测试不必逐字使用 Gherkin 名称，但测试方法、注释或 TD 映射必须能追溯。
 - 外部 MySQL、Redis、Kafka、MinIO、第三方 API 在单元测试中默认 Mock。
+- 全局最近文档等跨数据集查询应在 Controller/集成测试中覆盖当前用户权限隔离、稳定排序、分页和空列表返回。
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。
 - 缓存一致性组件改造优先在 `link-service/src/test/java/com/qingluo/link/service/cache/CacheConsistencyServiceTest.java` 承接，至少覆盖：事务提交后首删、事务回滚不删、无事务立即删、首删失败不改请求结果、补偿第二删强失败语义，以及同事务多次触发下的 key 去重结果。
 - 文档文件上传配置运行时来源为 Redis；Controller 测试应 Mock 或重置 `DocumentFileConfigCacheService`，不再依赖数据库配置表。

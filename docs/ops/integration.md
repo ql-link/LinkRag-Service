@@ -1,5 +1,9 @@
 # Java / Python RAG Integration
 
+## Frontend APIs
+
+- 首页最近文档：`GET /api/v1/files/recent?page=1&pageSize=5`，Java 按当前登录用户汇总所有数据集文档并分页返回。
+
 ## 职责边界
 
 - Java：文件上传、元数据、权限、解析任务投递、结果查询、SSE 转发。

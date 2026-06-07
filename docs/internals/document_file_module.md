@@ -1,5 +1,10 @@
 # Document File Module
 
+## 查询能力
+
+- 数据集内文件列表：`GET /api/v1/datasets/{datasetId}/files`，按当前用户和数据集过滤，支持上传状态筛选。
+- 全局最近文档：`GET /api/v1/files/recent`，按当前用户过滤所有数据集下的原始文档，使用 `created_at DESC, id DESC` 稳定排序并返回 `PageResult<DocumentFileDTO>`。
+
 ## 职责
 
 文档文件模块负责数据集文件上传、解析任务提交、结果查询和 SSE 事件转发。
