@@ -11,7 +11,7 @@
     <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="tolink-service"/>
     <property name="LOG_PATH" value="${LOG_PATH:-logs}"/>
     <property name="PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level ${PID:- } --- [%thread] %logger{40} : %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level ${PID:- } --- [%thread] [%X{traceId:-}] %logger{40} : %msg%n"/>
 
     <!-- 控制台 -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">

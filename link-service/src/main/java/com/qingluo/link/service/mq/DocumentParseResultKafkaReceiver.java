@@ -3,6 +3,7 @@ package com.qingluo.link.service.mq;
 import com.qingluo.link.components.mq.MQMsgReceiver;
 import com.qingluo.link.components.mq.constant.MQVenderChoose;
 import com.qingluo.link.components.mq.model.DocumentParseResultMQ;
+import com.qingluo.link.core.trace.TraceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,7 +27,12 @@ public class DocumentParseResultKafkaReceiver implements MQMsgReceiver {
         containerFactory = "parseResultKafkaListenerContainerFactory"
     )
     public void receive(String msg) {
-        log.info("Receive parse result MQ message");
-        receiver.receive(DocumentParseResultMQ.parseMsg(msg));
+        TraceContext.startNew();
+        try {
+            log.info("Receive parse result MQ message");
+            receiver.receive(DocumentParseResultMQ.parseMsg(msg));
+        } finally {
+            TraceContext.clear();
+        }
     }
 }

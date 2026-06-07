@@ -8,6 +8,7 @@ import com.qingluo.link.model.dto.entity.DocumentParseFile;
 import com.qingluo.link.model.dto.entity.DocumentParsePipeline;
 import com.qingluo.link.service.DocumentParseSseService;
 import com.qingluo.link.service.config.ParseResultStuckProperties;
+import com.qingluo.link.core.trace.TraceContext;
 import com.qingluo.link.service.constant.ParsePipelineStatus;
 import com.qingluo.link.service.support.ParseResultMetrics;
 import java.time.Duration;
@@ -49,24 +50,29 @@ public class DocumentParseStuckScanner {
 
     @Scheduled(fixedDelayString = "${tolink.parse-result.stuck.scan-interval-ms:60000}")
     public void scan() {
-        LocalDateTime now = LocalDateTime.now();
-        // 粗筛：用所有阈值的最小值先捞出候选，降低扫描量；精确阈值在逐条判定。
-        LocalDateTime coarseCutoff = now.minus(properties.minThreshold());
-        List<DocumentParsePipeline> candidates = documentParsePipelineMapper.selectList(
-            new LambdaQueryWrapper<DocumentParsePipeline>()
-                .in(DocumentParsePipeline::getPipelineStatus, ParsePipelineStatus.PENDING, ParsePipelineStatus.PROCESSING)
-                .lt(DocumentParsePipeline::getCreatedAt, coarseCutoff));
-        if (candidates == null || candidates.isEmpty()) {
-            return;
-        }
-        for (DocumentParsePipeline candidate : candidates) {
-            // 单条隔离，避免一条异常中断整批扫描。
-            try {
-                handleCandidate(candidate, now);
-            } catch (Exception e) {
-                log.warn("Stuck scan failed for one candidate, pipelineId={}, taskId={}",
-                    candidate.getId(), candidate.getTaskId(), e);
+        TraceContext.startNew();
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            // 粗筛：用所有阈值的最小值先捞出候选，降低扫描量；精确阈值在逐条判定。
+            LocalDateTime coarseCutoff = now.minus(properties.minThreshold());
+            List<DocumentParsePipeline> candidates = documentParsePipelineMapper.selectList(
+                new LambdaQueryWrapper<DocumentParsePipeline>()
+                    .in(DocumentParsePipeline::getPipelineStatus, ParsePipelineStatus.PENDING, ParsePipelineStatus.PROCESSING)
+                    .lt(DocumentParsePipeline::getCreatedAt, coarseCutoff));
+            if (candidates == null || candidates.isEmpty()) {
+                return;
             }
+            for (DocumentParsePipeline candidate : candidates) {
+                // 单条隔离，避免一条异常中断整批扫描。
+                try {
+                    handleCandidate(candidate, now);
+                } catch (Exception e) {
+                    log.warn("Stuck scan failed for one candidate, pipelineId={}, taskId={}",
+                        candidate.getId(), candidate.getTaskId(), e);
+                }
+            }
+        } finally {
+            TraceContext.clear();
         }
     }
 

@@ -178,8 +178,11 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
-| `LOG_LEVEL` | 应用日志级别 | 否 | `debug` | `info`（生产） |
+| `LOG_LEVEL` | 应用日志级别（`application.yml` 已接 `${LOG_LEVEL:info}`，对 `com.qingluo.link` 生效） | 否 | `info` | `debug`（本地排查） |
 | `MYBATIS_LOG_IMPL` | MyBatis SQL 日志实现类 | 否 | `org.apache.ibatis.logging.stdout.StdOutImpl` | `org.apache.ibatis.logging.nologging.NoLoggingImpl`（生产） |
+| `LOG_PATH` | 日志输出目录（`logback-spring.xml` 按天文件夹滚动、保留 7 天；Docker 部署挂载到宿主） | 否 | `logs` | `/app/logs` |
+
+**链路追踪（traceId）**：`TraceIdFilter` 为每个 HTTP 请求建立 traceId 写入 MDC（优先复用上游 `X-Trace-Id` 头，缺失则新建，并回写响应头）；异步线程池经 `MdcTaskDecorator` 透传，MQ 消费者与定时扫描入口经 `TraceContext.startNew()` 自建。日志格式以 `[%X{traceId}]` 输出，全链路（含异步、MQ、定时任务）日志可按 traceId 串联。
 
 ### 4.14 召回网关（RECALL_* / RAG_PYTHON_BASE_URL）
 
