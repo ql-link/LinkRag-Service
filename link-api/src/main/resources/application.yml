@@ -19,6 +19,17 @@ sa-token:
   is-share: false
   token-mode: uuid
 
+tolink:
+  recall:
+    # 内部召回代理链路密钥（与 Python 内部验签端一致）。经环境变量下发，不入库。
+    internal-jwt-secret: ${RECALL_INTERNAL_JWT_SECRET:}
+    # 前端直连召回 session token 独立密钥（LINK-104）：必须非空且 ≠ internal-jwt-secret（启动期强校验）。
+    session-jwt-secret: ${RECALL_SESSION_JWT_SECRET:}
+    # session token 有效期（秒），Python 强制校验 exp。
+    session-jwt-exp-seconds: ${RECALL_SESSION_JWT_EXP_SECONDS:30}
+    # 前端可见的 Python 召回地址（公网/网关），用于拼接返回给前端的 streamUrl。
+    session-stream-base-url: ${RECALL_SESSION_STREAM_BASE_URL:http://localhost:8000}
+
 logging:
   level:
     com.qingluo.link: debug
