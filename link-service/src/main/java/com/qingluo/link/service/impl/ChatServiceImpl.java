@@ -19,6 +19,7 @@ import com.qingluo.link.model.dto.entity.ChatMessage;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.service.ChatService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -51,7 +52,11 @@ public class ChatServiceImpl implements ChatService {
         conversation.setLastConfigId(request.getLastConfigId());
         conversation.setIsPinned(false);
 
-        conversationMapper.insert(conversation);
+        try {
+            conversationMapper.insert(conversation);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(400, "当前数据集下已存在同名对话", 400);
+        }
 
         return toDTO(conversation);
     }
@@ -125,7 +130,11 @@ public class ChatServiceImpl implements ChatService {
             throw new BusinessException(400, "请至少提供一个需要更新的字段", 400);
         }
 
-        conversationMapper.updateById(conversation);
+        try {
+            conversationMapper.updateById(conversation);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(400, "当前数据集下已存在同名对话", 400);
+        }
         return toDTO(conversation);
     }
 

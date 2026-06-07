@@ -118,7 +118,8 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     INDEX idx_chat_conversation_user_active_list (user_id, is_pinned, updated_at),
-    INDEX idx_chat_conversation_dataset_updated (dataset_id, updated_at)
+    INDEX idx_chat_conversation_dataset_updated (dataset_id, updated_at),
+    UNIQUE KEY uk_conversation_user_dataset_title (user_id, dataset_id, title)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话表';
 
 -- 6. 对话消息表
