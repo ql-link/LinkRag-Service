@@ -31,8 +31,6 @@ CREATE TABLE IF NOT EXISTS llm_system_provider (
     provider_type   VARCHAR(32)    NOT NULL COMMENT '厂商类型：openai/claude/glm/deepseek',
     provider_name   VARCHAR(64)    NOT NULL COMMENT '厂商展示名称，如 "OpenAI"',
     api_base_url    VARCHAR(512)   NOT NULL COMMENT '官方默认 API 地址',
-    supported_models JSON           COMMENT '支持模型与能力映射',
-    config_schema   JSON           COMMENT '配置参数 Schema',
     is_active       BOOLEAN        NOT NULL DEFAULT TRUE COMMENT '是否启用',
     priority        INT            NOT NULL DEFAULT 50 COMMENT '厂商优先级（1-100）',
     created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -41,31 +39,53 @@ CREATE TABLE IF NOT EXISTS llm_system_provider (
     UNIQUE KEY uk_provider_type (provider_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 系统级厂商配置表';
 
--- 3. 用户级 LLM 配置表
+-- 2.1 厂商模型能力目录表（取代 llm_system_provider.supported_models JSON）
+CREATE TABLE IF NOT EXISTS llm_provider_model (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    provider_id     BIGINT UNSIGNED NOT NULL COMMENT '关联 llm_system_provider.id',
+    model_name      VARCHAR(128)    NOT NULL COMMENT '模型名',
+    capability      VARCHAR(32)     NOT NULL COMMENT '单能力；一模型多能力=多行',
+    is_active       BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '该模型能力是否上架',
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_provider_model_cap (provider_id, model_name, capability),
+    INDEX idx_provider_cap (provider_id, capability)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '厂商模型能力目录表';
+
+-- 2.2 系统预设表（管理员预配整套可用配置，自带平台 Key，注册时复制进用户配置表）
+CREATE TABLE IF NOT EXISTS llm_system_preset (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    provider_id     BIGINT UNSIGNED NOT NULL COMMENT '关联 llm_system_provider.id',
+    model_name      VARCHAR(128)    NOT NULL COMMENT '模型名',
+    capability      VARCHAR(32)     NOT NULL COMMENT '能力标识',
+    api_key         VARCHAR(512)    NOT NULL COMMENT '平台 Key（加密）',
+    is_active       BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否对新用户下发',
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_preset_provider_model_cap (provider_id, model_name, capability)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '系统预设表';
+
+-- 3. 用户级 LLM 配置表（下游唯一生效源，Python 直读；系统预设与用户自配统一汇入）
 CREATE TABLE IF NOT EXISTS llm_user_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
     provider_id         BIGINT UNSIGNED NOT NULL COMMENT '关联 SystemProvider ID',
-    provider_type       VARCHAR(32)     NOT NULL COMMENT '厂商类型快照',
-    provider_name       VARCHAR(64)     NOT NULL COMMENT '厂商名称快照',
-    config_name         VARCHAR(64)     NOT NULL COMMENT '用户自定义配置名称',
-    api_key             VARCHAR(512)    NOT NULL COMMENT 'API Key（加密存储）',
-    custom_api_base_url VARCHAR(512)    COMMENT '自定义 API 地址',
+    provider_type       VARCHAR(32)     NOT NULL COMMENT '厂商类型快照，下游路由 SDK',
+    api_key             VARCHAR(512)    NOT NULL COMMENT '厂商级 API Key（加密存储）',
+    api_base_url        VARCHAR(512)    COMMENT '实际生效地址：用户自定义或厂商默认',
     model_name          VARCHAR(128)    NOT NULL COMMENT '具体模型名',
-    priority            INT             NOT NULL DEFAULT 50 COMMENT '优先级 1-100',
-    is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否启用',
-    is_default          BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '是否为默认配置',
-    timeout_ms          INT             DEFAULT 60000 COMMENT '超时时间(毫秒)',
-    max_retries         INT             DEFAULT 3 COMMENT '最大重试次数',
-    stream_enabled      BOOLEAN         DEFAULT TRUE COMMENT '是否支持流式输出',
-    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '🆕专用能力标识：CHAT/EMBEDDING/RERANK/OCR',
-    extra_config        JSON            COMMENT '扩展配置',
+    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/RERANK/OCR 等',
+    is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '模型启停 + 生效过滤',
+    is_default          BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '该能力是否生效（单用户单能力唯一）',
+    is_system_preset    BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '系统预设行（只读）',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    UNIQUE KEY uk_user_provider_model_capability (user_id, provider_id, model_name, capability),
+    UNIQUE KEY uk_user_provider_model_capability (user_id, provider_id, model_name, capability, is_system_preset),
     INDEX idx_user_active_default (user_id, is_active, is_default),
-    INDEX idx_user_provider_cap (user_id, provider_type, capability) -- 🆕 新增：支撑按能力快速切换的查询索引
+    INDEX idx_user_provider_cap (user_id, provider_type, capability)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '用户级 LLM 配置表';
 
 
@@ -233,6 +253,8 @@ CREATE TABLE IF NOT EXISTS document_parse_pipeline (
 -- 设置所有表的自增起始值为 10000 (MySQL 8.0 推荐显式指定方式)
 ALTER TABLE sys_user AUTO_INCREMENT = 10000;
 ALTER TABLE llm_system_provider AUTO_INCREMENT = 10000;
+ALTER TABLE llm_provider_model AUTO_INCREMENT = 10000;
+ALTER TABLE llm_system_preset AUTO_INCREMENT = 10000;
 ALTER TABLE llm_user_config AUTO_INCREMENT = 10000;
 ALTER TABLE dataset AUTO_INCREMENT = 10000;
 ALTER TABLE chat_conversation AUTO_INCREMENT = 10000;
@@ -242,3 +264,12 @@ ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_pipeline AUTO_INCREMENT = 10000;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 初始数据（LLM 厂商 + 模型目录）
+-- 运行完本文件后，执行 seed_llm_providers.sql 写入初始厂商与模型数据：
+--   SOURCE scripts/db/seed_llm_providers.sql;
+-- seed_llm_providers.sql 由 scripts/import_ragflow_configs.py 自动生成，
+-- 需要重新生成时：
+--   python3 scripts/import_ragflow_configs.py [ragflow-configs-dir]
+-- ─────────────────────────────────────────────────────────────────────────────

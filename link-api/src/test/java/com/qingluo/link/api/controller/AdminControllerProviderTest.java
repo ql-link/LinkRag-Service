@@ -126,7 +126,6 @@ class AdminControllerProviderTest {
         provider.setProviderType("google");
         provider.setProviderName("Google AI");
         provider.setApiBaseUrl("https://generativelanguage.googleapis.com/v1");
-        provider.setSupportedModels("[\"gemini-pro\", \"gemini-ultra\"]");
         provider.setIsActive(true);
         provider.setPriority(80);
         systemProviderMapper.insert(provider);
@@ -171,7 +170,6 @@ class AdminControllerProviderTest {
                 "\"providerType\":\"" + providerType + "\"," +
                 "\"providerName\":\"Google AI\"," +
                 "\"apiBaseUrl\":\"https://generativelanguage.googleapis.com/v1\"," +
-                "\"supportedModels\":\"[\\\"gemini-pro\\\", \\\"gemini-ultra\\\"]\"," +
                 "\"isActive\":true," +
                 "\"priority\":80" +
                 "}";

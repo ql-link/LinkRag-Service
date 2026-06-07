@@ -21,18 +21,25 @@
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
 | GET | `/api/v1/admin/document-file-config` | 查询文档文件上传配置 |
 | PATCH | `/api/v1/admin/document-file-config` | 修改文档文件上传配置 |
+| POST | `/api/v1/admin/providers/{providerId}/models` | 新增厂商模型能力目录项 |
+| DELETE | `/api/v1/admin/provider-models/{id}` | 删除模型能力目录项 |
+| PATCH | `/api/v1/admin/provider-models/{id}/active` | 上/下架模型能力目录项 |
+| GET | `/api/v1/admin/system-presets` | 系统预设列表（平台 Key 脱敏） |
+| POST | `/api/v1/admin/system-presets` | 新增系统预设（平台 Key 加密入库） |
+| DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 ## LLM
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/v1/llm/providers` | 可用厂商与模型能力 |
-| GET | `/api/v1/llm/configs` | 用户配置列表 |
-| POST | `/api/v1/llm/configs` | 创建用户配置 |
-| GET | `/api/v1/llm/configs/default` | 默认配置 |
-| PATCH | `/api/v1/llm/configs/{id}/default` | 设置默认配置 |
-| PATCH | `/api/v1/llm/configs/{id}` | 更新配置 |
-| DELETE | `/api/v1/llm/configs/{id}` | 删除配置 |
+| GET | `/api/v1/llm/providers` | 可用厂商与模型能力（来源 `llm_provider_model`） |
+| GET | `/api/v1/llm/configs` | 用户配置列表（含系统预设行） |
+| POST | `/api/v1/llm/configs/setup-provider` | 配置厂商：选厂商+填厂商级 Key，自动展开整厂商模型 |
+| PATCH | `/api/v1/llm/configs/toggle-model` | 模型启停（按厂商+模型批量） |
+| PUT | `/api/v1/llm/configs/effective` | 按能力选生效模型 |
+| GET | `/api/v1/llm/configs/default` | 取某能力生效配置 |
+| PATCH | `/api/v1/llm/configs/{id}/default` | 设某能力生效（含切换到/切回系统预设） |
+| DELETE | `/api/v1/llm/configs/{id}` | 删除配置（系统预设只读，拒删） |
 | GET | `/api/v1/llm/usage/summary` | 用量汇总 |
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
@@ -41,7 +48,7 @@
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
 >
-> `POST /api/v1/llm/configs` 按模型支持的全部能力展开为多条配置并返回列表；`GET /api/v1/llm/configs` 支持 `capability` 过滤；`GET /configs/default`、`PATCH /configs/{id}/default` 按 `capability` 维度维护默认配置。无效能力标识返回错误码 `10011`。
+> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力生效唯一）。`PATCH /configs/toggle-model` 独立启停模型（关停后按能力选生效时不展示）。系统预设注册时写入用户配置（`is_system_preset=true`、`is_default=true`），常备只读，仅可经 `PATCH /configs/{id}/default` 按能力切换是否选其生效。`GET /configs` 支持 `capability` / `isActive` 过滤。错误码：删除预设 `10013`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
 
 ## Chat
 

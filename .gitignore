@@ -46,3 +46,6 @@ docs/ToLink-前端API文档.md
 
 # 本地运行配置（不入库）
 /link-api/src/main/resources/application-local.yml
+
+# 本地临时说明与运行记录（不入库）
+/.local/

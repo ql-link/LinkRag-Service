@@ -30,14 +30,6 @@ public class SystemProvider {
     @TableField("api_base_url")
     private String apiBaseUrl;
 
-    @Schema(description = "支持的模型列表")
-    @TableField("supported_models")
-    private String supportedModels;
-
-    @Schema(description = "配置Schema")
-    @TableField("config_schema")
-    private String configSchema;
-
     @Schema(description = "是否启用", example = "true")
     @TableField("is_active")
     private Boolean isActive = true;

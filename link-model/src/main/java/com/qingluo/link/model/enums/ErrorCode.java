@@ -27,6 +27,8 @@ public enum ErrorCode {
     DUPLICATE_USER_CONFIG(10009, "用户已存在该厂商相同模型的配置", 409),
     DOCUMENT_FILE_CONFIG_INVALID(10010, "文档文件上传配置不合法", 400),
     INVALID_MODEL_CAPABILITY(10011, "模型能力标识无效", 400),
+    MODEL_DISABLED(10012, "模型已被关闭，不可选为生效", 400),
+    PRESET_READONLY(10013, "系统预设为只读，不可修改或删除", 403),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),

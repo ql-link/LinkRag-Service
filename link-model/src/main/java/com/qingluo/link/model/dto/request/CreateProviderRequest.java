@@ -25,12 +25,6 @@ public class CreateProviderRequest {
     @Schema(description = "API地址", example = "https://api.openai.com/v1")
     private String apiBaseUrl;
 
-    @Schema(description = "支持的模型列表(JSON数组)", example = "[\"gpt-4\",\"gpt-3.5-turbo\"]")
-    private String supportedModels;
-
-    @Schema(description = "配置Schema(JSON格式)")
-    private String configSchema;
-
     @NotNull(message = "启用状态不能为空")
     @Schema(description = "是否启用", example = "true")
     private Boolean isActive;

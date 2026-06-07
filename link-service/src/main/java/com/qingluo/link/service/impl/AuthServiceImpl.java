@@ -13,10 +13,12 @@ import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
+import com.qingluo.link.service.SystemPresetService;
 import com.qingluo.link.service.cache.UserCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -32,6 +34,7 @@ public class AuthServiceImpl implements AuthService {
     private final SysUserMapper sysUserMapper;
     private final PasswordEncoder passwordEncoder;
     private final UserCacheService userCacheService;
+    private final SystemPresetService systemPresetService;
 
     /**
      * 校验账号密码并创建登录态，成功后同步刷新最后登录时间。
@@ -63,6 +66,7 @@ public class AuthServiceImpl implements AuthService {
      * 注册新用户并自动登录，同时初始化最后登录时间。
      */
     @Override
+    @Transactional
     public AuthResult register(RegisterRequest request) {
         String username = normalizeRequired(request.getUsername());
         SysUser existUser = sysUserMapper.selectByUsername(username);
@@ -86,6 +90,8 @@ public class AuthServiceImpl implements AuthService {
         user.setLastLoginAt(LocalDateTime.now());
 
         sysUserMapper.insert(user);
+        // 注册即写入系统预设，实现开箱即用；失败则随事务回滚、阻断注册
+        systemPresetService.applyPresetsForNewUser(user.getId());
         StpUtil.login(user.getId());
         userCacheService.put(user.getId(), toDTO(user));
 
