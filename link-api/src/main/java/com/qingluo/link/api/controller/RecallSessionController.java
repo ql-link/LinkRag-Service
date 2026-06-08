@@ -15,10 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 召回 session token 签发接口（LINK-104）。
  *
- * <p>签发短期 token 供前端直连 Python 召回 SSE（{@code POST /api/v1/recall/stream}）。Java 只做
- * Sa-Token 鉴权 + 数据集归属校验 + 签发，不代理/中转 SSE 流内容。</p>
+ * <p>签发短期 token 供前端直连 Python 召回 SSE（前端凭 token 直连 Python 的 {@code /api/v1/recall/stream}）。
+ * Java 只做 Sa-Token 鉴权 + 数据集归属校验 + 签发，不代理/中转 SSE 流内容。</p>
  *
- * <p>原 {@code POST /api/v1/recall/stream} 内部代理链路（{@link RecallController}）保持不变，本接口为加法。</p>
+ * <p>旧的 Java 中转代理链路（{@code RecallController}）已于 LINK-122 废弃移除，召回统一走前端直连 Python。</p>
  */
 @RestController
 @RequiredArgsConstructor

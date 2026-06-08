@@ -97,27 +97,18 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/v1/recall/stream` | 用户态流式召回（SSE，`text/event-stream`，Java 中转代理链路） |
 | POST | `/api/v1/recall/sessions` | 签发前端直连 Python 召回的短期 session token（普通 JSON） |
+
+> **历史链路已下线（LINK-122）**：Java 曾提供 `POST /api/v1/recall/stream` 中转代理（同步转发 Python 内部端点 `/api/v1/internal/recall/stream`），现已废弃移除。聊天召回统一走「前端直连 Python」：前端凭下方接口签发的 session token 直连 `streamUrl`（即 `<rag-host>/api/v1/recall/stream`，由 Python 提供），Java **不在**召回/生成请求路径上。
 
 ### POST /api/v1/recall/sessions（前端直连签发）
 
-> 「前端直连 Python 召回 SSE」的并存链路（LINK-104）：Java 只做 Sa-Token 鉴权 + 用户状态（`status==1`）+ `datasetIds` 归属校验，签发短期 HS256 session token；**不代理/中转 SSE 流内容**，资源滥用由 Python「按用户并发上限」兜底。原 `/api/v1/recall/stream` 内部代理链路保持不变，本接口为加法。
+> 「前端直连 Python 召回 SSE」链路（LINK-104）：Java 只做 Sa-Token 鉴权 + 用户状态（`status==1`）+ `datasetIds` 归属校验，签发短期 HS256 session token；**不代理/中转 SSE 流内容**，资源滥用由 Python「按用户并发上限」兜底。
 >
-> **请求体**（camelCase）：`{ "datasetIds": [1,2] }`。`datasetIds` **必须显式非空**（每个 id 为当前用户有权访问的库）；空列表/缺省返回 400——本接口**不沿用**中转链路「空=本人全部库」展开约定，避免下发空 `dataset_ids` claim 被 Python 误判为全库授权造成越权放大。本接口只签发，**不接收 query**（query 在前端直连 Python 时随 stream 请求体提交）。
+> **请求体**（camelCase）：`{ "datasetIds": [1,2] }`。`datasetIds` **必须显式非空**（每个 id 为当前用户有权访问的库）；空列表/缺省返回 400——避免下发空 `dataset_ids` claim 被 Python 误判为全库授权造成越权放大。本接口只签发，**不接收 query**（query 在前端直连 Python 时随 stream 请求体提交）。
 >
-> **响应**：`{ "token": "...", "expiresIn": 30, "streamUrl": "<前端可见的 Python 直连地址>" }`。`streamUrl = RECALL_SESSION_STREAM_BASE_URL + /api/v1/recall/stream`。前端凭 `token`（`Authorization: Bearer`）`POST` 直连 `streamUrl`。
+> **响应**：`{ "token": "...", "expiresIn": 30, "streamUrl": "<前端可见的 Python 直连地址>" }`。`streamUrl = RECALL_SESSION_STREAM_BASE_URL + /api/v1/recall/stream`（该路径由 Python 提供，**非** Java 路由）。前端凭 `token`（`Authorization: Bearer`）`POST` 直连 `streamUrl`，请求体含 `config_id`（用户 CHAT 模型），Python 完成召回融合后流式生成答案（事件含 `answer_delta` / `answer_done`）。
 >
-> **session token claims**（HS256，**独立密钥** `RECALL_SESSION_JWT_SECRET`，必须 ≠ 内部密钥；与 Python 配置逐字一致）：`iss=tolink-java`、`aud=tolink-rag-frontend`、`scope=recall:stream`、`sub=<user_id 正整数字符串>`、`dataset_ids=<已校验的显式授权范围>`、`iat`、`exp`（默认 30s）。token **短期可复用**，不做 `jti`/一次性/防重放/撤销。
+> **session token claims**（HS256，**独立密钥** `RECALL_SESSION_JWT_SECRET`；与 Python 配置逐字一致）：`iss=tolink-java`、`aud=tolink-rag-frontend`、`scope=recall:stream`、`sub=<user_id 正整数字符串>`、`dataset_ids=<已校验的显式授权范围>`、`iat`、`exp`（默认 30s）。token **短期可复用**，不做 `jti`/一次性/防重放/撤销。
 >
 > **错误**：未登录 401；`datasetIds` 为空 400；`datasetIds` 越权 `RECALL_SCOPE_FORBIDDEN`（30002，403）；用户禁用 `AUTH_DISABLED`（20003，403）。Python 侧验签失败返回 `401 RECALL_SESSION_UNAUTHORIZED`、越权返回 `403 RECALL_SCOPE_FORBIDDEN`。
-
-### POST /api/v1/recall/stream（Java 中转代理）
-
-> 用户态召回网关：Java 校验 Sa-Token 登录态、用户状态（`status==1`）、`datasetIds` 归属后，签发内部 HS256 JWT 调用 Python `POST {RAG_PYTHON_BASE_URL}/api/v1/internal/recall/stream`（snake_case `query`/`user_id`/`dataset_ids`，header `Authorization: Bearer`、`X-Request-Id`），把结果裁剪为最小候选并以 SSE 转发。Java 不向 Python 透传前端 Sa-Token；内部 JWT `sub`/`dataset_ids` 与请求体 `user_id`/`dataset_ids` 自洽。
->
-> **请求体**（camelCase）：`{ "query": "...", "datasetIds": [1,2] }`。`query` 非空；`datasetIds` 非 null，空列表表示「当前用户的全部数据集」（Java 展开为本人所有 dataset id，本人无库则直接返回空 `hits`、不调 Python）。首版拒绝 `docIds`/`topK`/`sources`/`strict`/`includeContent` 等未知字段（400）。
->
-> **SSE 事件**：成功 `event: recall_done` + `data: {"hits":[{"chunkId","docId","datasetId"}]}`（保持 Python 顺序，首版不含正文与打分）；失败 `event: error` + `data: {"code","message"}`，`code` 为英文串码（`UNAUTHORIZED`/`RECALL_SCOPE_FORBIDDEN`/`RECALL_INVALID_REQUEST`/`RECALL_INTERNAL_AUTH_FAILED`/`RECALL_ALL_SOURCES_FAILED`/`RECALL_TIMEOUT`/`RECALL_UPSTREAM_ERROR`），不含内部堆栈。
->
-> **建流前 / 建流后**：登录态、用户状态、参数、未知字段、`datasetIds` 越权、限流（默认每用户每分钟 10 次，固定窗口内允许突发）等校验在建流前完成，失败返回普通 HTTP 错误（401/403/400/429）；建流后（已开始 SSE）的任何错误（Python `error`、非 2xx、超时、未知）统一映射为 `event: error` 后关闭。前端断开时 Java 取消到 Python 的调用。

@@ -21,16 +21,16 @@
 - 其余 `MODEL_NOT_SUPPORTED(10008)`（模型不支持该能力 / 目录无该模型能力）、`DUPLICATE_USER_CONFIG(10009)`、`NO_DEFAULT_CONFIG(10006)` 等以 `ErrorCode.java` 为准。
 - `GlobalExceptionHandler` 新增对 `MissingServletRequestParameterException` 的处理：缺少必填查询参数统一返回 400 `缺少必填参数: <name>`。
 
-## 召回错误码（recall-gateway）
+## 召回错误码（recall）
 
-召回网关采用**双通道**错误表达：
+> **变更（LINK-122）**：旧召回网关链路（Java 中转代理 `/api/v1/recall/stream`）已废弃移除，其专用错误码
+> `RECALL_INVALID_REQUEST(30001)`、`RECALL_RATE_LIMITED(30003)`、`RECALL_INTERNAL_AUTH_FAILED(30004)`、
+> `RECALL_ALL_SOURCES_FAILED(30005)`、`RECALL_TIMEOUT(30006)`、`RECALL_UPSTREAM_ERROR(30007)` 与英文串码枚举
+> `RecallSseError` 一并删除（这些码仅由该链路的建流前 HTTP / 建流后 SSE 表达使用）。建流后 SSE 错误码现由 Python 直连链路负责。
 
-- **建流前（HTTP 错误）**：沿用数字 `ErrorCode`，召回段 `30001-39999`，经 `GlobalExceptionHandler` 返回 `Result`：
-  `RECALL_INVALID_REQUEST(30001/400)`、`RECALL_SCOPE_FORBIDDEN(30002/403)`、`RECALL_RATE_LIMITED(30003/429)`、
-  `RECALL_INTERNAL_AUTH_FAILED(30004)`、`RECALL_ALL_SOURCES_FAILED(30005)`、`RECALL_TIMEOUT(30006)`、`RECALL_UPSTREAM_ERROR(30007)`。
-  另：用户禁用复用 `AUTH_DISABLED(20003/403)`；请求体不可读（未知字段/类型错误）由 `GlobalExceptionHandler.handleNotReadable` 返回 400。
-- **建流后（SSE `error` 事件）**：用英文串码枚举 `RecallSseError`（`UNAUTHORIZED` / `RECALL_SCOPE_FORBIDDEN` / `RECALL_INVALID_REQUEST` /
-  `RECALL_INTERNAL_AUTH_FAILED` / `RECALL_ALL_SOURCES_FAILED` / `RECALL_TIMEOUT` / `RECALL_UPSTREAM_ERROR`），
-  `data: {"code","message"}`，不含内部堆栈。Python 已知错误码透传，未知/非 2xx 兜底 `RECALL_UPSTREAM_ERROR`。
+召回 session 签发链路（`POST /api/v1/recall/sessions`，前端直连 Python，LINK-104）只保留归属校验相关 HTTP 错误：
+
+- `RECALL_SCOPE_FORBIDDEN(30002/403)`：`datasetIds` 含非本人/已软删的数据集。
+- 用户禁用复用 `AUTH_DISABLED(20003/403)`；`datasetIds` 为空或缺省由 DTO 校验返回 400。
 
 详见 `docs/api/api_contracts.md` 的 Recall 章节。

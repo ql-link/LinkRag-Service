@@ -56,8 +56,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 请求体反序列化失败：覆盖 RecallStreamRequest 的未知字段拒绝（docIds/topK/sources/strict/includeContent）
-     * 与字段类型错误（如 query 非字符串）。统一返回 400，对应召回“建流前参数错误”。
+     * 缺少必填请求参数：统一返回 400。
      */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<Result<Object>> handleMissingParam(MissingServletRequestParameterException e) {

@@ -188,30 +188,22 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 **审计日志**：`AuditLog`（专用 logger 名 `AUDIT`，统一 `action=` 前缀，复用 traceId）为安全/高危动作留痕——登录成功/失败（`LOGIN_SUCCESS`/`LOGIN_FAIL`）、注册（`REGISTER`）、登出（`LOGOUT`）、改用户状态/角色（`USER_STATUS_CHANGE`/`USER_ROLE_CHANGE`，记操作人+目标+前后值）、配置厂商 Key（`LLM_PROVIDER_SETUP`）、删配置（`LLM_CONFIG_DELETE`）、厂商增删（`PROVIDER_CREATE`/`PROVIDER_DELETE`）。**仅记标识与结果，严禁记录明文密码、API Key、token**。可经 `logging.level.AUDIT` 单独调级或拆独立 appender。
 
-### 4.14 召回网关（RECALL_* / RAG_PYTHON_BASE_URL）
+### 4.14 召回 session 签发（RECALL_SESSION_*）
 
-用户态召回 SSE 网关配置，前缀 `tolink.recall`（`RecallProperties`）：
+前端直连 Python 召回的 session token 签发配置，前缀 `tolink.recall`（`RecallProperties`）：
 
 | 名称 | 用途 | 是否必需 | 默认值 |
 |------|------|----------|--------|
-| `RAG_PYTHON_BASE_URL` | Python RAG 服务地址（拼接 `/api/v1/internal/recall/stream`） | 否 | `http://tolink-rag:8000` |
-| `RECALL_INTERNAL_JWT_SECRET` | 内部 JWT HS256 密钥（须与 Python 验签端一致；生产用密钥管理系统） | 是（dev） | 空 |
-| `RECALL_JWT_EXP_SECONDS` | 内部 JWT 有效期（秒） | 否 | `30` |
-| `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致，**必须 ≠ `RECALL_INTERNAL_JWT_SECRET`**，否则启动失败） | 是 | 空 |
+| `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致） | 是 | 空 |
 | `RECALL_SESSION_JWT_EXP_SECONDS` | session token 有效期（秒），Python 强制校验 `exp` | 否 | `30` |
-| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python 召回地址（公网/网关），用于拼接响应 `streamUrl`；独立于内部 `RAG_PYTHON_BASE_URL` | 否 | `http://localhost:8000` |
-| `RECALL_STREAM_TIMEOUT_MS` | 召回整体超时（毫秒，作为 okhttp callTimeout） | 否 | `60000` |
-| `RECALL_EMITTER_TIMEOUT_BUFFER_MS` | SseEmitter 超时相对整体超时的缓冲（毫秒）；emitter 超时 = stream-timeout-ms + 本值，使上游超时先触发并发出 `RECALL_TIMEOUT`，避免前端流被静默关闭 | 否 | `5000` |
-| `RECALL_CONNECT_TIMEOUT_MS` | 连接 Python 超时（毫秒） | 否 | `3000` |
-| `RECALL_READ_TIMEOUT_MS` | 读取 Python 响应超时（毫秒） | 否 | `60000` |
-| `RECALL_RATE_LIMIT_PER_MINUTE` | 每用户每分钟召回上限（单机固定窗口计数，窗口内允许突发，超限返回 429） | 否 | `10` |
-| `RECALL_EXECUTOR_CORE_SIZE` | 召回转发线程池核心线程数 | 否 | `8` |
-| `RECALL_EXECUTOR_MAX_SIZE` | 召回转发线程池最大线程数 | 否 | `32` |
-| `RECALL_EXECUTOR_QUEUE_CAPACITY` | 召回转发线程池队列容量 | 否 | `64` |
+| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python 召回地址（公网/网关），用于拼接响应 `streamUrl` | 否 | `http://localhost:8000` |
 
-> 本地 `application-local.yml` 使用固定示例密钥联调；`internal-jwt-secret` 为空时召回会在签发 JWT 阶段失败（500），生产/dev 部署必须配置该密钥且与 Python 验签端一致。
+> `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空时直接 fail-fast，因此启用本服务必须配置一个非空 session 密钥。
 >
-> `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空或等于 `internal-jwt-secret` 时直接 fail-fast（密码学隔离），因此启用本服务必须配置一个非空且与内部密钥不同的 session 密钥。
+> **变更（LINK-122）**：旧召回网关链路（Java 中转代理 `/api/v1/recall/stream` → Python 内部端点）已废弃移除，其专属配置
+> `RAG_PYTHON_BASE_URL`、`RECALL_INTERNAL_JWT_SECRET`、`RECALL_JWT_EXP_SECONDS`、`RECALL_STREAM_TIMEOUT_MS`、
+> `RECALL_EMITTER_TIMEOUT_BUFFER_MS`、`RECALL_CONNECT_TIMEOUT_MS`、`RECALL_READ_TIMEOUT_MS`、
+> `RECALL_RATE_LIMIT_PER_MINUTE`、`RECALL_EXECUTOR_*` 一并删除，部署时可移除这些环境变量。
 
 ## 4.15 缓存一致性（tolink.cache-consistency.*）
 

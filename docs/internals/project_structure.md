@@ -17,7 +17,7 @@ toLink-Service/
 └── scripts          # AI/documentation validation scripts
 ```
 
-依赖方向以业务层复用模型、Mapper、组件为主：`link-api` 调用 `link-service`，`link-service` 组合 `link-mapper`、`link-components`、`link-core`、`link-model`。`link-service` 另引入 `spring-boot-starter-actuator`（Micrometer 监控指标，向上传递给 `link-api`）与测试域 `spring-kafka-test`（EmbeddedKafka 集成测试）。召回网关（recall-gateway）为 `link-service` 引入 `okhttp`（流式调用 Python 内部召回）与 `guava`（按用户限流），为 `link-model` 引入 `jackson-annotations`（请求 DTO 拒绝未知字段）；召回相关类分布于各层（`link-api` 的 `RecallController`、`link-service` 的 `recall/*` 与 `config/Recall*`、`link-core` 的 `security/InternalJwtSigner`）。
+依赖方向以业务层复用模型、Mapper、组件为主：`link-api` 调用 `link-service`，`link-service` 组合 `link-mapper`、`link-components`、`link-core`、`link-model`。`link-service` 另引入 `spring-boot-starter-actuator`（Micrometer 监控指标，向上传递给 `link-api`）与测试域 `spring-kafka-test`（EmbeddedKafka 集成测试）。召回当前为「前端直连 Python」模式，Java 仅签发 session token：相关类有 `link-api` 的 `RecallSessionController`、`link-service` 的 `recall/RecallSessionServiceImpl` 与 `recall/RecallScopeResolver`、`config/RecallProperties`、`config/RecallExecutorConfig`、`link-core` 的 `security/RecallSessionJwtSigner`。旧召回网关链路（Java 中转代理 Python 内部召回）已于 LINK-122 废弃移除，`link-service` 的 `okhttp`/`guava` 与 `link-model` 的 `jackson-annotations` 依赖一并删除。
 
 ## 构建与测试
 
