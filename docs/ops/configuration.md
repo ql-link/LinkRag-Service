@@ -367,3 +367,9 @@ services:
 | `dataset-thresholds` | —（仅 yml） | 空 | 按数据集覆盖阈值，如 `dataset-thresholds.{datasetId}: 20m`；未配置回落 `default-threshold` |
 
 说明：调度由 `SchedulingConfig`（`@EnableScheduling`）开启。监控指标走 Micrometer（`spring-boot-starter-actuator`），本地 registry，不接外部平台；无 Micrometer 时降级为仅日志。退避重试参数（最多 3 次、1s→×2→上限 10s）固化在 `ParseResultKafkaConfig`。
+
+## 博客上传与权限配置
+
+- 博客正文和图片不设置业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用默认 multipart 限制为 20MB，需要支持更大文件时由部署环境调大。
+- 博客图片使用 OSS PUBLIC bucket，部署时必须配置匿名读策略或公开反向代理。
+- `SaTokenAnnotationConfig` 已启用 MVC 注解拦截，`@SaCheckRole("ADMIN")` 会在请求进入 Controller 前执行；`StpInterfaceImpl` 同时兼容数字和字符串形式的 loginId。

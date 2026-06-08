@@ -45,6 +45,17 @@ class StpInterfaceImplTest {
     }
 
     @Test
+    @DisplayName("Should_ParseStringLoginId_When_RoleCheckRunsFromHttpRequest")
+    void Should_ParseStringLoginId_When_RoleCheckRunsFromHttpRequest() {
+        UserProfileDTO cached = buildDto(1L, UserRole.ADMIN);
+        given(userCacheService.getOrLoad(eq(1L), any())).willReturn(cached);
+
+        List<String> roles = stpInterface.getRoleList("1", "login");
+
+        assertThat(roles).containsExactly("ADMIN");
+    }
+
+    @Test
     @DisplayName("Should_QueryDbAndWriteCache_When_CacheMiss")
     void Should_QueryDbAndWriteCache_When_CacheMiss() {
         SysUser user = buildUser(2L, UserRole.USER);

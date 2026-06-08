@@ -19,6 +19,8 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `document_parse_file` | `DocumentParseFile` | 文件级解析聚合及最新任务指针 |
 | `document_parsed_log` | `DocumentParsedLog` | Python 写入的解析（Markdown）产物日志；含重试链向前指针 `retry_of_task_id` |
 | `document_parse_pipeline` | `DocumentParsePipeline` | Python 写入的后处理流水线（含稀疏向量阶段）终态 `pipeline_status` 与重试 CAS 列 `superseded_by_task_id`；Java 只读 |
+| `blog_post` | `BlogPost` | 博客文章元数据、发布状态和 Markdown 对象指针 |
+| `blog_asset` | `BlogAsset` | 博客封面/正文图片资源元数据 |
 
 ## 约定
 
@@ -35,6 +37,9 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - 重试链双向：`document_parsed_log.retry_of_task_id`（本轮→上一轮）与 `document_parse_pipeline.superseded_by_task_id`（旧→新），均由 Python 写、Java 只读；`document_parse_pipeline` 不含 `retry_count` / `last_retry_at`。
 - parse_result 消息体的 `task_status`（小写 `success` / `failed`）与库侧 `pipeline_status`（大写）是两套取值，禁止混用。
 - Document file upload config is resolved from Redis key `document:file-upload:config`, with `tolink.document-file.*` as the default fallback.
+- `blog_post.slug + deleted_seq` 唯一：活跃文章 `deleted_seq=0`，软删时写自身 ID，从而允许软删后复用 slug。
+- `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。
+- `blog_asset.object_key` / `public_url` 指向公开图片对象；资源类型仅 `COVER` / `CONTENT_IMAGE`。
 
 ## 删除语义（隐性删除）
 
@@ -44,6 +49,8 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - `chat_conversation`、`chat_message`：一律物理删；`chat_conversation` 已移除 `is_deleted` / `@TableLogic`（索引 `idx_chat_conversation_user_active_list` 不再含 `is_deleted`）；因物理删不存在软删占名额问题，唯一键 `uk_conversation_user_dataset_title (user_id, dataset_id, title)` 无需 `deleted_seq`。
 - `document_parse_file`、`document_parsed_log`：删除时 Java 端不再触碰，交 Python 随删除通知清理（MQ 占位、未实现）。
 - 删除事务提交后（afterCommit）预留通知 Python 删除其侧衍生产物（OSS 清洗文件 / 向量等）的发送点（占位，不落 producer / topic / 消息体）。
+- `blog_post`：软删并写 `deleted_seq=id`，不删除 Markdown 或图片 OSS 对象。
+- `blog_asset`：软删资源行；若资源是当前封面则清空 `blog_post.cover_asset_id`，不删除 OSS 对象。
 
 ## 命名迁移（knowledge → document，B 组）
 

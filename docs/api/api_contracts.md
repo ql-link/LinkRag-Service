@@ -89,6 +89,30 @@
 | GET | `/api/v1/internal/files/{fileId}/content` | Python 端读取私有文件内容 |
 | POST | `/api/v1/internal/parse-tasks/{taskId}/events` | Python 端推送解析过程事件 |
 
+## Blog
+
+管理端接口全部要求 `ADMIN` 角色；公开端无需登录。管理列表和公开列表均不返回 Markdown 正文，管理详情和公开详情才从私有 OSS 对象读取正文。
+
+前端联调细节见 [Blog Frontend Integration](blog_frontend_integration.md)。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/admin/blog/posts` | 管理端文章列表，可按 `status` 过滤，不含正文 |
+| GET | `/api/v1/admin/blog/posts/{postId}` | 管理端文章详情，含 Markdown 正文 |
+| POST | `/api/v1/admin/blog/posts` | 创建草稿 |
+| PATCH | `/api/v1/admin/blog/posts/{postId}` | 更新标题、slug、摘要或封面资源 |
+| POST | `/api/v1/admin/blog/posts/{postId}/content` | 上传或替换 `.md` / `.markdown` 正文 |
+| POST | `/api/v1/admin/blog/posts/{postId}/publish` | 发布文章 |
+| POST | `/api/v1/admin/blog/posts/{postId}/unpublish` | 下架文章 |
+| DELETE | `/api/v1/admin/blog/posts/{postId}` | 软删文章，不删除 OSS 对象 |
+| GET | `/api/v1/admin/blog/posts/{postId}/assets` | 查询文章未删除图片资源 |
+| POST | `/api/v1/admin/blog/posts/{postId}/assets` | 上传 `COVER` / `CONTENT_IMAGE` 图片 |
+| DELETE | `/api/v1/admin/blog/posts/{postId}/assets/{assetId}` | 软删资源，不删除 OSS 对象 |
+| GET | `/api/v1/blog/posts` | 公开文章列表，只返回已发布文章，不含正文 |
+| GET | `/api/v1/blog/posts/{slug}` | 公开文章详情，含 Markdown 正文 |
+
+不提供 `/api/v1/admin/blog/posts/{postId}/content/download` 下载路由。正文使用私有 OSS UUID Key，替换正文时先上传新对象，再切换 `blog_post.content_object_key`。
+
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
 
 解析过程接口只接受 `processing` / `progress`；终态结果通过 `tolink.rag.parse_result` MQ 推送。解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。
