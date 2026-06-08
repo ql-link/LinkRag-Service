@@ -13,9 +13,13 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:17-jre AS runtime
 WORKDIR /app
 
+# 时区设为东八区（Asia/Shanghai），同时设置系统时区与 JVM 时区
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # link-api 是唯一可执行模块；spring-boot-maven-plugin 重打包后原始包为 *.jar.original
 COPY --from=build /build/link-api/target/*.jar app.jar
 
 EXPOSE 8080
-ENV JAVA_OPTS="-Xms512m -Xmx1g"
+ENV JAVA_OPTS="-Xms512m -Xmx1g -Duser.timezone=Asia/Shanghai"
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
