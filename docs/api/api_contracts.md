@@ -93,7 +93,7 @@
 
 管理端接口全部要求 `ADMIN` 角色；公开端无需登录。管理列表和公开列表均不返回 Markdown 正文，管理详情和公开详情才从私有 OSS 对象读取正文。
 
-前端联调细节见 [Blog Frontend Integration](blog_frontend_integration.md)。
+前端联调细节见 [Blog Frontend Integration](../../.specs/blog/blog_frontend_integration.md)。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
