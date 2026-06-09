@@ -13,6 +13,8 @@ public class OssUploadRuleRegistry {
     public static final String ALL_SUFFIX_FLAG = "*";
     private static final long DEFAULT_MAX_SIZE = 5 * 1024 * 1024L;
     private static final Set<String> IMAGE_SUFFIXES = Set.of("jpg", "jpeg", "png", "gif", "webp");
+    private static final Set<String> FEEDBACK_SUFFIXES = Set.of(
+        "jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "txt", "md");
 
     private final Map<String, OssUploadRule> rules;
 
@@ -24,6 +26,8 @@ public class OssUploadRuleRegistry {
             OssSavePlaceEnum.PRIVATE, Set.of("pdf", "doc", "docx", "txt", "md"), 20 * 1024 * 1024L));
         allRules.put("cert", new OssUploadRule(
             OssSavePlaceEnum.PRIVATE, Collections.singleton(ALL_SUFFIX_FLAG), DEFAULT_MAX_SIZE));
+        allRules.put("feedback", new OssUploadRule(
+            OssSavePlaceEnum.PRIVATE, FEEDBACK_SUFFIXES, 10 * 1024 * 1024L));
         this.rules = Collections.unmodifiableMap(allRules);
     }
 

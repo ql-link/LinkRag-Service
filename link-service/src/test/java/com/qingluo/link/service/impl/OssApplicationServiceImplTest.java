@@ -52,6 +52,16 @@ class OssApplicationServiceImplTest {
     }
 
     @Test
+    void Should_Return_Private_Dated_Object_Key_When_Uploading_Feedback_File() {
+        MockMultipartFile file = new MockMultipartFile("file", "feedback.png", "image/png", "hello".getBytes());
+
+        String result = service.upload("feedback", file);
+
+        assertThat(result).matches("feedback/\\d{4}/\\d{2}/\\d{2}/[a-f0-9]{32}\\.png");
+        assertThat(ossService.lastSavePlace).isEqualTo(OssSavePlaceEnum.PRIVATE);
+    }
+
+    @Test
     void Should_Reject_File_When_BizType_Is_Unknown() {
         MockMultipartFile file = new MockMultipartFile("file", "note.txt", "text/plain", "hello".getBytes());
 

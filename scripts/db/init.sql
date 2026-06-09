@@ -291,6 +291,26 @@ CREATE TABLE IF NOT EXISTS blog_asset (
     INDEX idx_blog_asset_post_type (post_id, asset_type, is_deleted, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '博客文章资源表';
 
+-- 14. 匿名用户反馈表
+CREATE TABLE IF NOT EXISTS user_feedback (
+    id                    BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '反馈 ID',
+    type                  VARCHAR(32)  NOT NULL DEFAULT 'OTHER' COMMENT '反馈类型：BUG 问题反馈，FEATURE 功能建议，EXPERIENCE 体验反馈，OTHER 其他',
+    title                 VARCHAR(128) NOT NULL COMMENT '反馈标题',
+    content               TEXT         NOT NULL COMMENT '反馈详细内容',
+    attachment_object_key VARCHAR(512) DEFAULT NULL COMMENT '附件 MinIO 私有对象 key，例如 feedback/2026/06/09/a.png',
+    status                VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT '处理状态：PENDING 待处理，PROCESSING 处理中，RESOLVED 已解决，CLOSED 已关闭',
+    priority              TINYINT      NOT NULL DEFAULT 3 COMMENT '处理优先级：1 高，2 中，3 低',
+    admin_id              BIGINT UNSIGNED DEFAULT NULL COMMENT '最后处理该反馈的管理员用户 ID',
+    admin_reply           TEXT DEFAULT NULL COMMENT '管理员回复或处理结论',
+    processed_at          DATETIME DEFAULT NULL COMMENT '管理员最后处理时间',
+    created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    INDEX idx_feedback_created (created_at),
+    INDEX idx_feedback_status_priority (status, priority, created_at),
+    INDEX idx_feedback_type_created (type, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '匿名用户反馈表';
+
 -- 设置所有表的自增起始值为 10000 (MySQL 8.0 推荐显式指定方式)
 ALTER TABLE sys_user AUTO_INCREMENT = 10000;
 ALTER TABLE llm_system_provider AUTO_INCREMENT = 10000;
@@ -307,6 +327,7 @@ ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_pipeline AUTO_INCREMENT = 10000;
 ALTER TABLE blog_post AUTO_INCREMENT = 10000;
 ALTER TABLE blog_asset AUTO_INCREMENT = 10000;
+ALTER TABLE user_feedback AUTO_INCREMENT = 10000;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 初始数据（LLM 厂商 + 模型目录）

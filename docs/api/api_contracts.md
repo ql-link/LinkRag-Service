@@ -21,6 +21,11 @@
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
 | GET | `/api/v1/admin/document-file-config` | 查询文档文件上传配置 |
 | PATCH | `/api/v1/admin/document-file-config` | 修改文档文件上传配置 |
+| GET | `/api/v1/admin/feedback` | 管理员反馈列表，支持 `page`、`pageSize`、`status`、`type` |
+| GET | `/api/v1/admin/feedback/{id}` | 管理员反馈详情 |
+| PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |
+| PATCH | `/api/v1/admin/feedback/{id}/priority` | 更新反馈优先级：`1` 高 / `2` 中 / `3` 低 |
+| PATCH | `/api/v1/admin/feedback/{id}/reply` | 写入管理员回复，不自动修改反馈状态 |
 | POST | `/api/v1/admin/providers/{providerId}/models` | 新增厂商模型能力目录项 |
 | DELETE | `/api/v1/admin/provider-models/{id}` | 删除模型能力目录项 |
 | PATCH | `/api/v1/admin/provider-models/{id}/active` | 上/下架模型能力目录项 |
@@ -88,6 +93,14 @@
 | POST | `/api/v1/oss-files/{bizType}` | 通用 OSS 上传 |
 | GET | `/api/v1/internal/files/{fileId}/content` | Python 端读取私有文件内容 |
 | POST | `/api/v1/internal/parse-tasks/{taskId}/events` | Python 端推送解析过程事件 |
+
+## Feedback
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/v1/feedback` | 匿名提交反馈，`multipart/form-data`，可选 `file` 附件 |
+
+`POST /api/v1/feedback` 接收 `type`（可选，默认 `OTHER`）、`title`（必填，最长 128）、`content`（必填，最长 5000）和可选 `file`。附件上传到私有 OSS，数据库和响应只保存 `attachmentObjectKey`，object key 形如 `feedback/yyyy/MM/dd/{uuid}.{suffix}`。
 
 ## Blog
 
