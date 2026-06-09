@@ -44,14 +44,6 @@
             <version>2.2.21</version>
         </dependency>
 
-        <!-- Jackson 注解：RecallStreamRequest 用 @JsonAnySetter 收集并拒绝未知字段；
-             根 pom 未 import spring-boot BOM，故显式写 version 对齐 spring-boot 2.5.3 的 jackson 2.12.x -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
-            <version>2.12.3</version>
-        </dependency>
-
         <!-- Spring Boot Starter Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
