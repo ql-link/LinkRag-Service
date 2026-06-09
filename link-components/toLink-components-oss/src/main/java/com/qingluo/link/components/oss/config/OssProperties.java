@@ -150,6 +150,7 @@ public class OssProperties {
         private String endpoint;
         private String publicBucketName;
         private String privateBucketName;
+        private String blogBucketName;
         private String accessKey;
         private String secretKey;
 
@@ -175,6 +176,14 @@ public class OssProperties {
 
         public void setPrivateBucketName(String privateBucketName) {
             this.privateBucketName = privateBucketName;
+        }
+
+        public String getBlogBucketName() {
+            return blogBucketName;
+        }
+
+        public void setBlogBucketName(String blogBucketName) {
+            this.blogBucketName = blogBucketName;
         }
 
         public String getAccessKey() {

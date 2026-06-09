@@ -2,9 +2,12 @@ package com.qingluo.link.components.oss.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.qingluo.link.components.oss.config.OssProperties;
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 class MinioFileServiceTest {
@@ -14,13 +17,28 @@ class MinioFileServiceTest {
         OssProperties ossProperties = new OssProperties();
         ossProperties.setServiceType("minio");
         ossProperties.getMinio().setEndpoint("http://127.0.0.1:9000");
-        ossProperties.getMinio().setPublicBucketName("rag-raw");
+        ossProperties.getMinio().setPublicBucketName("rag-public");
         ossProperties.getMinio().setPrivateBucketName("rag-raw");
         ossProperties.getMinio().setAccessKey("root");
         ossProperties.getMinio().setSecretKey("secret123");
 
         assertThatCode(() -> new MinioFileService(ossProperties))
             .doesNotThrowAnyException();
+    }
+
+    @Test
+    void Should_RejectMinioClient_When_PublicAndPrivateBucketsAreSame() {
+        OssProperties ossProperties = new OssProperties();
+        ossProperties.setServiceType("minio");
+        ossProperties.getMinio().setEndpoint("http://127.0.0.1:9000");
+        ossProperties.getMinio().setPublicBucketName("rag-raw");
+        ossProperties.getMinio().setPrivateBucketName("rag-raw");
+        ossProperties.getMinio().setAccessKey("root");
+        ossProperties.getMinio().setSecretKey("secret123");
+
+        assertThatThrownBy(() -> new MinioFileService(ossProperties))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("MinIO public and private buckets must be different");
     }
 
     @Test
@@ -36,5 +54,17 @@ class MinioFileServiceTest {
         MinioFileService service = new MinioFileService(ossProperties);
 
         assertThat(service.getBucketName(OssSavePlaceEnum.PRIVATE)).isEqualTo("private-bucket");
+    }
+
+    @Test
+    void Should_DeleteExistingTargetFile_When_PreparingDownloadTarget() throws Exception {
+        Path target = Files.createTempFile("tolink-minio-download-", ".tmp");
+        Files.writeString(target, "old");
+
+        Path prepared = MinioFileService.prepareDownloadTarget(target.toString());
+
+        assertThat(prepared).isEqualTo(target.normalize());
+        assertThat(Files.exists(prepared)).isFalse();
+        assertThat(Files.isDirectory(prepared.getParent())).isTrue();
     }
 }

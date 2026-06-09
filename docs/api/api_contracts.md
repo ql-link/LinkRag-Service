@@ -89,6 +89,31 @@
 | GET | `/api/v1/internal/files/{fileId}/content` | Python 端读取私有文件内容 |
 | POST | `/api/v1/internal/parse-tasks/{taskId}/events` | Python 端推送解析过程事件 |
 
+## Blog
+
+管理端接口全部要求 `ADMIN` 角色；公开端无需登录。管理列表和公开列表均不返回 Markdown 正文，管理详情和公开详情才从私有 OSS 对象读取正文。
+
+前端联调细节见 [Blog Frontend Integration](../../.specs/blog/blog_frontend_integration.md)。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/admin/blog/posts` | 管理端文章列表，可按 `status` 过滤，不含正文 |
+| GET | `/api/v1/admin/blog/posts/{postId}` | 管理端文章详情，含 Markdown 正文 |
+| POST | `/api/v1/admin/blog/posts` | 创建草稿 |
+| PATCH | `/api/v1/admin/blog/posts/{postId}` | 更新标题、摘要或封面资源；`slug` 不允许手动更新 |
+| POST | `/api/v1/admin/blog/posts/{postId}/content/import` | 导入 `.md` / `.markdown` 草稿；正文图片自动入 PUBLIC OSS 并改写 Markdown 引用 |
+| PUT | `/api/v1/admin/blog/posts/{postId}/content` | 保存编辑器当前完整 Markdown 正文；支持自动保存 |
+| POST | `/api/v1/admin/blog/posts/{postId}/publish` | 发布文章 |
+| POST | `/api/v1/admin/blog/posts/{postId}/unpublish` | 下架文章 |
+| DELETE | `/api/v1/admin/blog/posts/{postId}` | 软删文章，不删除 OSS 对象 |
+| GET | `/api/v1/admin/blog/posts/{postId}/assets` | 查询文章未删除图片资源，支持 `assetType` 筛选 |
+| POST | `/api/v1/admin/blog/posts/{postId}/assets` | 上传 `COVER` 封面图片或 `CONTENT_IMAGE` 正文图片；正文图片返回 `markdownText` |
+| DELETE | `/api/v1/admin/blog/posts/{postId}/assets/{assetId}` | 删除资源；正文图片仍被当前 Markdown 引用时拒绝 |
+| GET | `/api/v1/blog/posts` | 公开文章列表，只返回已发布文章，不含正文 |
+| GET | `/api/v1/blog/posts/{slug}` | 公开文章详情，含 Markdown 正文 |
+
+创建草稿时后端生成去掉连字符的 32 位小写 UUID 作为 `slug`，前端不提交也不更新 `slug`。不提供 `/api/v1/admin/blog/posts/{postId}/content/download` 下载路由。正文使用私有 OSS UUID Key，替换正文时先上传新对象，再切换 `blog_post.content_object_key`。Markdown 正文中的图片引用由后端自动处理：可成功下载的 `http` / `https` 图片会下载后写入 PUBLIC OSS 并记录为 `blog_asset.CONTENT_IMAGE`，`data:image/*;base64` 图片会解码后写入 PUBLIC OSS 并记录资源，随后 Markdown 中的图片地址替换为公开 URL；网络图片下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存；单独 `.md` 上传无法携带本地相对路径图片，因此相对路径图片会返回 400。
+
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
 
 解析过程接口只接受 `processing` / `progress`；终态结果通过 `tolink.rag.parse_result` MQ 推送。解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。
