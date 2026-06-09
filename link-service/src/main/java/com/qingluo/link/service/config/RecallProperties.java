@@ -28,8 +28,9 @@ public class RecallProperties {
     private long sessionJwtExpSeconds = 30L;
 
     /**
-     * 前端可见的 Python 召回地址（公网/网关）。
-     * 响应 streamUrl = sessionStreamBaseUrl + /api/v1/recall/stream。
+     * 前端可见的 Python RAG 流式问答地址（公网/网关）。
+     * 响应 streamUrl = sessionStreamBaseUrl + /api/v1/rag/stream（LINK-138：Python LINK-131 将对外端点由
+     * /api/v1/recall/stream 改名为 RAG 流式问答 /api/v1/rag/stream）。
      */
     private String sessionStreamBaseUrl = "http://localhost:8000";
 }
