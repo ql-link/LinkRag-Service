@@ -8,6 +8,7 @@ import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.cache.ProviderCatalogCacheService;
 import com.qingluo.link.service.cache.ProviderCatalogSnapshot;
+import com.qingluo.link.service.cache.ProviderRef;
 import com.qingluo.link.service.impl.llm.SystemProviderServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,7 +35,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
  * {@link SystemProviderServiceImpl} 单元测试。
  *
  * <p>承接 acceptance 一类（按能力聚合目录、空厂商过滤），并守护两条性能治理：
- * 命中厂商目录缓存时不查库；未命中回源时模型查询只触发一次批量请求（消除 N+1）。</p>
+ * 命中厂商目录缓存时不查库；未命中回源时模型查询只触发一次批量请求（消除 N+1）。
+ * 缓存已拆分为「索引 + 厂商分片」，缓存服务对上层仍返回组装好的 {@link ProviderCatalogSnapshot}。</p>
  */
 @ExtendWith(MockitoExtension.class)
 class SystemProviderServiceImplTest {
@@ -56,7 +59,7 @@ class SystemProviderServiceImplTest {
     @DisplayName("一·按能力查询聚合返回该能力下的模型集合（命中缓存不查库）")
     void getActiveProviderModels_aggregatesByCapability() {
         givenCacheHit(new ProviderCatalogSnapshot(
-                List.of(provider(5L, "openai")),
+                List.of(ref(5L, "openai")),
                 List.of(pm(5L, "gpt-4o", "CHAT"), pm(5L, "gpt-4o-mini", "CHAT"))));
 
         List<ProviderModelDTO> result = service.getActiveProviderModels("CHAT");
@@ -72,7 +75,7 @@ class SystemProviderServiceImplTest {
     @DisplayName("一·过滤后无可选模型的厂商不返回")
     void getActiveProviderModels_dropsEmptyProvider() {
         givenCacheHit(new ProviderCatalogSnapshot(
-                List.of(provider(5L, "openai"), provider(6L, "deepseek")),
+                List.of(ref(5L, "openai"), ref(6L, "deepseek")),
                 List.of(pm(5L, "text-embedding-3", "EMBEDDING"))));
 
         List<ProviderModelDTO> result = service.getActiveProviderModels("EMBEDDING");
@@ -85,7 +88,7 @@ class SystemProviderServiceImplTest {
     @DisplayName("一·一个模型的多种能力聚合为能力列表")
     void getActiveProviderModels_groupsMultiCapability() {
         givenCacheHit(new ProviderCatalogSnapshot(
-                List.of(provider(5L, "openai")),
+                List.of(ref(5L, "openai")),
                 List.of(pm(5L, "gpt-4o", "CHAT"), pm(5L, "gpt-4o", "VISION"), pm(5L, "gpt-4o", "OCR"))));
 
         List<ProviderModelDTO> result = service.getActiveProviderModels(null);
@@ -100,7 +103,7 @@ class SystemProviderServiceImplTest {
     void getActiveProviderModels_filtersCapabilityInMemory() {
         // 缓存的是全量（含 CHAT 与 EMBEDDING），按 EMBEDDING 查时只应留 openai 的 embedding 模型
         givenCacheHit(new ProviderCatalogSnapshot(
-                List.of(provider(5L, "openai"), provider(6L, "deepseek")),
+                List.of(ref(5L, "openai"), ref(6L, "deepseek")),
                 List.of(pm(5L, "gpt-4o", "CHAT"),
                         pm(5L, "text-embedding-3", "EMBEDDING"),
                         pm(6L, "deepseek-chat", "CHAT"))));
@@ -144,18 +147,33 @@ class SystemProviderServiceImplTest {
         verify(providerModelService, never()).listActiveModelsByProviderIds(any(), any());
     }
 
-    /** 缓存命中：直接返回快照，loader 不执行。 */
+    /** 缓存命中：缓存服务直接返回组装好的快照，两个 loader 都不执行。 */
     private void givenCacheHit(ProviderCatalogSnapshot snapshot) {
-        given(providerCatalogCacheService.getOrLoad(any())).willReturn(snapshot);
+        given(providerCatalogCacheService.getOrLoad(any(), any())).willReturn(snapshot);
     }
 
-    /** 缓存未命中：真正回调 loader 走数据库回源。 */
+    /** 缓存未命中：模拟缓存服务回调两个 loader 走数据库回源并组装快照。 */
     @SuppressWarnings("unchecked")
     private void givenCacheMissExecutingLoader() {
-        given(providerCatalogCacheService.getOrLoad(any())).willAnswer(invocation ->
-                ((Supplier<ProviderCatalogSnapshot>) invocation.getArgument(0)).get());
+        given(providerCatalogCacheService.getOrLoad(any(), any())).willAnswer(invocation -> {
+            Supplier<List<ProviderRef>> providersLoader = invocation.getArgument(0);
+            Function<List<Long>, List<ProviderModel>> modelsLoader = invocation.getArgument(1);
+            List<ProviderRef> refs = providersLoader.get();
+            if (refs.isEmpty()) {
+                return new ProviderCatalogSnapshot(List.of(), List.of());
+            }
+            List<Long> ids = refs.stream().map(ProviderRef::getId).toList();
+            List<ProviderModel> models = modelsLoader.apply(ids);
+            return new ProviderCatalogSnapshot(refs, models);
+        });
     }
 
+    /** 缓存命中场景：索引中的轻量厂商引用。 */
+    private ProviderRef ref(Long id, String type) {
+        return new ProviderRef(id, type, type, 50);
+    }
+
+    /** 缓存未命中场景：厂商表行（供 systemProviderMapper.selectList 回源）。 */
     private SystemProvider provider(Long id, String type) {
         SystemProvider provider = new SystemProvider();
         provider.setId(id);

@@ -14,6 +14,7 @@ import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.SystemProviderService;
 import com.qingluo.link.service.cache.ProviderCatalogCacheService;
 import com.qingluo.link.service.cache.ProviderCatalogSnapshot;
+import com.qingluo.link.service.cache.ProviderRef;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -63,23 +64,21 @@ public class SystemProviderServiceImpl implements SystemProviderService {
     public List<ProviderModelDTO> getActiveProviderModels(String capability) {
         // capability 校验留在缓存外：非法 capability 立即抛错，不触发回源、不污染缓存
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
-        // 命中缓存时 0 次 DB；未命中时由 loadCatalogSnapshot 回源构建全量快照
-        ProviderCatalogSnapshot snapshot = providerCatalogCacheService.getOrLoad(this::loadCatalogSnapshot);
+        // 命中缓存时 0 次 DB；未命中时按「索引 + 厂商分片」回源：
+        // providersLoader 查启用厂商，modelsLoader 按厂商 id 批量查模型（不按 capability 过滤）
+        ProviderCatalogSnapshot snapshot = providerCatalogCacheService.getOrLoad(
+                this::loadActiveProviderRefs,
+                ids -> providerModelService.listActiveModelsByProviderIds(ids, null));
         return assembleProviderModels(snapshot, normalizedCapability);
     }
 
     /**
-     * 回源构建厂商目录全量快照：查启用厂商，再 IN 批量查这些厂商的全部上架模型（不按 capability 过滤）。
-     * 仅在缓存未命中时触发，故一次性按全量缓存、再在内存按 capability 过滤。
+     * 回源启用厂商→轻量引用，priority 倒序由 {@link #getActiveProviders()} 保证。
      */
-    private ProviderCatalogSnapshot loadCatalogSnapshot() {
-        List<SystemProvider> providers = getActiveProviders();
-        if (providers.isEmpty()) {
-            return new ProviderCatalogSnapshot(List.of(), List.of());
-        }
-        List<Long> providerIds = providers.stream().map(SystemProvider::getId).toList();
-        List<ProviderModel> models = providerModelService.listActiveModelsByProviderIds(providerIds, null);
-        return new ProviderCatalogSnapshot(providers, models);
+    private List<ProviderRef> loadActiveProviderRefs() {
+        return getActiveProviders().stream()
+                .map(p -> new ProviderRef(p.getId(), p.getProviderType(), p.getProviderName(), p.getPriority()))
+                .toList();
     }
 
     /**
@@ -87,7 +86,7 @@ public class SystemProviderServiceImpl implements SystemProviderService {
      * 与原「SQL 按 capability 过滤 + 逐厂商聚合」等价，仅把数据源由数据库换成缓存快照。
      */
     private List<ProviderModelDTO> assembleProviderModels(ProviderCatalogSnapshot snapshot, String normalizedCapability) {
-        List<SystemProvider> providers = snapshot.getProviders();
+        List<ProviderRef> providers = snapshot.getProviders();
         if (providers == null || providers.isEmpty()) {
             return List.of();
         }
@@ -133,7 +132,7 @@ public class SystemProviderServiceImpl implements SystemProviderService {
      * 将厂商及其上架模型能力行聚合为用户侧 DTO：同一模型的多条能力归并为能力列表。
      * rows 由上游一次性批量查出并按厂商分好，此方法内不再查库。
      */
-    private ProviderModelDTO toProviderModelDTO(SystemProvider provider, List<ProviderModel> rows) {
+    private ProviderModelDTO toProviderModelDTO(ProviderRef provider, List<ProviderModel> rows) {
         Map<String, List<String>> grouped = new LinkedHashMap<>();
         for (ProviderModel row : rows) {
             grouped.computeIfAbsent(row.getModelName(), k -> new ArrayList<>()).add(row.getCapability());
