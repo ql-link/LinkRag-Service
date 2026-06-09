@@ -210,10 +210,21 @@ public class BlogPostServiceImpl implements BlogPostService {
     @Transactional
     public void delete(Long operatorId, Long postId) {
         BlogPost post = getActivePost(postId);
+        // 收集该文章下未删除的资源（封面/插图），随文章一并清理
+        List<BlogAsset> assets = blogAssetMapper.selectList(new LambdaQueryWrapper<BlogAsset>()
+            .eq(BlogAsset::getPostId, postId));
+        // 先软删资源记录，再软删文章本身，保证 DB 状态一致
+        if (!assets.isEmpty()) {
+            blogAssetMapper.delete(new LambdaQueryWrapper<BlogAsset>()
+                .eq(BlogAsset::getPostId, postId));
+        }
         blogPostMapper.update(null, new LambdaUpdateWrapper<BlogPost>()
             .eq(BlogPost::getId, post.getId())
             .set(BlogPost::getIsDeleted, true)
             .set(BlogPost::getDeletedSeq, post.getId()));
+        // DB 一致后，best-effort 物理清理 OSS 上的正文与资源对象（失败仅告警，不阻断删除）
+        deleteOldContentObject(post.getContentObjectKey(), postId);
+        deleteAssetObjects(postId, assets);
         AuditLog.event("BLOG_POST_DELETE", "operatorId={}, postId={}, slug={}",
             operatorId, postId, post.getSlug());
     }
@@ -411,6 +422,26 @@ public class BlogPostServiceImpl implements BlogPostService {
         }
         if (!ossService.deleteFile(OssSavePlaceEnum.BLOG, oldKey)) {
             log.warn("Failed to delete old markdown object, postId={}, key={}", postId, oldKey);
+        }
+    }
+
+    private void deleteAssetObjects(Long postId, List<BlogAsset> assets) {
+        if (assets == null || assets.isEmpty()) {
+            return;
+        }
+        Set<String> objectKeys = assets.stream()
+            .map(BlogAsset::getObjectKey)
+            .filter(StringUtils::hasText)
+            .collect(Collectors.toSet());
+        for (String objectKey : objectKeys) {
+            try {
+                if (!ossService.deleteFile(OssSavePlaceEnum.BLOG, objectKey)) {
+                    log.warn("Failed to delete blog asset object, postId={}, key={}", postId, objectKey);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to delete blog asset object, postId={}, key={}, reason={}",
+                    postId, objectKey, e.getMessage());
+            }
         }
     }
 

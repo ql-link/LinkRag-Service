@@ -98,7 +98,7 @@ class BlogControllerTest {
         String slug = slugOf(postId);
         String imageData = Base64.getEncoder().encodeToString("image-content".getBytes(StandardCharsets.UTF_8));
         String rewrittenMarkdownPattern =
-            "# 标题\n!\\[图]\\(/api/v1/oss-files/public/blog/" + postId + "/content/[a-f0-9]{32}\\.png\\)\n正文";
+            "# 标题\n!\\[图]\\(/api/v1/oss-files/public/blog/" + postId + "/images/[a-f0-9]{32}\\.png\\)\n正文";
 
         MockMultipartFile markdown = new MockMultipartFile(
             "file", "post.md", "text/markdown",
@@ -210,10 +210,13 @@ class BlogControllerTest {
     }
 
     @Test
-    void Should_GenerateUuidSlugAndSoftDeletePost_When_AdminDeletes() throws Exception {
+    void Should_GenerateUuidSlugAndCascadeSoftDelete_When_AdminDeletesPost() throws Exception {
         Long firstId = createPost("release-note");
         String slug = slugOf(firstId);
         assertThat(slug).matches("[0-9a-f]{32}");
+        uploadMarkdown(firstId, "# 发布\n正文");
+        Long coverAssetId = uploadAsset(firstId, "COVER", "cover.webp", "image/webp");
+        Long imageAssetId = uploadAsset(firstId, "CONTENT_IMAGE", "diagram.png", "image/png");
 
         mockMvc.perform(delete("/api/v1/admin/blog/posts/{postId}", firstId)
                 .header("satoken", adminToken))
@@ -225,6 +228,16 @@ class BlogControllerTest {
             "SELECT deleted_seq FROM blog_post WHERE id = ?", Long.class, firstId);
         assertThat(firstDeleted).isTrue();
         assertThat(deletedSeq).isEqualTo(firstId);
+        // 文章删除后，其下封面与插图资源记录被级联软删
+        Long remainingAssets = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM blog_asset WHERE post_id = ? AND is_deleted = false", Long.class, firstId);
+        assertThat(remainingAssets).isZero();
+        Boolean coverDeleted = jdbcTemplate.queryForObject(
+            "SELECT is_deleted FROM blog_asset WHERE id = ?", Boolean.class, coverAssetId);
+        Boolean imageDeleted = jdbcTemplate.queryForObject(
+            "SELECT is_deleted FROM blog_asset WHERE id = ?", Boolean.class, imageAssetId);
+        assertThat(coverDeleted).isTrue();
+        assertThat(imageDeleted).isTrue();
     }
 
     @Test
