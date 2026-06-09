@@ -24,7 +24,12 @@ public class StpInterfaceImpl implements StpInterface {
 
     @Override
     public List<String> getRoleList(Object loginId, String loginType) {
-        Long userId = (Long) loginId;
+        Long userId;
+        try {
+            userId = loginId instanceof Long ? (Long) loginId : Long.parseLong(String.valueOf(loginId));
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
         UserProfileDTO cached = userCacheService.getOrLoad(userId, () -> {
             SysUser user = sysUserMapper.selectById(userId);
             if (user == null || user.getRole() == null) {

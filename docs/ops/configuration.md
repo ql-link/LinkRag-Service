@@ -117,8 +117,8 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `MINIO_ENDPOINT` | MinIO 服务地址（host:port） | 是* | 无 | `localhost:9000` |
 | `MINIO_ACCESS_KEY` | MinIO 访问密钥 | 是* | 无 | `your-minio-access-key-here` |
 | `MINIO_SECRET_KEY` | MinIO 密钥 | 是* | 无 | `your-minio-secret-key-here` |
-| `MINIO_PUBLIC_BUCKET` | MinIO 公开存储桶名 | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
-| `MINIO_PRIVATE_BUCKET` | MinIO 私有存储桶名 | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
+| `MINIO_PRIVATE_BUCKET` | MinIO 私有存储桶名（RAG 知识库文档） | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
+| `MINIO_BLOG_BUCKET` | MinIO 博客专用桶名（图片 + Markdown，需配置匿名读） | 否 | `tolink-blog` | `tolink-blog` |
 
 > \* MinIO 变量在 `OSS_SERVICE_TYPE=minio` 时必需
 
@@ -340,8 +340,8 @@ services:
 | `OSS_MINIO_ENDPOINT` | `MINIO_ENDPOINT` | 简化前缀 |
 | `OSS_MINIO_ACCESS_KEY` | `MINIO_ACCESS_KEY` | 简化前缀 |
 | `OSS_MINIO_SECRET_KEY` | `MINIO_SECRET_KEY` | 简化前缀 |
-| `OSS_MINIO_PUBLIC_BUCKET` | `MINIO_PUBLIC_BUCKET` | 简化前缀 |
 | `OSS_MINIO_PRIVATE_BUCKET` | `MINIO_PRIVATE_BUCKET` | 简化前缀 |
+| `MINIO_PUBLIC_BUCKET` | `MINIO_BLOG_BUCKET` | 公开桶已拆为博客专用桶 `tolink-blog` |
 | `OSS_ALIYUN_ENDPOINT` | `ALIYUN_OSS_ENDPOINT` | 统一阿里云前缀 |
 | `OSS_ALIYUN_ACCESS_KEY_ID` | `ALIYUN_OSS_ACCESS_KEY_ID` | 统一阿里云前缀 |
 | `OSS_ALIYUN_ACCESS_KEY_SECRET` | `ALIYUN_OSS_ACCESS_KEY_SECRET` | 统一阿里云前缀 |
@@ -367,3 +367,11 @@ services:
 | `dataset-thresholds` | —（仅 yml） | 空 | 按数据集覆盖阈值，如 `dataset-thresholds.{datasetId}: 20m`；未配置回落 `default-threshold` |
 
 说明：调度由 `SchedulingConfig`（`@EnableScheduling`）开启。监控指标走 Micrometer（`spring-boot-starter-actuator`），本地 registry，不接外部平台；无 Micrometer 时降级为仅日志。退避重试参数（最多 3 次、1s→×2→上限 10s）固化在 `ParseResultKafkaConfig`。
+
+## 博客上传与权限配置
+
+- 博客正文和图片不设置业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用默认 multipart 限制为 20MB，需要支持更大文件时由部署环境调大。
+- 博客封面图片、编辑器上传的正文图片以及 Markdown 正文自动抓取的正文图片使用 `tolink-blog` 专用桶（`BLOG_PUBLIC` 枚举），部署时必须对该桶配置匿名读策略（`mc anonymous set download tolink-blog`）或公开反向代理。
+- Markdown 自动抓取远端正文图片时，单张图片业务上限为 10MB；仅允许 `http` / `https`、jpg/jpeg/png/gif/webp，拒绝 svg，并拦截 localhost、回环、私有网段、链路本地等地址。下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存。
+- `.md` 内本地相对路径图片不会随单文件上传进入后端，需要改成 `http` / `https`、`data:image/*;base64`，或在编辑器中粘贴/上传正文图片。
+- `SaTokenAnnotationConfig` 已启用 MVC 注解拦截，`@SaCheckRole("ADMIN")` 会在请求进入 Controller 前执行；`StpInterfaceImpl` 同时兼容数字和字符串形式的 loginId。
