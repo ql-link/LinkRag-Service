@@ -19,6 +19,13 @@ public interface ProviderModelService {
     List<ProviderModel> listActiveModels(Long providerId, String capability);
 
     /**
+     * 批量查多个厂商的上架模型能力行，可按能力过滤（capability 为空表示不过滤）。
+     * 用户侧目录查询用它一次性取回全部厂商模型，避免逐厂商查询的 N+1。
+     * providerIds 为空时返回空列表，不触达数据库。
+     */
+    List<ProviderModel> listActiveModelsByProviderIds(List<Long> providerIds, String capability);
+
+    /**
      * 校验某厂商下某模型是否支持某能力且处于上架状态。
      * 按能力选生效模型前用它拦截「模型不支持该能力」。
      */

@@ -47,6 +47,22 @@ public class ProviderModelServiceImpl implements ProviderModelService {
     }
 
     @Override
+    public List<ProviderModel> listActiveModelsByProviderIds(List<Long> providerIds, String capability) {
+        if (providerIds == null || providerIds.isEmpty()) {
+            return List.of();
+        }
+        String normalizedCapability = normalizeCapabilityIfPresent(capability);
+        // provider_id IN (...) 命中 idx_provider_cap，一次查回全部厂商的上架模型
+        LambdaQueryWrapper<ProviderModel> wrapper = new LambdaQueryWrapper<ProviderModel>()
+                .in(ProviderModel::getProviderId, providerIds)
+                .eq(ProviderModel::getIsActive, true);
+        if (normalizedCapability != null) {
+            wrapper.eq(ProviderModel::getCapability, normalizedCapability);
+        }
+        return providerModelMapper.selectList(wrapper);
+    }
+
+    @Override
     public boolean isModelCapabilityActive(Long providerId, String modelName, String capability) {
         String normalizedCapability = normalizeCapability(capability);
         return providerModelMapper.selectCount(

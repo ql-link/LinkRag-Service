@@ -110,6 +110,26 @@ class ProviderModelServiceImplTest {
         verify(providerModelMapper).deleteById(9L);
     }
 
+    @Test
+    @DisplayName("批量按厂商 ID 查上架模型，一次性取回多个厂商的行")
+    void listActiveModelsByProviderIds_returnsForAllIds() {
+        given(providerModelMapper.selectList(any()))
+                .willReturn(List.of(pm(1L, "gpt-4o", "CHAT"), pm(2L, "deepseek-chat", "CHAT")));
+
+        List<ProviderModel> result = service.listActiveModelsByProviderIds(List.of(5L, 6L), "CHAT");
+
+        assertThat(result).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("批量查空 ID 列表直接返回空且不查库")
+    void listActiveModelsByProviderIds_emptyIdsShortCircuits() {
+        List<ProviderModel> result = service.listActiveModelsByProviderIds(List.of(), "CHAT");
+
+        assertThat(result).isEmpty();
+        verify(providerModelMapper, never()).selectList(any());
+    }
+
     private SystemProvider provider(Long id, String type) {
         SystemProvider p = new SystemProvider();
         p.setId(id);
