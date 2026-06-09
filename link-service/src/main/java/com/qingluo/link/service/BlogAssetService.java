@@ -6,7 +6,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface BlogAssetService {
 
-    List<BlogAssetDTO> list(Long postId);
+    List<BlogAssetDTO> list(Long postId, String assetType);
 
     BlogAssetDTO upload(Long operatorId, Long postId, String assetType, MultipartFile file);
 

@@ -13,6 +13,7 @@ public class BlogPostPublicDetailDTO {
     private String slug;
     private String summary;
     private Long coverAssetId;
+    private String coverPublicUrl;
     private LocalDateTime publishedAt;
     private String contentMarkdown;
 }

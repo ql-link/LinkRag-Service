@@ -1,6 +1,7 @@
 package com.qingluo.link.service;
 
 import com.qingluo.link.model.dto.request.CreateBlogPostRequest;
+import com.qingluo.link.model.dto.request.SaveBlogContentRequest;
 import com.qingluo.link.model.dto.request.UpdateBlogPostRequest;
 import com.qingluo.link.model.dto.response.BlogPostAdminDetailDTO;
 import com.qingluo.link.model.dto.response.BlogPostAdminListDTO;
@@ -19,7 +20,9 @@ public interface BlogPostService {
 
     BlogPostAdminDetailDTO update(Long operatorId, Long postId, UpdateBlogPostRequest request);
 
-    BlogPostAdminDetailDTO uploadContent(Long operatorId, Long postId, MultipartFile file);
+    BlogPostAdminDetailDTO importContent(Long operatorId, Long postId, MultipartFile file);
+
+    BlogPostAdminDetailDTO saveContent(Long operatorId, Long postId, SaveBlogContentRequest request);
 
     BlogPostAdminDetailDTO publish(Long operatorId, Long postId);
 

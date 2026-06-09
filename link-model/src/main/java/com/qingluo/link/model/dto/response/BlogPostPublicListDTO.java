@@ -13,5 +13,6 @@ public class BlogPostPublicListDTO {
     private String slug;
     private String summary;
     private Long coverAssetId;
+    private String coverPublicUrl;
     private LocalDateTime publishedAt;
 }

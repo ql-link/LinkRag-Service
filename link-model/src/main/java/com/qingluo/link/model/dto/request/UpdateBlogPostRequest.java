@@ -12,10 +12,6 @@ public class UpdateBlogPostRequest {
     @Schema(description = "文章标题")
     private String title;
 
-    @Size(max = 100, message = "slug长度不能超过100")
-    @Schema(description = "公开访问标识")
-    private String slug;
-
     @Size(max = 1000, message = "文章摘要长度不能超过1000")
     @Schema(description = "文章摘要")
     private String summary;

@@ -16,6 +16,7 @@ public class BlogAssetDTO {
     private Long fileSize;
     private String objectKey;
     private String publicUrl;
+    private String markdownText;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

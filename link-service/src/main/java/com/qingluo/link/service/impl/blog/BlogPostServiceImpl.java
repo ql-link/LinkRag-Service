@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
+import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
+import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.log.AuditLog;
 import com.qingluo.link.mapper.BlogAssetMapper;
@@ -11,6 +13,7 @@ import com.qingluo.link.mapper.BlogPostMapper;
 import com.qingluo.link.model.dto.entity.BlogAsset;
 import com.qingluo.link.model.dto.entity.BlogPost;
 import com.qingluo.link.model.dto.request.CreateBlogPostRequest;
+import com.qingluo.link.model.dto.request.SaveBlogContentRequest;
 import com.qingluo.link.model.dto.request.UpdateBlogPostRequest;
 import com.qingluo.link.model.dto.response.BlogPostAdminDetailDTO;
 import com.qingluo.link.model.dto.response.BlogPostAdminListDTO;
@@ -22,9 +25,18 @@ import com.qingluo.link.model.enums.BlogPostStatus;
 import com.qingluo.link.service.BlogContentStorageService;
 import com.qingluo.link.service.BlogPostService;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,11 +47,14 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class BlogPostServiceImpl implements BlogPostService {
 
-    private static final Pattern SLUG_PATTERN = Pattern.compile("^[a-z0-9](?:[a-z0-9-]{1,98}[a-z0-9])$");
+    private static final Logger log = LoggerFactory.getLogger(BlogPostServiceImpl.class);
+
+    private static final Pattern SLUG_PATTERN = Pattern.compile("^[0-9a-f]{32}$");
 
     private final BlogPostMapper blogPostMapper;
     private final BlogAssetMapper blogAssetMapper;
     private final BlogContentStorageService contentStorage;
+    private final IOssService ossService;
 
     @Override
     public PageResult<BlogPostAdminListDTO> listAdmin(int page, int pageSize, String status) {
@@ -63,18 +78,24 @@ public class BlogPostServiceImpl implements BlogPostService {
     @Override
     @Transactional
     public BlogPostAdminDetailDTO create(Long operatorId, CreateBlogPostRequest request) {
-        BlogPost post = new BlogPost();
-        post.setTitle(requiredText(request.getTitle(), "文章标题不能为空"));
-        post.setSlug(validateSlug(request.getSlug()));
-        post.setSummary(trimToNull(request.getSummary()));
-        post.setStatus(BlogPostStatus.DRAFT.name());
-        post.setCreatedBy(operatorId);
-        post.setIsDeleted(false);
-        post.setDeletedSeq(0L);
-        try {
-            blogPostMapper.insert(post);
-        } catch (DataIntegrityViolationException e) {
-            throw badRequest("slug已存在");
+        BlogPost post = null;
+        for (int i = 0; i < 3; i++) {
+            post = new BlogPost();
+            post.setTitle(requiredText(request.getTitle(), "文章标题不能为空"));
+            post.setSlug(generateSlug());
+            post.setSummary(trimToNull(request.getSummary()));
+            post.setStatus(BlogPostStatus.DRAFT.name());
+            post.setCreatedBy(operatorId);
+            post.setIsDeleted(false);
+            post.setDeletedSeq(0L);
+            try {
+                blogPostMapper.insert(post);
+                break;
+            } catch (DataIntegrityViolationException e) {
+                if (i == 2) {
+                    throw new BusinessException(50001, "博客slug生成冲突", 500);
+                }
+            }
         }
         AuditLog.event("BLOG_POST_CREATE", "operatorId={}, postId={}, slug={}",
             operatorId, post.getId(), post.getSlug());
@@ -93,10 +114,6 @@ public class BlogPostServiceImpl implements BlogPostService {
             update.setTitle(requiredText(request.getTitle(), "文章标题不能为空"));
             changed = true;
         }
-        if (request.getSlug() != null) {
-            update.setSlug(validateSlug(request.getSlug()));
-            changed = true;
-        }
         if (request.getSummary() != null) {
             update.setSummary(trimToNull(request.getSummary()));
             changed = true;
@@ -110,27 +127,49 @@ public class BlogPostServiceImpl implements BlogPostService {
             throw badRequest("请至少提供一个需要更新的字段");
         }
 
-        try {
-            blogPostMapper.updateById(update);
-        } catch (DataIntegrityViolationException e) {
-            throw badRequest("slug已存在");
-        }
+        blogPostMapper.updateById(update);
         AuditLog.event("BLOG_POST_UPDATE", "operatorId={}, postId={}", operatorId, current.getId());
         return detailAdmin(postId);
     }
 
     @Override
     @Transactional
-    public BlogPostAdminDetailDTO uploadContent(Long operatorId, Long postId, MultipartFile file) {
-        getActivePost(postId);
-        String objectKey = contentStorage.uploadMarkdown(postId, file);
+    public BlogPostAdminDetailDTO importContent(Long operatorId, Long postId, MultipartFile file) {
+        BlogPost post = getActivePost(postId);
+        String oldContentKey = post.getContentObjectKey();
+        BlogContentStorageService.ProcessedMarkdown processed =
+            contentStorage.importMarkdown(postId, file, knownPublicUrls(postId));
+        insertAutoImageAssets(operatorId, postId, processed.images());
         BlogPost update = new BlogPost();
         update.setId(postId);
-        update.setContentObjectKey(objectKey);
+        update.setContentObjectKey(processed.objectKey());
         blogPostMapper.updateById(update);
-        AuditLog.event("BLOG_POST_CONTENT_UPLOAD", "operatorId={}, postId={}, objectKey={}",
-            operatorId, postId, objectKey);
-        return detailAdmin(postId);
+        deleteOldContentObject(oldContentKey, postId);
+        AuditLog.event("BLOG_POST_CONTENT_IMPORT", "operatorId={}, postId={}, objectKey={}",
+            operatorId, postId, processed.objectKey());
+        BlogPostAdminDetailDTO detail = detailAdmin(postId);
+        detail.setContentMarkdown(processed.contentMarkdown());
+        return detail;
+    }
+
+    @Override
+    @Transactional
+    public BlogPostAdminDetailDTO saveContent(Long operatorId, Long postId, SaveBlogContentRequest request) {
+        BlogPost post = getActivePost(postId);
+        String oldContentKey = post.getContentObjectKey();
+        BlogContentStorageService.ProcessedMarkdown processed =
+            contentStorage.saveMarkdown(postId, request.getContentMarkdown(), knownPublicUrls(postId));
+        insertAutoImageAssets(operatorId, postId, processed.images());
+        BlogPost update = new BlogPost();
+        update.setId(postId);
+        update.setContentObjectKey(processed.objectKey());
+        blogPostMapper.updateById(update);
+        deleteOldContentObject(oldContentKey, postId);
+        AuditLog.event("BLOG_POST_CONTENT_SAVE", "operatorId={}, postId={}, objectKey={}",
+            operatorId, postId, processed.objectKey());
+        BlogPostAdminDetailDTO detail = detailAdmin(postId);
+        detail.setContentMarkdown(processed.contentMarkdown());
+        return detail;
     }
 
     @Override
@@ -187,7 +226,9 @@ public class BlogPostServiceImpl implements BlogPostService {
             .orderByDesc(BlogPost::getPublishedAt)
             .orderByDesc(BlogPost::getId));
         PageInfo<BlogPost> pageInfo = new PageInfo<>(posts);
-        return new PageResult<>(posts.stream().map(this::toPublicListDTO).toList(), pageInfo.getTotal(), page, pageSize);
+        Map<Long, String> coverUrlMap = batchLoadCoverUrls(posts);
+        return new PageResult<>(posts.stream().map(p -> toPublicListDTO(p, coverUrlMap)).toList(),
+            pageInfo.getTotal(), page, pageSize);
     }
 
     @Override
@@ -207,6 +248,12 @@ public class BlogPostServiceImpl implements BlogPostService {
         dto.setCoverAssetId(post.getCoverAssetId());
         dto.setPublishedAt(post.getPublishedAt());
         dto.setContentMarkdown(contentStorage.readMarkdown(post.getContentObjectKey()));
+        if (post.getCoverAssetId() != null) {
+            BlogAsset cover = blogAssetMapper.selectById(post.getCoverAssetId());
+            if (cover != null) {
+                dto.setCoverPublicUrl(cover.getPublicUrl());
+            }
+        }
         return dto;
     }
 
@@ -225,6 +272,35 @@ public class BlogPostServiceImpl implements BlogPostService {
             .eq(BlogAsset::getAssetType, BlogAssetType.COVER.name()));
         if (asset == null) {
             throw badRequest("封面资源不存在或不属于当前文章");
+        }
+    }
+
+    private Set<String> knownPublicUrls(Long postId) {
+        Set<String> urls = new HashSet<>();
+        blogAssetMapper.selectList(new LambdaQueryWrapper<BlogAsset>()
+                .eq(BlogAsset::getPostId, postId))
+            .forEach(asset -> {
+                if (StringUtils.hasText(asset.getPublicUrl())) {
+                    urls.add(asset.getPublicUrl());
+                }
+            });
+        return urls;
+    }
+
+    private void insertAutoImageAssets(
+            Long operatorId, Long postId, List<BlogContentStorageService.StoredMarkdownImage> images) {
+        for (BlogContentStorageService.StoredMarkdownImage image : images) {
+            BlogAsset asset = new BlogAsset();
+            asset.setPostId(postId);
+            asset.setAssetType(BlogAssetType.CONTENT_IMAGE.name());
+            asset.setOriginalFilename(image.originalFilename());
+            asset.setContentType(image.contentType());
+            asset.setFileSize(image.fileSize());
+            asset.setObjectKey(image.objectKey());
+            asset.setPublicUrl(image.publicUrl());
+            asset.setCreatedBy(operatorId);
+            asset.setIsDeleted(false);
+            blogAssetMapper.insert(asset);
         }
     }
 
@@ -258,20 +334,39 @@ public class BlogPostServiceImpl implements BlogPostService {
         dto.setCreatedAt(post.getCreatedAt());
         dto.setUpdatedAt(post.getUpdatedAt());
         if (includeContent && StringUtils.hasText(post.getContentObjectKey())) {
-            dto.setContentMarkdown(contentStorage.readMarkdown(post.getContentObjectKey()));
+            try {
+                dto.setContentMarkdown(contentStorage.readMarkdown(post.getContentObjectKey()));
+            } catch (Exception e) {
+                log.warn("Failed to read markdown content for post {}: {}", post.getId(), e.getMessage());
+            }
         }
         return dto;
     }
 
-    private BlogPostPublicListDTO toPublicListDTO(BlogPost post) {
+    private BlogPostPublicListDTO toPublicListDTO(BlogPost post, Map<Long, String> coverUrlMap) {
         BlogPostPublicListDTO dto = new BlogPostPublicListDTO();
         dto.setId(post.getId());
         dto.setTitle(post.getTitle());
         dto.setSlug(post.getSlug());
         dto.setSummary(post.getSummary());
         dto.setCoverAssetId(post.getCoverAssetId());
+        dto.setCoverPublicUrl(post.getCoverAssetId() != null ? coverUrlMap.get(post.getCoverAssetId()) : null);
         dto.setPublishedAt(post.getPublishedAt());
         return dto;
+    }
+
+    private Map<Long, String> batchLoadCoverUrls(List<BlogPost> posts) {
+        List<Long> ids = posts.stream()
+            .map(BlogPost::getCoverAssetId)
+            .filter(id -> id != null)
+            .distinct()
+            .toList();
+        if (ids.isEmpty()) {
+            return new HashMap<>();
+        }
+        return blogAssetMapper.selectBatchIds(ids).stream()
+            .filter(a -> StringUtils.hasText(a.getPublicUrl()))
+            .collect(Collectors.toMap(BlogAsset::getId, BlogAsset::getPublicUrl));
     }
 
     private String validateSlug(String slug) {
@@ -280,6 +375,10 @@ public class BlogPostServiceImpl implements BlogPostService {
             throw badRequest("slug格式不合法");
         }
         return normalized;
+    }
+
+    private String generateSlug() {
+        return UUID.randomUUID().toString().replace("-", "").toLowerCase(Locale.ROOT);
     }
 
     private BlogPostStatus parseStatus(String status) {
@@ -304,6 +403,15 @@ public class BlogPostServiceImpl implements BlogPostService {
         }
         String trimmed = value.trim();
         return StringUtils.hasText(trimmed) ? trimmed : null;
+    }
+
+    private void deleteOldContentObject(String oldKey, Long postId) {
+        if (!StringUtils.hasText(oldKey)) {
+            return;
+        }
+        if (!ossService.deleteFile(OssSavePlaceEnum.BLOG, oldKey)) {
+            log.warn("Failed to delete old markdown object, postId={}, key={}", postId, oldKey);
+        }
     }
 
     private BusinessException badRequest(String message) {

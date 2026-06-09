@@ -3,6 +3,7 @@ package com.qingluo.link.api.controller;
 import cn.dev33.satoken.annotation.SaCheckRole;
 import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.request.CreateBlogPostRequest;
+import com.qingluo.link.model.dto.request.SaveBlogContentRequest;
 import com.qingluo.link.model.dto.request.UpdateBlogPostRequest;
 import com.qingluo.link.model.dto.response.BlogAssetDTO;
 import com.qingluo.link.model.dto.response.BlogPostAdminDetailDTO;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -69,12 +71,28 @@ public class BlogAdminController {
         return Result.success(blogPostService.update(operatorId, postId, request));
     }
 
-    @PostMapping("/posts/{postId}/content")
-    @Operation(summary = "上传或替换博客Markdown正文")
-    public Result<BlogPostAdminDetailDTO> uploadContent(@PathVariable Long postId,
+    @PostMapping("/posts/{postId}/content/import")
+    @Operation(summary = "导入博客Markdown草稿")
+    public Result<BlogPostAdminDetailDTO> importContent(@PathVariable Long postId,
                                                         @RequestParam("file") MultipartFile file) {
         Long operatorId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(blogPostService.uploadContent(operatorId, postId, file));
+        return Result.success(blogPostService.importContent(operatorId, postId, file));
+    }
+
+    @PostMapping("/posts/{postId}/content")
+    @Operation(summary = "导入博客Markdown草稿（兼容旧路径）")
+    public Result<BlogPostAdminDetailDTO> importContentCompat(@PathVariable Long postId,
+                                                              @RequestParam("file") MultipartFile file) {
+        Long operatorId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(blogPostService.importContent(operatorId, postId, file));
+    }
+
+    @PutMapping("/posts/{postId}/content")
+    @Operation(summary = "保存博客Markdown正文")
+    public Result<BlogPostAdminDetailDTO> saveContent(@PathVariable Long postId,
+                                                      @Valid @RequestBody SaveBlogContentRequest request) {
+        Long operatorId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(blogPostService.saveContent(operatorId, postId, request));
     }
 
     @PostMapping("/posts/{postId}/publish")
@@ -101,12 +119,13 @@ public class BlogAdminController {
 
     @GetMapping("/posts/{postId}/assets")
     @Operation(summary = "查询博客文章资源")
-    public Result<List<BlogAssetDTO>> listAssets(@PathVariable Long postId) {
-        return Result.success(blogAssetService.list(postId));
+    public Result<List<BlogAssetDTO>> listAssets(@PathVariable Long postId,
+                                                 @RequestParam(required = false) String assetType) {
+        return Result.success(blogAssetService.list(postId, assetType));
     }
 
     @PostMapping("/posts/{postId}/assets")
-    @Operation(summary = "上传博客文章图片资源")
+    @Operation(summary = "上传博客文章封面图片")
     public Result<BlogAssetDTO> uploadAsset(@PathVariable Long postId,
                                             @RequestParam("assetType") String assetType,
                                             @RequestParam("file") MultipartFile file) {

@@ -10,8 +10,13 @@ import com.qingluo.link.model.enums.BlogAssetType;
 import com.qingluo.link.service.BlogContentStorageService;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
@@ -33,11 +38,33 @@ class BlogContentStorageServiceImplTest {
         MockMultipartFile file = new MockMultipartFile(
             "file", "post.md", "application/octet-stream", "# 标题\n正文".getBytes());
 
-        String objectKey = storageService.uploadMarkdown(12L, file);
+        BlogContentStorageService.ProcessedMarkdown processed =
+            storageService.importMarkdown(12L, file, Set.of());
 
-        assertThat(objectKey).matches("blog/12/content/[a-f0-9]{32}\\.md");
-        assertThat(objectKey).isEqualTo(ossService.lastObjectKey);
-        assertThat(ossService.lastPlace).isEqualTo(OssSavePlaceEnum.PRIVATE);
+        assertThat(processed.objectKey()).matches("blog/12/content/[a-f0-9]{32}\\.md");
+        assertThat(processed.objectKey()).isEqualTo(ossService.lastObjectKey);
+        assertThat(processed.contentMarkdown()).isEqualTo("# 标题\n正文");
+        assertThat(processed.images()).isEmpty();
+        assertThat(ossService.lastPlace).isEqualTo(OssSavePlaceEnum.BLOG);
+    }
+
+    @Test
+    void Should_RewriteDataUriImagesToPublicOssUrls_When_UploadingMarkdown() {
+        String imageData = Base64.getEncoder().encodeToString("image".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "post.md", "text/markdown",
+            ("# 标题\n![图](data:image/png;base64," + imageData + ")\n正文").getBytes(StandardCharsets.UTF_8));
+
+        BlogContentStorageService.ProcessedMarkdown processed =
+            storageService.importMarkdown(12L, file, Set.of());
+
+        assertThat(processed.objectKey()).matches("blog/12/content/[a-f0-9]{32}\\.md");
+        assertThat(ossService.publicObjectKeys).hasSize(1);
+        assertThat(ossService.publicObjectKeys.get(0)).matches("blog/12/images/[a-f0-9]{32}\\.png");
+        assertThat(ossService.privateMarkdown).contains("![图](/public/" + ossService.publicObjectKeys.get(0) + ")");
+        assertThat(ossService.privateMarkdown).doesNotContain("data:image");
+        assertThat(processed.images()).hasSize(1);
+        assertThat(processed.images().get(0).publicUrl()).isEqualTo("/public/" + ossService.publicObjectKeys.get(0));
     }
 
     @Test
@@ -46,10 +73,10 @@ class BlogContentStorageServiceImplTest {
         MockMultipartFile invalidUtf8 = new MockMultipartFile(
             "file", "post.md", "text/markdown", new byte[]{(byte) 0xC3, (byte) 0x28});
 
-        assertThatThrownBy(() -> storageService.uploadMarkdown(12L, textFile))
+        assertThatThrownBy(() -> storageService.importMarkdown(12L, textFile, Set.of()))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("仅支持");
-        assertThatThrownBy(() -> storageService.uploadMarkdown(12L, invalidUtf8))
+        assertThatThrownBy(() -> storageService.importMarkdown(12L, invalidUtf8, Set.of()))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("UTF-8");
     }
@@ -60,9 +87,43 @@ class BlogContentStorageServiceImplTest {
         java.util.Arrays.fill(content, (byte) 'a');
         MockMultipartFile file = new MockMultipartFile("file", "large.md", "text/markdown", content);
 
-        String objectKey = storageService.uploadMarkdown(12L, file);
+        BlogContentStorageService.ProcessedMarkdown processed =
+            storageService.importMarkdown(12L, file, Set.of());
 
-        assertThat(objectKey).matches("blog/12/content/[a-f0-9]{32}\\.md");
+        assertThat(processed.objectKey()).matches("blog/12/content/[a-f0-9]{32}\\.md");
+    }
+
+    @Test
+    void Should_PreserveRestrictedRemoteImageUrl_When_SavingMarkdown() {
+        BlogContentStorageService.ProcessedMarkdown processed = storageService.saveMarkdown(
+            12L,
+            "# 标题\n![图](http://127.0.0.1/a.png)",
+            Set.of());
+
+        assertThat(processed.contentMarkdown()).contains("![图](http://127.0.0.1/a.png)");
+        assertThat(processed.images()).isEmpty();
+        assertThat(ossService.publicObjectKeys).isEmpty();
+    }
+
+    @Test
+    void Should_RejectRelativeImagePath_When_SavingMarkdown() {
+        assertThatThrownBy(() -> storageService.saveMarkdown(12L, "# 标题\n![图](./images/a.png)", Set.of()))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("仅支持");
+    }
+
+    @Test
+    void Should_SkipKnownPublicUrl_When_SavingMarkdown() {
+        String publicUrl = "/public/blog/12/content/a.png";
+
+        BlogContentStorageService.ProcessedMarkdown processed = storageService.saveMarkdown(
+            12L,
+            "# 标题\n![图](" + publicUrl + ")",
+            Set.of(publicUrl));
+
+        assertThat(processed.contentMarkdown()).contains(publicUrl);
+        assertThat(processed.images()).isEmpty();
+        assertThat(ossService.publicObjectKeys).isEmpty();
     }
 
     @Test
@@ -88,26 +149,38 @@ class BlogContentStorageServiceImplTest {
         BlogContentStorageService.StoredObject stored =
             storageService.uploadImage(12L, BlogAssetType.CONTENT_IMAGE, file);
 
-        assertThat(stored.objectKey()).matches("blog/12/content/[a-f0-9]{32}\\.png");
+        assertThat(stored.objectKey()).matches("blog/12/images/[a-f0-9]{32}\\.png");
     }
 
     private static class RecordingOssService implements IOssService {
 
         private OssSavePlaceEnum lastPlace;
         private String lastObjectKey;
+        private String privateMarkdown;
+        private final List<String> publicObjectKeys = new ArrayList<>();
 
         @Override
         public String upload2PreviewUrl(OssSavePlaceEnum place, MultipartFile file, String objectKey) {
             lastPlace = place;
             lastObjectKey = objectKey;
-            return place == OssSavePlaceEnum.PUBLIC ? "/public/" + objectKey : objectKey;
+            publicObjectKeys.add(objectKey);
+            return "/public/" + objectKey;
         }
 
         @Override
         public String upload2PreviewUrl(OssSavePlaceEnum place, File file, String contentType, String objectKey) {
             lastPlace = place;
             lastObjectKey = objectKey;
-            return place == OssSavePlaceEnum.PUBLIC ? "/public/" + objectKey : objectKey;
+            if ("text/markdown".equals(contentType)) {
+                try {
+                    privateMarkdown = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            } else {
+                publicObjectKeys.add(objectKey);
+            }
+            return "/public/" + objectKey;
         }
 
         @Override

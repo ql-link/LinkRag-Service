@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -22,6 +23,7 @@ import com.qingluo.link.service.cache.UserCacheService;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -93,16 +95,21 @@ class BlogControllerTest {
     @Test
     void Should_CreateUploadPublishAndReadPublicBlog_When_AdminOperates() throws Exception {
         Long postId = createPost("minio-storage-guide");
+        String slug = slugOf(postId);
+        String imageData = Base64.getEncoder().encodeToString("image-content".getBytes(StandardCharsets.UTF_8));
+        String rewrittenMarkdownPattern =
+            "# 标题\n!\\[图]\\(/api/v1/oss-files/public/blog/" + postId + "/content/[a-f0-9]{32}\\.png\\)\n正文";
 
         MockMultipartFile markdown = new MockMultipartFile(
-            "file", "post.md", "text/markdown", "# 标题\n正文".getBytes(StandardCharsets.UTF_8));
-        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/admin/blog/posts/{postId}/content", postId)
+            "file", "post.md", "text/markdown",
+            ("# 标题\n![图](data:image/png;base64," + imageData + ")\n正文").getBytes(StandardCharsets.UTF_8));
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/admin/blog/posts/{postId}/content/import", postId)
                 .file(markdown)
                 .header("satoken", adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.contentObjectKey").value(org.hamcrest.Matchers.matchesPattern(
                 "blog/" + postId + "/content/[a-f0-9]{32}\\.md")))
-            .andExpect(jsonPath("$.data.contentMarkdown").value("# 标题\n正文"))
+            .andExpect(jsonPath("$.data.contentMarkdown").value(org.hamcrest.Matchers.matchesPattern(rewrittenMarkdownPattern)))
             .andReturn();
 
         String objectKey = objectMapper.readTree(uploadResult.getResponse().getContentAsString())
@@ -119,13 +126,13 @@ class BlogControllerTest {
                 .param("page", "1")
                 .param("pageSize", "20"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.items[0].slug").value("minio-storage-guide"))
+            .andExpect(jsonPath("$.data.items[0].slug").value(slug))
             .andExpect(jsonPath("$.data.items[0].contentMarkdown").doesNotExist());
 
-        mockMvc.perform(get("/api/v1/blog/posts/{slug}", "minio-storage-guide"))
+        mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.slug").value("minio-storage-guide"))
-            .andExpect(jsonPath("$.data.contentMarkdown").value("# 标题\n正文"));
+            .andExpect(jsonPath("$.data.slug").value(slug))
+            .andExpect(jsonPath("$.data.contentMarkdown").value(org.hamcrest.Matchers.matchesPattern(rewrittenMarkdownPattern)));
     }
 
     @Test
@@ -134,7 +141,7 @@ class BlogControllerTest {
                 .header("satoken", userToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"title":"普通用户文章","slug":"normal-user-post","summary":"x"}
+                    {"title":"普通用户文章","summary":"x"}
                     """))
             .andExpect(status().isForbidden());
 
@@ -203,28 +210,14 @@ class BlogControllerTest {
     }
 
     @Test
-    void Should_RejectDuplicateSlugAndAllowReuseAfterSoftDelete() throws Exception {
-        mockMvc.perform(post("/api/v1/admin/blog/posts")
-                .header("satoken", adminToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"title":"非法slug","slug":"Upper-Case","summary":"x"}
-                    """))
-            .andExpect(status().isBadRequest());
-
+    void Should_GenerateUuidSlugAndSoftDeletePost_When_AdminDeletes() throws Exception {
         Long firstId = createPost("release-note");
-        mockMvc.perform(post("/api/v1/admin/blog/posts")
-                .header("satoken", adminToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"title":"重复slug","slug":"release-note","summary":"x"}
-                    """))
-            .andExpect(status().isBadRequest());
+        String slug = slugOf(firstId);
+        assertThat(slug).matches("[0-9a-f]{32}");
 
         mockMvc.perform(delete("/api/v1/admin/blog/posts/{postId}", firstId)
                 .header("satoken", adminToken))
             .andExpect(status().isOk());
-        Long secondId = createPost("release-note");
 
         Boolean firstDeleted = jdbcTemplate.queryForObject(
             "SELECT is_deleted FROM blog_post WHERE id = ?", Boolean.class, firstId);
@@ -232,12 +225,12 @@ class BlogControllerTest {
             "SELECT deleted_seq FROM blog_post WHERE id = ?", Long.class, firstId);
         assertThat(firstDeleted).isTrue();
         assertThat(deletedSeq).isEqualTo(firstId);
-        assertThat(secondId).isNotEqualTo(firstId);
     }
 
     @Test
     void Should_RejectPublishWithoutReadableContentAndKeepFirstPublishedAt() throws Exception {
         Long postId = createPost("publish-state");
+        String slug = slugOf(postId);
 
         mockMvc.perform(post("/api/v1/admin/blog/posts/{postId}/publish", postId)
                 .header("satoken", adminToken))
@@ -262,7 +255,7 @@ class BlogControllerTest {
                 .header("satoken", adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("DRAFT"));
-        mockMvc.perform(get("/api/v1/blog/posts/{slug}", "publish-state"))
+        mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
             .andExpect(status().isNotFound());
 
         mockMvc.perform(post("/api/v1/admin/blog/posts/{postId}/publish", postId)
@@ -274,44 +267,73 @@ class BlogControllerTest {
     @Test
     void Should_Return500_When_PublicDetailCannotReadMarkdownObject() throws Exception {
         Long postId = createPost("broken-content");
+        String slug = slugOf(postId);
         jdbcTemplate.update(
             "UPDATE blog_post SET status = 'PUBLISHED', published_at = CURRENT_TIMESTAMP, content_object_key = ? WHERE id = ?",
             "blog/" + postId + "/content/broken.md",
             postId);
 
-        mockMvc.perform(get("/api/v1/blog/posts/{slug}", "broken-content"))
+        mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
             .andExpect(status().isInternalServerError())
             .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
-    void Should_FilterAssetListAndRejectUnsupportedAssetUploads() throws Exception {
+    void Should_ListUploadAndDeleteAssets_When_AdminOperates() throws Exception {
         Long postId = createPost("asset-list");
         Long otherPostId = createPost("asset-other");
-        Long contentAssetId = uploadAsset(postId, "CONTENT_IMAGE", "diagram.png", "image/png");
         Long coverAssetId = uploadAsset(postId, "COVER", "cover.webp", "image/webp");
-        uploadAsset(otherPostId, "CONTENT_IMAGE", "other.png", "image/png");
-
-        mockMvc.perform(delete("/api/v1/admin/blog/posts/{postId}/assets/{assetId}", postId, coverAssetId)
-                .header("satoken", adminToken))
-            .andExpect(status().isOk());
+        uploadAsset(otherPostId, "COVER", "other.webp", "image/webp");
+        Long contentAssetId = uploadAsset(postId, "CONTENT_IMAGE", "diagram.png", "image/png");
+        String contentPublicUrl = jdbcTemplate.queryForObject(
+            "SELECT public_url FROM blog_asset WHERE id = ?", String.class, contentAssetId);
 
         mockMvc.perform(get("/api/v1/admin/blog/posts/{postId}/assets", postId)
+                .param("assetType", "COVER")
                 .header("satoken", adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.length()").value(1))
-            .andExpect(jsonPath("$.data[0].id").value(contentAssetId));
+            .andExpect(jsonPath("$.data[0].id").value(coverAssetId));
+
+        mockMvc.perform(get("/api/v1/admin/blog/posts/{postId}/assets", postId)
+                .param("assetType", "CONTENT_IMAGE")
+                .header("satoken", adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].id").value(contentAssetId))
+            .andExpect(jsonPath("$.data[0].markdownText").value("![diagram.png](" + contentPublicUrl + ")"));
 
         MockMultipartFile svg = new MockMultipartFile("file", "vector.svg", "image/svg+xml", "<svg/>".getBytes());
         mockMvc.perform(multipart("/api/v1/admin/blog/posts/{postId}/assets", postId)
                 .file(svg)
-                .param("assetType", "CONTENT_IMAGE")
+                .param("assetType", "COVER")
                 .header("satoken", adminToken))
             .andExpect(status().isBadRequest());
+        MockMultipartFile contentImage = new MockMultipartFile(
+            "file", "diagram.png", "image/png", "image".getBytes(StandardCharsets.UTF_8));
+        mockMvc.perform(multipart("/api/v1/admin/blog/posts/{postId}/assets", postId)
+                .file(contentImage)
+                .param("assetType", "CONTENT_IMAGE")
+                .header("satoken", adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.markdownText").isNotEmpty());
+
+        saveMarkdown(postId, "# 正文\n![图](" + contentPublicUrl + ")");
+        mockMvc.perform(delete("/api/v1/admin/blog/posts/{postId}/assets/{assetId}", postId, contentAssetId)
+                .header("satoken", adminToken))
+            .andExpect(status().isBadRequest());
+        saveMarkdown(postId, "# 正文\n无图片");
+        mockMvc.perform(delete("/api/v1/admin/blog/posts/{postId}/assets/{assetId}", postId, contentAssetId)
+                .header("satoken", adminToken))
+            .andExpect(status().isOk());
+        Boolean contentDeleted = jdbcTemplate.queryForObject(
+            "SELECT is_deleted FROM blog_asset WHERE id = ?", Boolean.class, contentAssetId);
+        assertThat(contentDeleted).isTrue();
+
         MockMultipartFile image = new MockMultipartFile("file", "missing.png", "image/png", "image".getBytes());
         mockMvc.perform(multipart("/api/v1/admin/blog/posts/{postId}/assets", 999999L)
                 .file(image)
-                .param("assetType", "CONTENT_IMAGE")
+                .param("assetType", "COVER")
                 .header("satoken", adminToken))
             .andExpect(status().isNotFound());
     }
@@ -321,10 +343,11 @@ class BlogControllerTest {
                 .header("satoken", adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"title":"MinIO 存储说明","slug":"%s","summary":"对象存储说明"}
-                    """.formatted(slug)))
+                    {"title":"MinIO 存储说明","summary":"对象存储说明"}
+                    """))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andExpect(jsonPath("$.data.slug").value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{32}")))
             .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asLong();
     }
@@ -336,6 +359,19 @@ class BlogControllerTest {
                 .file(markdown)
                 .header("satoken", adminToken))
             .andExpect(status().isOk());
+    }
+
+    private void saveMarkdown(Long postId, String content) throws Exception {
+        mockMvc.perform(put("/api/v1/admin/blog/posts/{postId}/content", postId)
+                .header("satoken", adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(java.util.Map.of("contentMarkdown", content))))
+            .andExpect(status().isOk());
+    }
+
+    private String slugOf(Long postId) {
+        return jdbcTemplate.queryForObject(
+            "SELECT slug FROM blog_post WHERE id = ?", String.class, postId);
     }
 
     private Long uploadAsset(Long postId, String assetType, String filename, String contentType) throws Exception {
