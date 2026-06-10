@@ -121,6 +121,8 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `MINIO_BLOG_BUCKET` | MinIO 博客专用桶名（图片 + Markdown，需配置匿名读） | 否 | `tolink-blog` | `tolink-blog` |
 
 > \* MinIO 变量在 `OSS_SERVICE_TYPE=minio` 时必需
+>
+> 反馈附件不新增独立桶配置，复用 `MINIO_PRIVATE_BUCKET` 对应的私有桶；对象 key 由 Java 生成，格式为 `feedback/yyyy/MM/dd/{uuid}.{suffix}`。
 
 ### 4.8 阿里云 OSS（ALIYUN_OSS_*）
 

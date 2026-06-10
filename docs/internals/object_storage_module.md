@@ -20,6 +20,18 @@ OSS 组件位于 `link-components/toLink-components-oss`，业务上传入口位
 
 - **删除策略（隐性删除）**：数据集 / 文档文件删除采用软删保留原文件，**不调用 `IOssService.deleteFile` 物理删 OSS 原文件对象**；原文件随软删行保留，便于追溯 / 恢复。Python 侧衍生产物（清洗文件、向量等）的删除交 Python（删除通知 MQ 占位、未实现）。
 
+## Feedback 对象规则
+
+反馈模块首版复用 `OssSavePlaceEnum.PRIVATE`，写入私有桶，不暴露公开 URL。数据库只保存 `user_feedback.attachment_object_key`，不保存 bucket 或完整 URL；Java 端根据当前 OSS 配置解析私有桶。
+
+| 对象 | Key | 枚举值 | 说明 |
+| --- | --- | --- | --- |
+| 反馈附件 | `feedback/{yyyy}/{MM}/{dd}/{uuid}.{suffix}` | `PRIVATE` | 匿名反馈可选附件，允许图片与常见文档后缀，上传成功后仅把 object key 写入 `user_feedback` |
+
+- `OssUploadRuleRegistry` 中 `feedback` 规则使用私有存储，默认大小上限 10MB。
+- `OssObjectKeyGenerator` 对 `feedback` 使用日期目录，避免单目录对象过多。
+- 匿名反馈入库失败时，Java 端应尝试调用 `deleteFile(PRIVATE, attachmentObjectKey)` 删除刚上传的附件，降低孤儿对象数量；删除失败只记录日志，不掩盖原始入库异常。
+
 ## 桶命名规范
 
 | 桶名 | 用途 | 访问策略 |

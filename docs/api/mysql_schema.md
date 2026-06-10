@@ -21,6 +21,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `document_parse_pipeline` | `DocumentParsePipeline` | Python 写入的后处理流水线（含稀疏向量阶段）终态 `pipeline_status` 与重试 CAS 列 `superseded_by_task_id`；Java 只读 |
 | `blog_post` | `BlogPost` | 博客文章元数据、发布状态和 Markdown 对象指针 |
 | `blog_asset` | `BlogAsset` | 博客封面资源和正文图片资源元数据 |
+| `user_feedback` | `UserFeedback` | 匿名反馈、私有附件对象键、管理员处理状态与回复 |
 
 ## 约定
 
@@ -40,6 +41,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - `blog_post.slug + deleted_seq` 唯一：`slug` 由后端生成去掉连字符的 32 位小写 UUID；活跃文章 `deleted_seq=0`，软删时写自身 ID。
 - `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。
 - `blog_asset.object_key` / `public_url` 指向公开封面或正文图片对象；`asset_type` 支持 `COVER` 和 `CONTENT_IMAGE`。正文图片可由编辑器上传，也可由 Markdown 导入/保存流程自动写入 PUBLIC OSS，并记录 `blog_asset`。
+- `user_feedback` 首版为纯匿名反馈，不保存 `user_id`、`contact`、`is_anonymous`、`is_deleted`、`is_resolved`。`attachment_object_key` 只保存私有 MinIO object key，不保存 URL 或 bucket。合法值：`type` = `BUG` / `FEATURE` / `EXPERIENCE` / `OTHER`，`status` = `PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED`，`priority` = `1` 高 / `2` 中 / `3` 低。Java 本地 schema 与 Python migration 必须保持字段名、默认值、索引一致。
 
 ## 删除语义（隐性删除）
 
