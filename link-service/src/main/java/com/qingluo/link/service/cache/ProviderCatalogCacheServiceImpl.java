@@ -54,6 +54,24 @@ public class ProviderCatalogCacheServiceImpl implements ProviderCatalogCacheServ
         }
     }
 
+    @Override
+    public String resolveProviderTypeById(Long providerId) {
+        if (providerId == null) {
+            return null;
+        }
+        // 只读索引、不回源：拿不到就让调用方降级，绝不为一次补偿触发全量回源查库
+        ProviderCatalogIndex index =
+                cacheReadProtectionService.getIfPresent(INDEX_KEY, ProviderCatalogIndex.class);
+        if (index == null || index.getProviders() == null) {
+            return null;
+        }
+        return index.getProviders().stream()
+                .filter(ref -> providerId.equals(ref.getId()))
+                .map(ProviderRef::getProviderType)
+                .findFirst()
+                .orElse(null);
+    }
+
     /**
      * 读取厂商索引（单 key 读保护）。回源完成但回填失败时返回已加载值；其余异常交外层降级。
      */

@@ -218,6 +218,9 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `tolink.cache-consistency.null-cache-ttl-seconds` | 空值缓存 TTL（秒） | `60` | 读保护使用 |
 | `tolink.cache-consistency.ttl-jitter-seconds` | TTL 抖动上限（秒） | `300` | 读保护使用 |
 | `tolink.cache-consistency.load-wait-ms` | 并发回源等待时间（毫秒） | `50` | 读保护使用 |
+| `tolink.cache-consistency.cdc.enabled` | 是否启用 CDC 桥接生产端 | `false` | 默认全环境关闭；线上接入 Canal 后置 `true` 开启 |
+| `tolink.cache-consistency.cdc.source-topic` | Canal 原始变更 topic | 无 | `cdc.enabled=true` 时必填，如 `tolink.canal.binlog` |
+| `tolink.cache-consistency.cdc.group-id` | CDC 桥接消费者消费组 | `tolink-cdc-bridge` | — |
 
 补充说明：
 
@@ -226,6 +229,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
   - 无事务写路径：数据库写成功后立即执行
 - 只要数据库写已经成功，第一次删缓存失败都不会再改变请求结果，而是记录日志并依赖 `tolink.cache.evict` 补偿链路最终收敛。
 - CDC / MQ 驱动的第二次补偿删除仍保持强失败语义：删除失败时抛异常，由消费重试机制继续收敛。
+- CDC 桥接生产端（`tolink.cache-consistency.cdc.*`）默认 false 全环境关闭；线上接入 Canal 后置 `true` 并配 `source-topic`。Canal 起始位点（首次从当前位点、不回放历史）属 Canal 容器侧运维配置，不在 Java 配置内。
 
 ## 5. 本地开发快速启动
 

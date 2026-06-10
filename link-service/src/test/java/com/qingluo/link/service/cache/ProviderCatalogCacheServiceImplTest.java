@@ -140,6 +140,39 @@ class ProviderCatalogCacheServiceImplTest {
         assertThat(snapshot.getModels()).extracting(ProviderModel::getModelName).containsExactly("gpt-4o");
     }
 
+    @Test
+    @DisplayName("解析取法：索引命中按 id 得 providerType（只读、不回源）")
+    void resolveProviderTypeById_hit() {
+        given(cacheReadProtectionService.getIfPresent(INDEX_KEY, ProviderCatalogIndex.class))
+                .willReturn(new ProviderCatalogIndex(List.of(ref(3L, "openai"), ref(5L, "claude"))));
+
+        assertThat(cacheService.resolveProviderTypeById(3L)).isEqualTo("openai");
+    }
+
+    @Test
+    @DisplayName("解析取法：索引未命中（重建态）返回 null")
+    void resolveProviderTypeById_indexMiss() {
+        given(cacheReadProtectionService.getIfPresent(INDEX_KEY, ProviderCatalogIndex.class))
+                .willReturn(null);
+
+        assertThat(cacheService.resolveProviderTypeById(3L)).isNull();
+    }
+
+    @Test
+    @DisplayName("解析取法：id 不在启用索引（厂商停用/删除）返回 null")
+    void resolveProviderTypeById_idNotInIndex() {
+        given(cacheReadProtectionService.getIfPresent(INDEX_KEY, ProviderCatalogIndex.class))
+                .willReturn(new ProviderCatalogIndex(List.of(ref(5L, "claude"))));
+
+        assertThat(cacheService.resolveProviderTypeById(3L)).isNull();
+    }
+
+    @Test
+    @DisplayName("解析取法：providerId 为 null 直接返回 null，不读缓存")
+    void resolveProviderTypeById_nullId() {
+        assertThat(cacheService.resolveProviderTypeById(null)).isNull();
+    }
+
     private void givenIndex(ProviderCatalogIndex index) {
         given(cacheReadProtectionService.getOrLoad(
                 eq(INDEX_KEY), eq(ProviderCatalogIndex.class), eq(60L), eq(TimeUnit.MINUTES), any()))
