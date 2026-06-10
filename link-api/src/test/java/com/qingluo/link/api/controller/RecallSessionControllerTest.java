@@ -133,6 +133,6 @@ class RecallSessionControllerTest {
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.data.token").isNotEmpty())
             .andExpect(jsonPath("$.data.expiresIn").value(30))
-            .andExpect(jsonPath("$.data.streamUrl").value("http://localhost:8000/api/v1/recall/stream"));
+            .andExpect(jsonPath("$.data.streamUrl").value("http://localhost:8000/api/v1/rag/stream"));
     }
 }

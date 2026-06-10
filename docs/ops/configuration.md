@@ -196,7 +196,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 |------|------|----------|--------|
 | `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致） | 是 | 空 |
 | `RECALL_SESSION_JWT_EXP_SECONDS` | session token 有效期（秒），Python 强制校验 `exp` | 否 | `30` |
-| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python 召回地址（公网/网关），用于拼接响应 `streamUrl` | 否 | `http://localhost:8000` |
+| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python RAG 流式问答地址（公网/网关），用于拼接响应 `streamUrl = base + /api/v1/rag/stream`（LINK-138：Python 端点由 `/api/v1/recall/stream` 改名） | 否 | `http://localhost:8000` |
 
 > `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空时直接 fail-fast，因此启用本服务必须配置一个非空 session 密钥。
 >

@@ -75,8 +75,8 @@ class RecallSessionServiceImplTest {
 
         assertThat(resp.getToken()).isEqualTo("signed-token");
         assertThat(resp.getExpiresIn()).isEqualTo(30L);
-        // 末尾斜杠被规整，拼接 /api/v1/recall/stream。
-        assertThat(resp.getStreamUrl()).isEqualTo("https://rag.example.com/api/v1/recall/stream");
+        // 末尾斜杠被规整，拼接 /api/v1/rag/stream。
+        assertThat(resp.getStreamUrl()).isEqualTo("https://rag.example.com/api/v1/rag/stream");
         verify(sessionJwtSigner).sign(eq(USER_ID), eq(List.of(1L, 2L)), any(Instant.class));
     }
 

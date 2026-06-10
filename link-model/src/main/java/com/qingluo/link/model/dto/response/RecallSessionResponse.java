@@ -22,6 +22,6 @@ public class RecallSessionResponse {
     @Schema(description = "token 有效期（秒）", example = "30")
     private long expiresIn;
 
-    @Schema(description = "前端直连 Python 召回 SSE 的地址", example = "https://rag.example.com/api/v1/recall/stream")
+    @Schema(description = "前端直连 Python RAG 流式问答 SSE 的地址", example = "https://rag.example.com/api/v1/rag/stream")
     private String streamUrl;
 }
