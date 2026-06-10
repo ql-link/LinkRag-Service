@@ -6,11 +6,11 @@ import javax.validation.constraints.Size;
 import lombok.Data;
 
 @Data
-@Schema(description = "Reply feedback request")
+@Schema(description = "管理员回复反馈请求")
 public class ReplyFeedbackRequest {
 
-    @NotBlank(message = "feedback reply is required")
-    @Size(max = 5000, message = "feedback reply must be at most 5000 characters")
-    @Schema(description = "Admin reply", required = true)
+    @NotBlank(message = "管理员回复不能为空")
+    @Size(max = 5000, message = "管理员回复不能超过 5000 个字符")
+    @Schema(description = "管理员回复", required = true)
     private String reply;
 }

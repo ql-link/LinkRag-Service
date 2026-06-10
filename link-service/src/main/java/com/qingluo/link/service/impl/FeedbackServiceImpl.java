@@ -56,19 +56,19 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     private void validateCreateRequest(CreateFeedbackRequest request) {
         if (request == null) {
-            throw badRequest("feedback request is required");
+            throw badRequest("反馈请求不能为空");
         }
         if (!StringUtils.hasText(request.getTitle())) {
-            throw badRequest("feedback title is required");
+            throw badRequest("反馈标题不能为空");
         }
         if (request.getTitle().trim().length() > 128) {
-            throw badRequest("feedback title must be at most 128 characters");
+            throw badRequest("反馈标题不能超过 128 个字符");
         }
         if (!StringUtils.hasText(request.getContent())) {
-            throw badRequest("feedback content is required");
+            throw badRequest("反馈内容不能为空");
         }
         if (request.getContent().trim().length() > 5000) {
-            throw badRequest("feedback content must be at most 5000 characters");
+            throw badRequest("反馈内容不能超过 5000 个字符");
         }
     }
 
@@ -76,7 +76,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         try {
             return FeedbackType.of(type);
         } catch (IllegalArgumentException e) {
-            throw badRequest("feedback type is not supported");
+            throw badRequest("不支持的反馈类型");
         }
     }
 
@@ -85,7 +85,7 @@ public class FeedbackServiceImpl implements FeedbackService {
             return null;
         }
         if (file.isEmpty()) {
-            throw badRequest("feedback attachment is empty");
+            throw badRequest("反馈附件不能为空");
         }
         return ossApplicationService.upload("feedback", file);
     }
@@ -97,10 +97,10 @@ public class FeedbackServiceImpl implements FeedbackService {
         try {
             boolean deleted = ossService.deleteFile(OssSavePlaceEnum.PRIVATE, attachmentObjectKey);
             if (!deleted) {
-                log.warn("Failed to delete orphan feedback attachment, objectKey={}", attachmentObjectKey);
+                log.warn("删除反馈孤儿附件失败，objectKey={}", attachmentObjectKey);
             }
         } catch (RuntimeException ex) {
-            log.warn("Delete orphan feedback attachment threw exception, objectKey={}", attachmentObjectKey, ex);
+            log.warn("删除反馈孤儿附件时发生异常，objectKey={}", attachmentObjectKey, ex);
         }
     }
 

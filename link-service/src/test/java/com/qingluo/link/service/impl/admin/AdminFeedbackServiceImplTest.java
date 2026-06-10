@@ -33,7 +33,7 @@ class AdminFeedbackServiceImplTest {
     private AdminFeedbackServiceImpl adminFeedbackService;
 
     @Test
-    @DisplayName("Should_ReturnFilteredPage_When_ListFeedback")
+    @DisplayName("查询反馈列表时返回筛选后的分页结果")
     void Should_ReturnFilteredPage_When_ListFeedback() {
         given(userFeedbackMapper.selectList(any())).willReturn(List.of(feedback(1L)));
 
@@ -45,7 +45,7 @@ class AdminFeedbackServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_SetProcessedAt_When_StatusBecomesResolved")
+    @DisplayName("反馈状态变为已解决时设置处理时间")
     void Should_SetProcessedAt_When_StatusBecomesResolved() {
         given(userFeedbackMapper.selectById(1L)).willReturn(feedback(1L));
         UpdateFeedbackStatusRequest request = new UpdateFeedbackStatusRequest();
@@ -59,7 +59,7 @@ class AdminFeedbackServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_UpdatePriority_When_ValueIsValid")
+    @DisplayName("优先级合法时更新反馈优先级")
     void Should_UpdatePriority_When_ValueIsValid() {
         given(userFeedbackMapper.selectById(1L)).willReturn(feedback(1L));
         UpdateFeedbackPriorityRequest request = new UpdateFeedbackPriorityRequest();
@@ -73,7 +73,7 @@ class AdminFeedbackServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_WriteReplyWithoutChangingStatus_When_AdminReplies")
+    @DisplayName("管理员回复反馈时不自动修改状态")
     void Should_WriteReplyWithoutChangingStatus_When_AdminReplies() {
         UserFeedback feedback = feedback(1L);
         feedback.setStatus("PROCESSING");
@@ -90,14 +90,14 @@ class AdminFeedbackServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_RejectInvalidStatus_When_UpdateStatus")
+    @DisplayName("更新为非法反馈状态时拒绝请求")
     void Should_RejectInvalidStatus_When_UpdateStatus() {
         UpdateFeedbackStatusRequest request = new UpdateFeedbackStatusRequest();
         request.setStatus("DONE");
 
         assertThatThrownBy(() -> adminFeedbackService.updateStatus(1L, request))
             .isInstanceOf(BusinessException.class)
-            .hasMessage("feedback status is not supported");
+            .hasMessage("不支持的反馈状态");
     }
 
     private UserFeedback feedback(Long id) {

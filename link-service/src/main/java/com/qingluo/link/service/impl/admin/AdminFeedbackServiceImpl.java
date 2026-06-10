@@ -55,7 +55,7 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
     @Transactional
     public FeedbackDTO updateStatus(Long id, UpdateFeedbackStatusRequest request) {
         if (request == null) {
-            throw badRequest("feedback status is required");
+            throw badRequest("反馈状态不能为空");
         }
         FeedbackStatus status = parseStatus(request.getStatus());
         UserFeedback feedback = getFeedback(id);
@@ -71,10 +71,10 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
     @Transactional
     public FeedbackDTO updatePriority(Long id, UpdateFeedbackPriorityRequest request) {
         if (request == null || request.getPriority() == null) {
-            throw badRequest("feedback priority is required");
+            throw badRequest("反馈优先级不能为空");
         }
         if (request.getPriority() < 1 || request.getPriority() > 3) {
-            throw badRequest("feedback priority must be between 1 and 3");
+            throw badRequest("反馈优先级必须在 1 到 3 之间");
         }
         UserFeedback feedback = getFeedback(id);
         feedback.setPriority(request.getPriority());
@@ -86,13 +86,13 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
     @Transactional
     public FeedbackDTO reply(Long adminId, Long id, ReplyFeedbackRequest request) {
         if (adminId == null) {
-            throw badRequest("admin id is required");
+            throw badRequest("管理员 ID 不能为空");
         }
         if (request == null || !StringUtils.hasText(request.getReply())) {
-            throw badRequest("feedback reply is required");
+            throw badRequest("管理员回复不能为空");
         }
         if (request.getReply().trim().length() > 5000) {
-            throw badRequest("feedback reply must be at most 5000 characters");
+            throw badRequest("管理员回复不能超过 5000 个字符");
         }
         UserFeedback feedback = getFeedback(id);
         feedback.setAdminId(adminId);
@@ -105,7 +105,7 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
     private UserFeedback getFeedback(Long id) {
         UserFeedback feedback = userFeedbackMapper.selectById(id);
         if (feedback == null) {
-            throw new BusinessException(404, "feedback not found", 404);
+            throw new BusinessException(404, "反馈不存在", 404);
         }
         return feedback;
     }
@@ -114,7 +114,7 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
         try {
             return FeedbackStatus.of(status);
         } catch (IllegalArgumentException e) {
-            throw badRequest("feedback status is not supported");
+            throw badRequest("不支持的反馈状态");
         }
     }
 
@@ -122,7 +122,7 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
         try {
             return FeedbackType.of(type);
         } catch (IllegalArgumentException e) {
-            throw badRequest("feedback type is not supported");
+            throw badRequest("不支持的反馈类型");
         }
     }
 

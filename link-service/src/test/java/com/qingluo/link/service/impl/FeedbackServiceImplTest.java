@@ -41,7 +41,7 @@ class FeedbackServiceImplTest {
     private FeedbackServiceImpl feedbackService;
 
     @Test
-    @DisplayName("Should_InsertPendingLowPriorityFeedback_When_SubmitValidWithoutFile")
+    @DisplayName("提交有效无附件反馈时写入待处理低优先级反馈")
     void Should_InsertPendingLowPriorityFeedback_When_SubmitValidWithoutFile() {
         given(userFeedbackMapper.insert(any())).willAnswer(invocation -> {
             UserFeedback feedback = invocation.getArgument(0);
@@ -60,7 +60,7 @@ class FeedbackServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_UploadAttachmentAndStoreObjectKey_When_FileProvided")
+    @DisplayName("提交带附件反馈时上传附件并保存对象 key")
     void Should_UploadAttachmentAndStoreObjectKey_When_FileProvided() {
         MockMultipartFile file = new MockMultipartFile("file", "shot.png", "image/png", "png".getBytes());
         given(ossApplicationService.upload("feedback", file))
@@ -75,17 +75,17 @@ class FeedbackServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_RejectUnsupportedType_When_Submit")
+    @DisplayName("提交不支持的反馈类型时拒绝请求")
     void Should_RejectUnsupportedType_When_Submit() {
         assertThatThrownBy(() -> feedbackService.submit(request("INVALID", "Title", "Content"), null))
             .isInstanceOf(BusinessException.class)
-            .hasMessage("feedback type is not supported");
+            .hasMessage("不支持的反馈类型");
 
         verify(userFeedbackMapper, never()).insert(any());
     }
 
     @Test
-    @DisplayName("Should_DeleteUploadedAttachment_When_DbInsertFails")
+    @DisplayName("数据库写入失败时删除已上传的反馈附件")
     void Should_DeleteUploadedAttachment_When_DbInsertFails() {
         MockMultipartFile file = new MockMultipartFile("file", "shot.png", "image/png", "png".getBytes());
         given(ossApplicationService.upload("feedback", file))

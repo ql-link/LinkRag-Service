@@ -10,7 +10,7 @@ public enum FeedbackStatus {
 
     public static FeedbackStatus of(String value) {
         if (value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException("feedback status is required");
+            throw new IllegalArgumentException("反馈状态不能为空");
         }
         return FeedbackStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
     }
