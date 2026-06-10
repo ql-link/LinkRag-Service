@@ -34,4 +34,12 @@ public interface ProviderCatalogCacheService {
      */
     ProviderCatalogSnapshot getOrLoad(Supplier<List<ProviderRef>> providersLoader,
                                       Function<List<Long>, List<ProviderModel>> modelsLoader);
+
+    /**
+     * 只读厂商索引缓存，按 id 解析 providerType，不回源、不查库。
+     *
+     * <p>供 CDC 补偿的解析取法复用：索引未命中（缓存重建态/冷启动）或该 id 不在启用厂商索引
+     * （厂商停用 / 被级联删除）时返回 {@code null}，由调用方降级跳过。</p>
+     */
+    String resolveProviderTypeById(Long providerId);
 }

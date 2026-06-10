@@ -80,6 +80,18 @@ public class CacheReadProtectionService {
     }
 
     /**
+     * 只读缓存：命中返回反序列化值；未命中或空值占位（防穿透）返回 null。
+     *
+     * <p>不回源、不写缓存，供 CDC 补偿等只读旁路复用——避免只读场景误触发回源查库。</p>
+     */
+    public <T> T getIfPresent(String cacheKey, Class<T> clazz) {
+        if (isNullMarkerPresent(cacheKey)) {
+            return null;
+        }
+        return readValue(cacheKey, clazz);
+    }
+
+    /**
      * 批量读缓存：一次 MGET 读取多个 key，命中的直接返回，缺失的交给 batchLoader 批量回源并逐 key 回填。
      *
      * <p>穿透防护：回源后对仍无值的 key 写空值占位；雪崩防护：回填真实值带 TTL 抖动。
