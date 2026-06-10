@@ -1,10 +1,9 @@
 package com.qingluo.link.service.mq.config;
 
-import com.qingluo.link.components.mq.constant.MQVenderChoose;
 import com.qingluo.link.service.support.CdcBridgeMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -24,9 +23,20 @@ import org.springframework.kafka.support.serializer.DeserializationException;
  * <p>recover 动作为告警日志 + 监控指标 + 提交跳过，不引入 DLQ。</p>
  */
 @Configuration
-@ConditionalOnProperty(name = MQVenderChoose.YML_VENDER_KEY, havingValue = MQVenderChoose.KAFKA)
+@ConditionalOnExpression(CdcBridgeKafkaConfig.CDC_BRIDGE_CONDITION)
 @Slf4j
 public class CdcBridgeKafkaConfig {
+
+    /**
+     * CDC 桥接装配条件：vender=kafka（Kafka 底座存在）且 cdc.enabled=true（总开关打开）。
+     *
+     * <p>消费者 {@link com.qingluo.link.service.mq.cdc.CdcBridgeKafkaReceiver} 与本配置共用此条件，
+     * 确保 CDC 开关一处生效、口径一致，杜绝“消费者不装但容器工厂仍被创建”的半开状态。
+     * 两条件须用单个 SpEL 合并：同类型 {@code @ConditionalOnProperty} 无法在同一元素上叠加。</p>
+     */
+    public static final String CDC_BRIDGE_CONDITION =
+            "'${tolink.mq.vender:}'.equals('kafka') "
+                    + "and '${tolink.cache-consistency.cdc.enabled:false}'.equals('true')";
 
     /** 退避重试最大次数（不含首次投递）。 */
     private static final int MAX_RETRIES = 3;
