@@ -98,7 +98,7 @@ public class BlogContentStorageServiceImpl implements BlogContentStorageService 
         Path temp = null;
         try {
             temp = Files.createTempFile("tolink-blog-read-", ".md");
-            boolean downloaded = ossService.downloadFile(OssSavePlaceEnum.BLOG, objectKey, temp.toString());
+            boolean downloaded = ossService.downloadFile(OssSavePlaceEnum.PUBLIC, objectKey, temp.toString());
             if (!downloaded) {
                 throw new BusinessException(50003, "读取Markdown正文失败", 500);
             }
@@ -120,7 +120,7 @@ public class BlogContentStorageServiceImpl implements BlogContentStorageService 
         Path temp = null;
         try {
             temp = Files.createTempFile("tolink-blog-exists-", ".md");
-            return ossService.downloadFile(OssSavePlaceEnum.BLOG, objectKey, temp.toString());
+            return ossService.downloadFile(OssSavePlaceEnum.PUBLIC, objectKey, temp.toString());
         } catch (IOException e) {
             return false;
         } finally {
@@ -141,7 +141,7 @@ public class BlogContentStorageServiceImpl implements BlogContentStorageService 
 
         String dir = assetType == BlogAssetType.COVER ? "cover" : "images";
         String objectKey = "blog/" + postId + "/" + dir + "/" + uuid() + "." + suffix;
-        String publicUrl = ossService.upload2PreviewUrl(OssSavePlaceEnum.BLOG, file, objectKey);
+        String publicUrl = ossService.upload2PreviewUrl(OssSavePlaceEnum.PUBLIC, file, objectKey);
         if (!StringUtils.hasText(publicUrl)) {
             throw new BusinessException(50002, "图片上传失败", 500);
         }
@@ -158,7 +158,7 @@ public class BlogContentStorageServiceImpl implements BlogContentStorageService 
             Files.writeString(temp, rewritten, StandardCharsets.UTF_8);
             String objectKey = "blog/" + postId + "/content/" + uuid() + ".md";
             String uploaded = ossService.upload2PreviewUrl(
-                OssSavePlaceEnum.BLOG, temp.toFile(), "text/markdown", objectKey);
+                OssSavePlaceEnum.PUBLIC, temp.toFile(), "text/markdown", objectKey);
             if (!StringUtils.hasText(uploaded)) {
                 throw new BusinessException(50002, "Markdown正文上传失败", 500);
             }
@@ -354,7 +354,7 @@ public class BlogContentStorageServiceImpl implements BlogContentStorageService 
             temp = Files.createTempFile("tolink-blog-image-", "." + suffix);
             Files.write(temp, bytes);
             String objectKey = "blog/" + postId + "/images/" + uuid() + "." + suffix;
-            String publicUrl = ossService.upload2PreviewUrl(OssSavePlaceEnum.BLOG, temp.toFile(), contentType, objectKey);
+            String publicUrl = ossService.upload2PreviewUrl(OssSavePlaceEnum.PUBLIC, temp.toFile(), contentType, objectKey);
             if (!StringUtils.hasText(publicUrl)) {
                 throw new BusinessException(50002, "Markdown图片上传失败", 500);
             }

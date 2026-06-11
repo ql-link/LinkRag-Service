@@ -37,4 +37,9 @@ public interface IOssService {
      * Resolves the physical or logical bucket/container name for the given place.
      */
     String getBucketName(OssSavePlaceEnum ossSavePlaceEnum);
+
+    /**
+     * 由对象 key 拼出匿名可读的公开 URL。用于只存对象 key（如反馈附件）但需向客户端返回可直接访问 URL 的场景。
+     */
+    String resolvePublicUrl(OssSavePlaceEnum ossSavePlaceEnum, String objectKey);
 }

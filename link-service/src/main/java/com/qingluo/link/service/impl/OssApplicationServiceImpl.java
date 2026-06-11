@@ -6,6 +6,7 @@ import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.oss.OssObjectKeyGenerator;
 import com.qingluo.link.service.oss.OssUploadRule;
 import com.qingluo.link.service.oss.OssUploadRuleRegistry;
+import com.qingluo.link.service.oss.UploadResult;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -36,11 +37,19 @@ public class OssApplicationServiceImpl implements OssApplicationService {
         this.objectKeyGenerator = objectKeyGenerator;
     }
 
-    @Override
     /**
      * 按业务规则校验并上传文件到 OSS。
      */
+    @Override
     public String upload(String bizType, MultipartFile file) {
+        return uploadAndDescribe(bizType, file).previewUrl();
+    }
+
+    /**
+     * 校验并上传，同时返回 objectKey 与 preview 值，供需要持有 key 的调用方使用。
+     */
+    @Override
+    public UploadResult uploadAndDescribe(String bizType, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw badRequest("请选择要上传的文件");
         }
@@ -64,7 +73,7 @@ public class OssApplicationServiceImpl implements OssApplicationService {
         if (!StringUtils.hasText(uploadResult)) {
             throw new BusinessException(50002, "文件上传失败", 500);
         }
-        return uploadResult;
+        return new UploadResult(objectKey, uploadResult);
     }
 
     /**

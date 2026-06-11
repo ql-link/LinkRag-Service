@@ -61,7 +61,7 @@ public class MinioFileService implements IOssService {
             if (returnsObjectKeyOnly(ossSavePlaceEnum)) {
                 return saveDirAndFileName;
             }
-            return normalizeEndpoint() + "/" + bucket + "/" + saveDirAndFileName;
+            return buildPublicUrl(bucket, saveDirAndFileName);
         } catch (Exception e) {
             log.error("Upload MinIO file failed, place={}, objectKey={}", ossSavePlaceEnum, saveDirAndFileName, e);
             return null;
@@ -85,7 +85,7 @@ public class MinioFileService implements IOssService {
             if (returnsObjectKeyOnly(ossSavePlaceEnum)) {
                 return saveDirAndFileName;
             }
-            return normalizeEndpoint() + "/" + bucket + "/" + saveDirAndFileName;
+            return buildPublicUrl(bucket, saveDirAndFileName);
         } catch (Exception e) {
             log.error("Upload MinIO file (from local file) failed, place={}, objectKey={}",
                 ossSavePlaceEnum, saveDirAndFileName, e);
@@ -143,6 +143,15 @@ public class MinioFileService implements IOssService {
         return resolveBucketName(ossSavePlaceEnum);
     }
 
+    @Override
+    public String resolvePublicUrl(OssSavePlaceEnum ossSavePlaceEnum, String objectKey) {
+        return buildPublicUrl(resolveBucketName(ossSavePlaceEnum), objectKey);
+    }
+
+    private String buildPublicUrl(String bucket, String objectKey) {
+        return normalizeEndpoint() + "/" + bucket + "/" + objectKey;
+    }
+
     private void ensureBucket(String bucket) throws Exception {
         if (ensuredBuckets.contains(bucket)) {
             return;
@@ -159,7 +168,6 @@ public class MinioFileService implements IOssService {
         String bucket = switch (place) {
             case PUBLIC -> minio.getPublicBucketName();
             case PRIVATE -> minio.getPrivateBucketName();
-            case BLOG -> minio.getBlogBucketName();
         };
         if (!StringUtils.hasText(bucket)) {
             throw new IllegalStateException("MinIO bucket is not configured for " + place);
@@ -178,12 +186,6 @@ public class MinioFileService implements IOssService {
             && StringUtils.hasText(privateBucket)
             && publicBucket.equals(privateBucket)) {
             throw new IllegalStateException("MinIO public and private buckets must be different");
-        }
-        String blogBucket = minio.getBlogBucketName();
-        if (StringUtils.hasText(blogBucket)
-            && StringUtils.hasText(privateBucket)
-            && blogBucket.equals(privateBucket)) {
-            throw new IllegalStateException("MinIO blog and private buckets must be different");
         }
     }
 

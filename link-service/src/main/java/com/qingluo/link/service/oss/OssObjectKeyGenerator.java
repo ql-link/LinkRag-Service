@@ -9,7 +9,7 @@ import org.springframework.util.StringUtils;
 @Component
 public class OssObjectKeyGenerator {
 
-    private static final DateTimeFormatter DATE_PATH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+    private static final DateTimeFormatter DATE_PATH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM");
 
     public String generate(String bizType, String suffix) {
         String uuid = UUID.randomUUID().toString().replace("-", "");

@@ -3,6 +3,8 @@ package com.qingluo.link.service.impl.admin;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
+import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
+import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.UserFeedbackMapper;
 import com.qingluo.link.model.dto.entity.UserFeedback;
@@ -27,6 +29,7 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
     private static final int FEEDBACK_ERROR_CODE = 40020;
 
     private final UserFeedbackMapper userFeedbackMapper;
+    private final IOssService ossService;
 
     @Override
     public PageResult<FeedbackDTO> list(int page, int pageSize, String status, String type) {
@@ -133,6 +136,7 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
         dto.setTitle(feedback.getTitle());
         dto.setContent(feedback.getContent());
         dto.setAttachmentObjectKey(feedback.getAttachmentObjectKey());
+        dto.setAttachmentUrl(resolveAttachmentUrl(feedback.getAttachmentObjectKey()));
         dto.setStatus(feedback.getStatus());
         dto.setPriority(feedback.getPriority());
         dto.setAdminId(feedback.getAdminId());
@@ -141,6 +145,13 @@ public class AdminFeedbackServiceImpl implements AdminFeedbackService {
         dto.setCreatedAt(feedback.getCreatedAt());
         dto.setUpdatedAt(feedback.getUpdatedAt());
         return dto;
+    }
+
+    private String resolveAttachmentUrl(String attachmentObjectKey) {
+        if (!StringUtils.hasText(attachmentObjectKey)) {
+            return null;
+        }
+        return ossService.resolvePublicUrl(OssSavePlaceEnum.PUBLIC, attachmentObjectKey);
     }
 
     private BusinessException badRequest(String message) {

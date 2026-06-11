@@ -52,13 +52,16 @@ class OssApplicationServiceImplTest {
     }
 
     @Test
-    void Should_Return_Private_Dated_Object_Key_When_Uploading_Feedback_File() {
+    void Should_Return_Public_Url_And_Monthly_Object_Key_When_Uploading_Feedback_File() {
         MockMultipartFile file = new MockMultipartFile("file", "feedback.png", "image/png", "hello".getBytes());
 
-        String result = service.upload("feedback", file);
+        com.qingluo.link.service.oss.UploadResult result = service.uploadAndDescribe("feedback", file);
 
-        assertThat(result).matches("feedback/\\d{4}/\\d{2}/\\d{2}/[a-f0-9]{32}\\.png");
-        assertThat(ossService.lastSavePlace).isEqualTo(OssSavePlaceEnum.PRIVATE);
+        // 路径精确到月、不含日：四段 feedback/yyyy/MM/uuid，且不匹配五段 feedback/yyyy/MM/dd
+        assertThat(result.objectKey()).matches("feedback/\\d{4}/\\d{2}/[a-f0-9]{32}\\.png");
+        assertThat(result.objectKey()).doesNotMatch("feedback/\\d{4}/\\d{2}/\\d{2}/.*");
+        assertThat(ossService.lastSavePlace).isEqualTo(OssSavePlaceEnum.PUBLIC);
+        assertThat(result.previewUrl()).startsWith("/preview/feedback/");
     }
 
     @Test
@@ -129,6 +132,11 @@ class OssApplicationServiceImplTest {
         @Override
         public String getBucketName(OssSavePlaceEnum ossSavePlaceEnum) {
             return ossSavePlaceEnum == OssSavePlaceEnum.PUBLIC ? "public-bucket" : "private-bucket";
+        }
+
+        @Override
+        public String resolvePublicUrl(OssSavePlaceEnum ossSavePlaceEnum, String objectKey) {
+            return "/preview/" + objectKey;
         }
     }
 }

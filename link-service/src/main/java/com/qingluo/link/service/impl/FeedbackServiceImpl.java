@@ -87,7 +87,8 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (file.isEmpty()) {
             throw badRequest("反馈附件不能为空");
         }
-        return ossApplicationService.upload("feedback", file);
+        // 反馈走公开桶，upload 返回的是完整 URL；方案甲只存 objectKey，故取 UploadResult.objectKey()。
+        return ossApplicationService.uploadAndDescribe("feedback", file).objectKey();
     }
 
     private void cleanupUploadedAttachment(String attachmentObjectKey) {
@@ -95,7 +96,7 @@ public class FeedbackServiceImpl implements FeedbackService {
             return;
         }
         try {
-            boolean deleted = ossService.deleteFile(OssSavePlaceEnum.PRIVATE, attachmentObjectKey);
+            boolean deleted = ossService.deleteFile(OssSavePlaceEnum.PUBLIC, attachmentObjectKey);
             if (!deleted) {
                 log.warn("删除反馈孤儿附件失败，objectKey={}", attachmentObjectKey);
             }
@@ -111,6 +112,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         dto.setTitle(feedback.getTitle());
         dto.setContent(feedback.getContent());
         dto.setAttachmentObjectKey(feedback.getAttachmentObjectKey());
+        dto.setAttachmentUrl(resolveAttachmentUrl(feedback.getAttachmentObjectKey()));
         dto.setStatus(feedback.getStatus());
         dto.setPriority(feedback.getPriority());
         dto.setAdminId(feedback.getAdminId());
@@ -119,6 +121,13 @@ public class FeedbackServiceImpl implements FeedbackService {
         dto.setCreatedAt(feedback.getCreatedAt());
         dto.setUpdatedAt(feedback.getUpdatedAt());
         return dto;
+    }
+
+    private String resolveAttachmentUrl(String attachmentObjectKey) {
+        if (!StringUtils.hasText(attachmentObjectKey)) {
+            return null;
+        }
+        return ossService.resolvePublicUrl(OssSavePlaceEnum.PUBLIC, attachmentObjectKey);
     }
 
     private BusinessException badRequest(String message) {

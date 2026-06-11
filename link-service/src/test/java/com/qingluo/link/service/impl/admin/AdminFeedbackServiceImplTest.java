@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
+import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
+import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.UserFeedbackMapper;
 import com.qingluo.link.model.dto.entity.UserFeedback;
@@ -28,6 +30,9 @@ class AdminFeedbackServiceImplTest {
 
     @Mock
     private UserFeedbackMapper userFeedbackMapper;
+
+    @Mock
+    private IOssService ossService;
 
     @InjectMocks
     private AdminFeedbackServiceImpl adminFeedbackService;
@@ -87,6 +92,22 @@ class AdminFeedbackServiceImplTest {
         assertThat(result.getAdminReply()).isEqualTo("We are checking this.");
         assertThat(result.getStatus()).isEqualTo("PROCESSING");
         assertThat(result.getProcessedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("查询反馈详情时由 objectKey 拼出可访问公开 URL")
+    void Should_ResolvePublicUrl_When_DetailHasAttachment() {
+        UserFeedback feedback = feedback(1L);
+        feedback.setAttachmentObjectKey("feedback/2026/06/abc.png");
+        given(userFeedbackMapper.selectById(1L)).willReturn(feedback);
+        given(ossService.resolvePublicUrl(OssSavePlaceEnum.PUBLIC, "feedback/2026/06/abc.png"))
+            .willReturn("http://minio:9000/tolink-public/feedback/2026/06/abc.png");
+
+        FeedbackDTO result = adminFeedbackService.detail(1L);
+
+        assertThat(result.getAttachmentObjectKey()).isEqualTo("feedback/2026/06/abc.png");
+        assertThat(result.getAttachmentUrl())
+            .isEqualTo("http://minio:9000/tolink-public/feedback/2026/06/abc.png");
     }
 
     @Test

@@ -16,8 +16,10 @@ public class FeedbackDTO {
     private String title;
     @Schema(description = "反馈详细内容")
     private String content;
-    @Schema(description = "附件 MinIO 私有对象 key")
+    @Schema(description = "附件公开桶对象 key")
     private String attachmentObjectKey;
+    @Schema(description = "附件可访问公开 URL（由 objectKey 拼装，无附件为空）")
+    private String attachmentUrl;
     @Schema(description = "处理状态")
     private String status;
     @Schema(description = "处理优先级")

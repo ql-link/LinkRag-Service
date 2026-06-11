@@ -45,7 +45,7 @@ class BlogContentStorageServiceImplTest {
         assertThat(processed.objectKey()).isEqualTo(ossService.lastObjectKey);
         assertThat(processed.contentMarkdown()).isEqualTo("# 标题\n正文");
         assertThat(processed.images()).isEmpty();
-        assertThat(ossService.lastPlace).isEqualTo(OssSavePlaceEnum.BLOG);
+        assertThat(ossService.lastPlace).isEqualTo(OssSavePlaceEnum.PUBLIC);
     }
 
     @Test
@@ -201,6 +201,11 @@ class BlogContentStorageServiceImplTest {
         @Override
         public String getBucketName(OssSavePlaceEnum place) {
             return place.name().toLowerCase();
+        }
+
+        @Override
+        public String resolvePublicUrl(OssSavePlaceEnum place, String objectKey) {
+            return "/public/" + objectKey;
         }
     }
 }
