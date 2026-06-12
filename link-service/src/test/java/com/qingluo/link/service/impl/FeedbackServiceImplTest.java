@@ -16,6 +16,7 @@ import com.qingluo.link.model.dto.entity.UserFeedback;
 import com.qingluo.link.model.dto.request.CreateFeedbackRequest;
 import com.qingluo.link.model.dto.response.FeedbackDTO;
 import com.qingluo.link.service.OssApplicationService;
+import com.qingluo.link.service.oss.UploadResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,22 +57,28 @@ class FeedbackServiceImplTest {
         assertThat(result.getStatus()).isEqualTo("PENDING");
         assertThat(result.getPriority()).isEqualTo(3);
         assertThat(result.getAttachmentObjectKey()).isNull();
-        verify(ossApplicationService, never()).upload(any(), any());
+        verify(ossApplicationService, never()).uploadAndDescribe(any(), any());
     }
 
     @Test
-    @DisplayName("提交带附件反馈时上传附件并保存对象 key")
-    void Should_UploadAttachmentAndStoreObjectKey_When_FileProvided() {
+    @DisplayName("提交带附件反馈时只保存 objectKey 而非公开 URL（方案甲）")
+    void Should_StoreObjectKeyNotUrl_When_FileProvided() {
         MockMultipartFile file = new MockMultipartFile("file", "shot.png", "image/png", "png".getBytes());
-        given(ossApplicationService.upload("feedback", file))
-            .willReturn("feedback/2026/06/09/abc.png");
+        // 公开桶上传返回完整 URL，但方案甲要求实体只存 objectKey
+        given(ossApplicationService.uploadAndDescribe("feedback", file))
+            .willReturn(new UploadResult(
+                "feedback/2026/06/abc.png",
+                "http://minio:9000/tolink-public/feedback/2026/06/abc.png"));
 
         feedbackService.submit(request(null, "Feature", "Please add this"), file);
 
         ArgumentCaptor<UserFeedback> captor = ArgumentCaptor.forClass(UserFeedback.class);
         verify(userFeedbackMapper).insert(captor.capture());
+        String stored = captor.getValue().getAttachmentObjectKey();
         assertThat(captor.getValue().getType()).isEqualTo("OTHER");
-        assertThat(captor.getValue().getAttachmentObjectKey()).isEqualTo("feedback/2026/06/09/abc.png");
+        assertThat(stored).isEqualTo("feedback/2026/06/abc.png");
+        assertThat(stored).doesNotStartWith("http");
+        assertThat(stored).doesNotContain("tolink-public");
     }
 
     @Test
@@ -88,15 +95,18 @@ class FeedbackServiceImplTest {
     @DisplayName("数据库写入失败时删除已上传的反馈附件")
     void Should_DeleteUploadedAttachment_When_DbInsertFails() {
         MockMultipartFile file = new MockMultipartFile("file", "shot.png", "image/png", "png".getBytes());
-        given(ossApplicationService.upload("feedback", file))
-            .willReturn("feedback/2026/06/09/orphan.png");
+        given(ossApplicationService.uploadAndDescribe("feedback", file))
+            .willReturn(new UploadResult(
+                "feedback/2026/06/orphan.png",
+                "http://minio:9000/tolink-public/feedback/2026/06/orphan.png"));
         willThrow(new RuntimeException("db down")).given(userFeedbackMapper).insert(any());
 
         assertThatThrownBy(() -> feedbackService.submit(request("BUG", "Title", "Content"), file))
             .isInstanceOf(RuntimeException.class)
             .hasMessage("db down");
 
-        verify(ossService).deleteFile(OssSavePlaceEnum.PRIVATE, "feedback/2026/06/09/orphan.png");
+        // 公开桶清理：用 objectKey 而非 URL，避免定位失败
+        verify(ossService).deleteFile(OssSavePlaceEnum.PUBLIC, "feedback/2026/06/orphan.png");
     }
 
     private CreateFeedbackRequest request(String type, String title, String content) {

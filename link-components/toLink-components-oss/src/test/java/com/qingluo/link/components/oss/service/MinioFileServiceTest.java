@@ -57,6 +57,42 @@ class MinioFileServiceTest {
     }
 
     @Test
+    void Should_ResolveConfiguredPublicBucketName_When_ResolvePublicBucket() {
+        MinioFileService service = new MinioFileService(minioProperties("tolink-public", "tolink-rag-docs"));
+
+        assertThat(service.getBucketName(OssSavePlaceEnum.PUBLIC)).isEqualTo("tolink-public");
+    }
+
+    @Test
+    void Should_BuildPublicUrl_When_ResolvePublicUrlForPublicBucket() {
+        MinioFileService service = new MinioFileService(minioProperties("tolink-public", "tolink-rag-docs"));
+
+        assertThat(service.resolvePublicUrl(OssSavePlaceEnum.PUBLIC, "feedback/2026/06/abc.png"))
+            .isEqualTo("http://127.0.0.1:9000/tolink-public/feedback/2026/06/abc.png");
+    }
+
+    @Test
+    void Should_FailFast_When_PublicBucketIsNotConfigured() {
+        MinioFileService service = new MinioFileService(minioProperties(null, "tolink-rag-docs"));
+
+        assertThatThrownBy(() -> service.getBucketName(OssSavePlaceEnum.PUBLIC))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("not configured")
+            .hasMessageContaining("PUBLIC");
+    }
+
+    private static OssProperties minioProperties(String publicBucket, String privateBucket) {
+        OssProperties ossProperties = new OssProperties();
+        ossProperties.setServiceType("minio");
+        ossProperties.getMinio().setEndpoint("http://127.0.0.1:9000");
+        ossProperties.getMinio().setPublicBucketName(publicBucket);
+        ossProperties.getMinio().setPrivateBucketName(privateBucket);
+        ossProperties.getMinio().setAccessKey("root");
+        ossProperties.getMinio().setSecretKey("secret123");
+        return ossProperties;
+    }
+
+    @Test
     void Should_DeleteExistingTargetFile_When_PreparingDownloadTarget() throws Exception {
         Path target = Files.createTempFile("tolink-minio-download-", ".tmp");
         Files.writeString(target, "old");

@@ -27,7 +27,7 @@ public class OssUploadRuleRegistry {
         allRules.put("cert", new OssUploadRule(
             OssSavePlaceEnum.PRIVATE, Collections.singleton(ALL_SUFFIX_FLAG), DEFAULT_MAX_SIZE));
         allRules.put("feedback", new OssUploadRule(
-            OssSavePlaceEnum.PRIVATE, FEEDBACK_SUFFIXES, 10 * 1024 * 1024L));
+            OssSavePlaceEnum.PUBLIC, FEEDBACK_SUFFIXES, 10 * 1024 * 1024L));
         this.rules = Collections.unmodifiableMap(allRules);
     }
 

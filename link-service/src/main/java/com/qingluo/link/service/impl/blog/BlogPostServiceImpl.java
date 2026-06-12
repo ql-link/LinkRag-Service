@@ -420,7 +420,7 @@ public class BlogPostServiceImpl implements BlogPostService {
         if (!StringUtils.hasText(oldKey)) {
             return;
         }
-        if (!ossService.deleteFile(OssSavePlaceEnum.BLOG, oldKey)) {
+        if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, oldKey)) {
             log.warn("Failed to delete old markdown object, postId={}, key={}", postId, oldKey);
         }
     }
@@ -435,7 +435,7 @@ public class BlogPostServiceImpl implements BlogPostService {
             .collect(Collectors.toSet());
         for (String objectKey : objectKeys) {
             try {
-                if (!ossService.deleteFile(OssSavePlaceEnum.BLOG, objectKey)) {
+                if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, objectKey)) {
                     log.warn("Failed to delete blog asset object, postId={}, key={}", postId, objectKey);
                 }
             } catch (Exception e) {

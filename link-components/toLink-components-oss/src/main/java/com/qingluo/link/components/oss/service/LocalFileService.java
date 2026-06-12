@@ -28,7 +28,6 @@ public class LocalFileService implements IOssService {
     private static final Logger log = LoggerFactory.getLogger(LocalFileService.class);
     private static final String LOCAL_PUBLIC_BUCKET = "local-public";
     private static final String LOCAL_PRIVATE_BUCKET = "local-private";
-    private static final String LOCAL_BLOG_BUCKET = "local-blog";
 
     private final OssProperties ossProperties;
 
@@ -107,8 +106,12 @@ public class LocalFileService implements IOssService {
         return switch (ossSavePlaceEnum) {
             case PUBLIC -> LOCAL_PUBLIC_BUCKET;
             case PRIVATE -> LOCAL_PRIVATE_BUCKET;
-            case BLOG -> LOCAL_BLOG_BUCKET;
         };
+    }
+
+    @Override
+    public String resolvePublicUrl(OssSavePlaceEnum ossSavePlaceEnum, String objectKey) {
+        return normalizePublicBaseUrl() + "/" + objectKey;
     }
 
     private static boolean returnsObjectKeyOnly(OssSavePlaceEnum place) {
@@ -122,7 +125,6 @@ public class LocalFileService implements IOssService {
         String basePath = switch (place) {
             case PUBLIC -> ossProperties.getFilePublicPath();
             case PRIVATE -> ossProperties.getFilePrivatePath();
-            case BLOG -> ossProperties.getFilePublicPath();
         };
         Path base = Path.of(basePath).toAbsolutePath().normalize();
         Path target = base.resolve(objectKey).normalize();

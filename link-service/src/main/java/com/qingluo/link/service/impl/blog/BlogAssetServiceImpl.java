@@ -109,7 +109,7 @@ public class BlogAssetServiceImpl implements BlogAssetService {
                 .eq(BlogPost::getId, postId)
                 .set(BlogPost::getCoverAssetId, null));
         }
-        if (!ossService.deleteFile(OssSavePlaceEnum.BLOG, asset.getObjectKey())) {
+        if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, asset.getObjectKey())) {
             throw new BusinessException(50002, "博客资源对象删除失败", 500);
         }
 
@@ -164,7 +164,7 @@ public class BlogAssetServiceImpl implements BlogAssetService {
             return;
         }
         blogAssetMapper.deleteById(oldCoverAssetId);
-        if (!ossService.deleteFile(OssSavePlaceEnum.BLOG, old.getObjectKey())) {
+        if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, old.getObjectKey())) {
             log.warn("Failed to delete old cover object, postId={}, assetId={}, key={}",
                 postId, oldCoverAssetId, old.getObjectKey());
         }

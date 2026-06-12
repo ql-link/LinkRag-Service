@@ -100,7 +100,7 @@
 | --- | --- | --- |
 | POST | `/api/v1/feedback` | 匿名提交反馈，`multipart/form-data`，可选 `file` 附件 |
 
-`POST /api/v1/feedback` 接收 `type`（可选，默认 `OTHER`）、`title`（必填，最长 128）、`content`（必填，最长 5000）和可选 `file`。附件上传到私有 OSS，数据库和响应只保存 `attachmentObjectKey`，object key 形如 `feedback/yyyy/MM/dd/{uuid}.{suffix}`。
+`POST /api/v1/feedback` 接收 `type`（可选，默认 `OTHER`）、`title`（必填，最长 128）、`content`（必填，最长 5000）和可选 `file`。附件上传到公开桶 `tolink-public`，数据库只保存 `attachmentObjectKey`（object key 形如 `feedback/yyyy/MM/{uuid}.{suffix}`，精度到月）；响应 `FeedbackDTO` 同时返回 `attachmentObjectKey` 与可直接访问的 `attachmentUrl`（由后端按公开桶 endpoint + bucket + key 拼装，无附件时为空）。管理端 `/api/v1/admin/feedback` 列表与详情同样返回 `attachmentUrl`。
 
 ## Blog
 
