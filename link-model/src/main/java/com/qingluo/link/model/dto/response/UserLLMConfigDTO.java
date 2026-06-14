@@ -33,8 +33,11 @@ public class UserLLMConfigDTO {
     @Schema(description = "API Key(脱敏)")
     private String apiKeyMasked;
 
-    @Schema(description = "API地址（用户自定义或厂商默认）")
+    @Schema(description = "API地址（复制自模型能力层事实）")
     private String apiBaseUrl;
+
+    @Schema(description = "调用协议（运行快照）", example = "openai")
+    private String protocol;
 
     @Schema(description = "是否启用", example = "true")
     private Boolean isActive;

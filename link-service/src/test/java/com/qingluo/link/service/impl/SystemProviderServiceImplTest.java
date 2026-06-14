@@ -95,7 +95,26 @@ class SystemProviderServiceImplTest {
 
         assertThat(result.get(0).getModels()).hasSize(1);
         assertThat(result.get(0).getModels().get(0).getCapabilities())
+                .extracting("capability")
                 .containsExactlyInAnyOrder("CHAT", "VISION", "OCR");
+    }
+
+    @Test
+    @DisplayName("一·厂商目录暴露每个 (模型,能力) 的协议与入口事实值（同厂商多协议）")
+    void getActiveProviderModels_exposesProtocolPerCapability() {
+        givenCacheHit(new ProviderCatalogSnapshot(
+                List.of(ref(5L, "aliyun")),
+                List.of(pm(5L, "qwen-max", "CHAT", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                        pm(5L, "gte-rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1"))));
+
+        List<ProviderModelDTO> result = service.getActiveProviderModels(null);
+
+        assertThat(result.get(0).getModels())
+                .flatExtracting("capabilities")
+                .extracting("capability", "protocol")
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple("CHAT", "openai"),
+                        org.assertj.core.groups.Tuple.tuple("RERANK", "dashscope"));
     }
 
     @Test
@@ -185,10 +204,16 @@ class SystemProviderServiceImplTest {
     }
 
     private ProviderModel pm(Long providerId, String model, String capability) {
+        return pm(providerId, model, capability, "openai", "https://api.openai.com/v1");
+    }
+
+    private ProviderModel pm(Long providerId, String model, String capability, String protocol, String apiBaseUrl) {
         ProviderModel m = new ProviderModel();
         m.setProviderId(providerId);
         m.setModelName(model);
         m.setCapability(capability);
+        m.setProtocol(protocol);
+        m.setApiBaseUrl(apiBaseUrl);
         m.setIsActive(true);
         return m;
     }

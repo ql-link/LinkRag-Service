@@ -114,6 +114,9 @@ class ConfigControllerTest {
         model.setProviderId(TEST_PROVIDER_ID);
         model.setModelName(modelName);
         model.setCapability(capability);
+        // 协议与入口是事实来源，setup-provider 展开时复制为用户配置快照，必须非空
+        model.setProtocol("openai");
+        model.setApiBaseUrl("https://api.openai.com/v1");
         model.setIsActive(true);
         providerModelMapper.insert(model);
     }
@@ -132,7 +135,9 @@ class ConfigControllerTest {
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.data").isArray())
             .andExpect(jsonPath("$.data.length()").value(3))
-            .andExpect(jsonPath("$.data[0].isSystemPreset").value(false));
+            .andExpect(jsonPath("$.data[0].isSystemPreset").value(false))
+            // 用户配置快照携带从模型能力层复制的协议
+            .andExpect(jsonPath("$.data[0].protocol").value("openai"));
     }
 
     @Test

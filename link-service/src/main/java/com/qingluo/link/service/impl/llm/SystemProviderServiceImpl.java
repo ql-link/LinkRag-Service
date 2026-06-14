@@ -7,6 +7,7 @@ import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.response.ModelCapabilityDTO;
+import com.qingluo.link.model.dto.response.ModelCapabilityDetailDTO;
 import com.qingluo.link.model.dto.response.ProviderModelDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
@@ -133,9 +134,11 @@ public class SystemProviderServiceImpl implements SystemProviderService {
      * rows 由上游一次性批量查出并按厂商分好，此方法内不再查库。
      */
     private ProviderModelDTO toProviderModelDTO(ProviderRef provider, List<ProviderModel> rows) {
-        Map<String, List<String>> grouped = new LinkedHashMap<>();
+        Map<String, List<ModelCapabilityDetailDTO>> grouped = new LinkedHashMap<>();
         for (ProviderModel row : rows) {
-            grouped.computeIfAbsent(row.getModelName(), k -> new ArrayList<>()).add(row.getCapability());
+            // 暴露每个 (模型,能力) 的协议与入口事实值，让前端/管理端看到「这个能力实际怎么调」
+            grouped.computeIfAbsent(row.getModelName(), k -> new ArrayList<>())
+                    .add(new ModelCapabilityDetailDTO(row.getCapability(), row.getProtocol(), row.getApiBaseUrl()));
         }
         List<ModelCapabilityDTO> models = grouped.entrySet().stream()
                 .map(entry -> new ModelCapabilityDTO(entry.getKey(), entry.getValue()))

@@ -34,6 +34,16 @@ public class ProviderModel {
     @TableField("capability")
     private String capability;
 
+    /** 事实来源：本 (模型,能力) 真实调用协议（API 家族），下游按 protocol+capability 选 adapter，必填。 */
+    @Schema(description = "调用协议", example = "openai")
+    @TableField("protocol")
+    private String protocol;
+
+    /** 事实来源：本 (模型,能力) 真实调用入口基地址（不含 capability 后缀），用户配置展开时复制此值，必填。 */
+    @Schema(description = "调用入口基地址", example = "https://api.openai.com/v1")
+    @TableField("api_base_url")
+    private String apiBaseUrl;
+
     @Schema(description = "该模型能力是否上架", example = "true")
     @TableField("is_active")
     private Boolean isActive = true;

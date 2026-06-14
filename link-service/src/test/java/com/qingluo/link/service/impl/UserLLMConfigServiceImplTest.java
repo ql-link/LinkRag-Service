@@ -100,7 +100,9 @@ class UserLLMConfigServiceImplTest {
         verify(userLLMConfigMapper, times(5)).insert(captor.capture());
         // 厂商级 Key：5 行共用同一密文，且持久化的是密文而非明文
         assertThat(captor.getAllValues()).allMatch(c -> "ENC".equals(c.getApiKey()));
+        // 协议与入口复制自模型能力层事实快照
         assertThat(captor.getAllValues()).allMatch(c -> "https://api.openai.com/v1".equals(c.getApiBaseUrl()));
+        assertThat(captor.getAllValues()).allMatch(c -> "openai".equals(c.getProtocol()));
         assertThat(captor.getAllValues()).allMatch(c -> Boolean.TRUE.equals(c.getIsActive()));
         // 返回给用户的 Key 为脱敏形式，且均为自配行
         assertThat(result).hasSize(5);
@@ -130,6 +132,80 @@ class UserLLMConfigServiceImplTest {
         verify(userLLMConfigMapper, never()).insert(any());
         verify(userLLMConfigMapper).updateById(existing);
         assertThat(existing.getApiKey()).isEqualTo("ENC_NEW");
+        // 重复展开同时刷新协议与入口快照
+        assertThat(existing.getProtocol()).isEqualTo("openai");
+        assertThat(existing.getApiBaseUrl()).isEqualTo("https://api.openai.com/v1");
+    }
+
+    @Test
+    @DisplayName("二·同厂商不同能力展开为不同协议快照（protocol+capability 矩阵）")
+    void setupProvider_sameProviderMultiProtocolSnapshot() {
+        SystemProvider provider = providerOf(5L, "aliyun", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        given(systemProviderService.getActiveByProviderType("aliyun")).willReturn(provider);
+        given(apiKeyEncryptService.encrypt("sk")).willReturn("ENC");
+        given(providerModelService.listActiveModels(5L, null)).willReturn(List.of(
+                pm("qwen-max", "CHAT", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                pm("qwen-embedding", "EMBEDDING", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                pm("gte-rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1"),
+                pm("qwen3-asr", "ASR", "dashscope", "https://dashscope.aliyuncs.com/api/v1")));
+        given(userLLMConfigMapper.selectOne(any())).willReturn(null);
+
+        SetupProviderRequest request = new SetupProviderRequest();
+        request.setProviderType("aliyun");
+        request.setApiKey("sk");
+        service.setupProvider(7L, request);
+
+        ArgumentCaptor<UserLLMConfig> captor = ArgumentCaptor.forClass(UserLLMConfig.class);
+        verify(userLLMConfigMapper, times(4)).insert(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(UserLLMConfig::getCapability, UserLLMConfig::getProtocol)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple("CHAT", "openai"),
+                        org.assertj.core.groups.Tuple.tuple("EMBEDDING", "openai"),
+                        org.assertj.core.groups.Tuple.tuple("RERANK", "dashscope"),
+                        org.assertj.core.groups.Tuple.tuple("ASR", "dashscope"));
+    }
+
+    @Test
+    @DisplayName("二·用户配置入口复制模型能力事实，不 fallback 到厂商默认入口")
+    void setupProvider_doesNotFallbackToProviderDefaultUrl() {
+        // 厂商默认入口与模型能力真实入口不同，必须取模型能力的
+        SystemProvider provider = providerOf(5L, "aliyun", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        given(systemProviderService.getActiveByProviderType("aliyun")).willReturn(provider);
+        given(apiKeyEncryptService.encrypt("sk")).willReturn("ENC");
+        given(providerModelService.listActiveModels(5L, null)).willReturn(List.of(
+                pm("gte-rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1")));
+        given(userLLMConfigMapper.selectOne(any())).willReturn(null);
+
+        SetupProviderRequest request = new SetupProviderRequest();
+        request.setProviderType("aliyun");
+        request.setApiKey("sk");
+        service.setupProvider(7L, request);
+
+        ArgumentCaptor<UserLLMConfig> captor = ArgumentCaptor.forClass(UserLLMConfig.class);
+        verify(userLLMConfigMapper).insert(captor.capture());
+        assertThat(captor.getValue().getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
+        assertThat(captor.getValue().getApiBaseUrl()).isNotEqualTo(provider.getApiBaseUrl());
+        assertThat(captor.getValue().getProtocol()).isEqualTo("dashscope");
+    }
+
+    @Test
+    @DisplayName("二·展开遇缺协议或入口的模型能力时阻断（MODEL_CONFIG_INCOMPLETE）")
+    void setupProvider_blocksIncompleteModelFact() {
+        SystemProvider provider = providerOf(5L, "openai", "https://api.openai.com/v1");
+        given(systemProviderService.getActiveByProviderType("openai")).willReturn(provider);
+        given(apiKeyEncryptService.encrypt("sk")).willReturn("ENC");
+        given(providerModelService.listActiveModels(5L, null)).willReturn(List.of(
+                pm("bad-model", "CHAT", null, null)));
+
+        SetupProviderRequest request = new SetupProviderRequest();
+        request.setProviderType("openai");
+        request.setApiKey("sk");
+
+        assertThatThrownBy(() -> service.setupProvider(7L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", ErrorCode.MODEL_CONFIG_INCOMPLETE.getCode());
+        verify(userLLMConfigMapper, never()).insert(any());
     }
 
     // ============ 三、模型启停 ============
@@ -285,9 +361,15 @@ class UserLLMConfigServiceImplTest {
     }
 
     private ProviderModel pm(String model, String capability) {
+        return pm(model, capability, "openai", "https://api.openai.com/v1");
+    }
+
+    private ProviderModel pm(String model, String capability, String protocol, String apiBaseUrl) {
         ProviderModel m = new ProviderModel();
         m.setModelName(model);
         m.setCapability(capability);
+        m.setProtocol(protocol);
+        m.setApiBaseUrl(apiBaseUrl);
         m.setIsActive(true);
         return m;
     }

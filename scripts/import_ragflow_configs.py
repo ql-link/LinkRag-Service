@@ -79,6 +79,92 @@ SKIP_STEMS: set[str] = {
     "fishaudio",
 }
 
+# ─── 协议 + base_url 种子规则 ─────────────────────────────────────────────────
+# 权威来源：.specs/llm-model-capability-protocol/provider_url_seed.md
+#
+# 存储约定：api_base_url 存「协议基地址」，adapter 按 protocol + capability 拼后缀路径。
+
+# 14 家重点厂商（is_active=TRUE），其余厂商整体 is_active=FALSE。
+ACTIVE_PROVIDER_TYPES: set[str] = {
+    "openai", "claude", "gemini", "xai", "aliyun", "deepseek", "glm",
+    "moonshot", "volcengine", "baidu", "hunyuan", "baichuan", "xunfei", "jina",
+}
+
+# 厂商层默认协议（provider_url_seed.md §1）。未列出的默认 openai。
+PROVIDER_DEFAULT_PROTOCOL: dict[str, str] = {
+    "claude": "anthropic",
+    "gemini": "google",
+    "jina":   "jina",
+    # 其余（含 aliyun）默认 openai
+}
+
+# 厂商层默认 api_base_url（provider_url_seed.md §1）。
+# 仅 14 家重点厂商需要权威覆盖；未列出的沿用 RAGFlow 源 url.default。
+PROVIDER_BASE_URL: dict[str, str] = {
+    "openai":     "https://api.openai.com/v1",
+    "claude":     "https://api.anthropic.com",
+    "gemini":     "https://generativelanguage.googleapis.com/v1beta",
+    "xai":        "https://api.x.ai/v1",
+    "aliyun":     "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "deepseek":   "https://api.deepseek.com/v1",
+    "glm":        "https://open.bigmodel.cn/api/paas/v4",
+    "moonshot":   "https://api.moonshot.cn/v1",
+    "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
+    "baidu":      "https://qianfan.baidubce.com/v2",
+    "hunyuan":    "https://api.hunyuan.cloud.tencent.com/v1",
+    "baichuan":   "https://api.baichuan-ai.com/v1",
+    "xunfei":     "https://spark-api-open.xf-yun.com/v1",
+    "jina":       "https://api.jina.ai/v1",
+}
+
+# 模型能力层 (provider_type, capability) → (protocol, api_base_url) 特例覆盖
+# （provider_url_seed.md §2）。未命中的沿用厂商默认 protocol + 厂商 base_url。
+MODEL_PROTOCOL_OVERRIDE: dict[tuple[str, str], tuple[str, str]] = {
+    ("aliyun", "RERANK"): ("dashscope", "https://dashscope.aliyuncs.com/api/v1"),
+    ("aliyun", "ASR"):    ("dashscope", "https://dashscope.aliyuncs.com/api/v1"),
+    ("jina", "RERANK"):    ("jina", "https://api.jina.ai/v1"),
+    ("jina", "EMBEDDING"): ("jina", "https://api.jina.ai/v1"),
+}
+
+# 模型能力层 (provider_type, capability) → is_active=FALSE 的特例
+# （provider_url_seed.md §4 已决规则①④）。
+MODEL_INACTIVE: set[tuple[str, str]] = {
+    ("deepseek", "EMBEDDING"),  # DeepSeek 无 embedding 端点
+    ("xunfei", "EMBEDDING"),    # 讯飞星火无 OpenAI 兼容 embedding 入口
+}
+
+
+def provider_default_protocol(provider_type: str) -> str:
+    """厂商默认协议。未配置的默认 openai。"""
+    return PROVIDER_DEFAULT_PROTOCOL.get(provider_type, "openai")
+
+
+def provider_base_url(provider_type: str, fallback_url: str) -> str:
+    """厂商 base_url：14 家重点厂商用权威值覆盖，其余沿用 RAGFlow 源 url。"""
+    return PROVIDER_BASE_URL.get(provider_type, fallback_url)
+
+
+def provider_is_active(provider_type: str) -> bool:
+    """厂商是否启用：仅 14 家重点厂商 TRUE。"""
+    return provider_type in ACTIVE_PROVIDER_TYPES
+
+
+def model_protocol_and_url(provider_type: str, capability: str, base_url: str) -> tuple[str, str]:
+    """模型能力的 (protocol, api_base_url)：先查特例，否则沿用厂商默认。"""
+    override = MODEL_PROTOCOL_OVERRIDE.get((provider_type, capability))
+    if override is not None:
+        return override
+    return provider_default_protocol(provider_type), base_url
+
+
+def model_is_active(provider_type: str, capability: str) -> bool:
+    """模型能力是否上架：非重点厂商整体下架；个别能力行额外下架。"""
+    if provider_type not in ACTIVE_PROVIDER_TYPES:
+        return False
+    if (provider_type, capability) in MODEL_INACTIVE:
+        return False
+    return True
+
 # ─── 辅助函数 ────────────────────────────────────────────────────────────────
 
 def escape_sql(s: str) -> str:
@@ -213,23 +299,26 @@ def gen_sql(vendors: list[dict]) -> str:
 
     # ── 1. llm_system_provider ──────────────────────────────────────────────
     lines.append("-- ─── 1. 厂商基本信息 ──────────────────────────────────────────")
-    lines.append("INSERT INTO llm_system_provider (provider_type, provider_name, api_base_url, is_active, priority)")
+    lines.append("INSERT INTO llm_system_provider (provider_type, provider_name, api_base_url, default_protocol, is_active, priority)")
     lines.append("VALUES")
 
     provider_rows: list[str] = []
     for v in vendors:
-        pt  = escape_sql(v["provider_type"])
-        pn  = escape_sql(v["provider_name"])
-        url = escape_sql(v["api_base_url"])
-        pri = v["priority"]
-        provider_rows.append(f"    ('{pt}', '{pn}', '{url}', TRUE, {pri})")
+        pt     = escape_sql(v["provider_type"])
+        pn     = escape_sql(v["provider_name"])
+        url    = escape_sql(v["api_base_url"])
+        proto  = escape_sql(v["default_protocol"])
+        active = "TRUE" if v["is_active"] else "FALSE"
+        pri    = v["priority"]
+        provider_rows.append(f"    ('{pt}', '{pn}', '{url}', '{proto}', {active}, {pri})")
 
     lines.append(",\n".join(provider_rows))
     lines.append("ON DUPLICATE KEY UPDATE")
-    lines.append("    provider_name  = VALUES(provider_name),")
-    lines.append("    api_base_url   = VALUES(api_base_url),")
-    lines.append("    is_active      = VALUES(is_active),")
-    lines.append("    priority       = VALUES(priority);")
+    lines.append("    provider_name    = VALUES(provider_name),")
+    lines.append("    api_base_url     = VALUES(api_base_url),")
+    lines.append("    default_protocol = VALUES(default_protocol),")
+    lines.append("    is_active        = VALUES(is_active),")
+    lines.append("    priority         = VALUES(priority);")
     lines.append("")
 
     # ── 2. llm_provider_model ───────────────────────────────────────────────
@@ -239,22 +328,32 @@ def gen_sql(vendors: list[dict]) -> str:
 
     for v in vendors:
         pt = escape_sql(v["provider_type"])
+        base_url = v["api_base_url"]
         model_cap_pairs = v["model_cap_pairs"]
         if not model_cap_pairs:
             continue
 
         lines.append(f"-- {v['provider_name']} ({pt})")
-        lines.append("INSERT IGNORE INTO llm_provider_model (provider_id, model_name, capability)")
+        lines.append("INSERT INTO llm_provider_model (provider_id, model_name, capability, protocol, api_base_url, is_active)")
 
         select_rows: list[str] = []
         for model_name, capability in model_cap_pairs:
             mn  = escape_sql(model_name)
             cap = escape_sql(capability)
+            proto, model_url = model_protocol_and_url(pt, capability, base_url)
+            proto_sql = escape_sql(proto)
+            url_sql   = escape_sql(model_url)
+            active    = "TRUE" if model_is_active(pt, capability) else "FALSE"
             select_rows.append(
-                f"    SELECT id, '{mn}', '{cap}' FROM llm_system_provider WHERE provider_type = '{pt}'"
+                f"    SELECT id, '{mn}', '{cap}', '{proto_sql}', '{url_sql}', {active} "
+                f"FROM llm_system_provider WHERE provider_type = '{pt}'"
             )
 
-        lines.append("\nUNION ALL\n".join(select_rows) + ";")
+        lines.append("\nUNION ALL\n".join(select_rows))
+        lines.append("ON DUPLICATE KEY UPDATE")
+        lines.append("    protocol     = VALUES(protocol),")
+        lines.append("    api_base_url = VALUES(api_base_url),")
+        lines.append("    is_active    = VALUES(is_active);")
         lines.append("")
 
     lines.append("COMMIT;")
@@ -293,8 +392,9 @@ def main() -> None:
             continue
 
         vendor_name_raw = data.get("name", jf.stem)
-        api_base_url    = data["url"]["default"]
         provider_type   = STEM_TO_PROVIDER_TYPE.get(stem, stem)
+        # base_url：14 家重点厂商用权威种子覆盖，其余沿用 RAGFlow 源 url.default
+        api_base_url    = provider_base_url(provider_type, data["url"]["default"])
 
         # 优先级：从 llm_factories.json 取 rank，处理名称不一致的情况
         factories_name = MODELS_TO_FACTORIES_NAME.get(vendor_name_raw, vendor_name_raw)
@@ -313,11 +413,13 @@ def main() -> None:
             continue
 
         vendors.append({
-            "provider_type":   provider_type,
-            "provider_name":   vendor_name_raw,
-            "api_base_url":    api_base_url,
-            "priority":        priority,
-            "model_cap_pairs": model_cap_pairs,
+            "provider_type":    provider_type,
+            "provider_name":    vendor_name_raw,
+            "api_base_url":     api_base_url,
+            "default_protocol": provider_default_protocol(provider_type),
+            "is_active":        provider_is_active(provider_type),
+            "priority":         priority,
+            "model_cap_pairs":  model_cap_pairs,
         })
 
         supplement_count = len(model_cap_pairs) - len(primary_pairs)

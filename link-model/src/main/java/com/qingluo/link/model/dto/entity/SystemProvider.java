@@ -26,9 +26,15 @@ public class SystemProvider {
     @TableField("provider_name")
     private String providerName;
 
-    @Schema(description = "API地址", example = "https://api.openai.com/v1")
+    /** 默认模板：新增模型能力时的预填入口，不参与运行决策（运行事实在 llm_provider_model）。 */
+    @Schema(description = "默认API地址", example = "https://api.openai.com/v1")
     @TableField("api_base_url")
     private String apiBaseUrl;
+
+    /** 默认模板：新增模型能力时的预填协议，不参与运行决策。 */
+    @Schema(description = "默认协议", example = "openai")
+    @TableField("default_protocol")
+    private String defaultProtocol;
 
     @Schema(description = "是否启用", example = "true")
     @TableField("is_active")
