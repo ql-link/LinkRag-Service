@@ -7,6 +7,7 @@ import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.mapper.UserLLMConfigMapper;
+import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
@@ -18,6 +19,7 @@ import com.qingluo.link.service.SystemPresetService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.HashSet;
 import java.util.List;
@@ -27,8 +29,9 @@ import java.util.Set;
 /**
  * 系统预设服务实现。
  *
- * <p>预设以平台 Key 形式集中维护；注册时复制进用户配置表。复制时 provider_type/api_base_url
- * 由 provider_id join 厂商表取得，api_key 密文原样搬运（仅在真正调用 LLM 时才解密）。</p>
+ * <p>预设以平台 Key 形式集中维护；注册时复制进用户配置表。预设与用户配置字段对齐，
+ * provider_type/protocol/api_base_url 在创建预设时从模型能力层复制并自带，镜像时直接平移，
+ * 不再 join 厂商表；api_key 密文原样搬运（仅在真正调用 LLM 时才解密）。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -68,12 +71,14 @@ public class SystemPresetServiceImpl implements SystemPresetService {
             // 同一能力仅首条预设设为生效，避免单能力出现多个生效
             boolean asDefault = defaultedCapabilities.add(preset.getCapability());
 
+            // 预设自带 provider_type/protocol/api_base_url 事实，直接平移，不再 join 厂商表取值
             UserLLMConfig config = new UserLLMConfig();
             config.setUserId(userId);
             config.setProviderId(preset.getProviderId());
-            config.setProviderType(provider.getProviderType());
+            config.setProviderType(preset.getProviderType());
             config.setApiKey(preset.getApiKey());
-            config.setApiBaseUrl(provider.getApiBaseUrl());
+            config.setApiBaseUrl(preset.getApiBaseUrl());
+            config.setProtocol(preset.getProtocol());
             config.setModelName(preset.getModelName());
             config.setCapability(preset.getCapability());
             config.setIsActive(true);
@@ -92,14 +97,23 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         }
         llmCapabilityService.validateCapability(request.getCapability());
         String capability = request.getCapability().toUpperCase(Locale.ROOT);
-        if (!providerModelService.isModelCapabilityActive(request.getProviderId(), request.getModelName(), capability)) {
+        // 预设事实来源唯一指向模型能力层：取该 (模型,能力) 上架行，复制其协议与入口
+        ProviderModel model = providerModelService.findActiveModelCapability(
+                request.getProviderId(), request.getModelName(), capability);
+        if (model == null) {
             throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "目录中无该模型能力，无法预设");
+        }
+        if (!StringUtils.hasText(model.getProtocol()) || !StringUtils.hasText(model.getApiBaseUrl())) {
+            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
         }
 
         SystemPreset preset = new SystemPreset();
         preset.setProviderId(request.getProviderId());
         preset.setModelName(request.getModelName());
         preset.setCapability(capability);
+        preset.setProviderType(provider.getProviderType());
+        preset.setProtocol(model.getProtocol());
+        preset.setApiBaseUrl(model.getApiBaseUrl());
         preset.setApiKey(apiKeyEncryptService.encrypt(request.getApiKey()));
         preset.setIsActive(true);
         systemPresetMapper.insert(preset);

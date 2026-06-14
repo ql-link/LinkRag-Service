@@ -38,10 +38,15 @@ public class UserLLMConfig {
     @TableField("api_key")
     private String apiKey;
 
-    /** 实际生效地址：用户填了用自定义，没填则展开时灌厂商默认，保证下游直读总能拿到可用地址。 */
+    /** 运行快照：展开时复制自模型能力层事实值（绝不 fallback 厂商默认），下游直读总能拿到可用地址。 */
     @Schema(description = "API地址")
     @TableField("api_base_url")
     private String apiBaseUrl;
+
+    /** 运行快照：复制自模型能力层 protocol，下游按 protocol+capability 选 adapter，不再查厂商或模型表。 */
+    @Schema(description = "调用协议", example = "openai")
+    @TableField("protocol")
+    private String protocol;
 
     @Schema(description = "模型名称", example = "gpt-4")
     @TableField("model_name")

@@ -58,6 +58,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         provider.setProviderType(request.getProviderType());
         provider.setProviderName(request.getProviderName());
         provider.setApiBaseUrl(request.getApiBaseUrl());
+        provider.setDefaultProtocol(request.getDefaultProtocol());
         provider.setIsActive(request.getIsActive());
         provider.setPriority(request.getPriority());
 

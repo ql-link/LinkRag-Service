@@ -10,8 +10,9 @@ import java.time.LocalDateTime;
  * 对应表：llm_system_preset
  *
  * <p>管理员预配的整套可用配置模板，自带平台 Key（加密）。用户注册时按本表 active 行
- * 复制进 llm_user_config（is_system_preset=true），实现开箱即用。provider_type/api_base_url
- * 在复制时由 provider_id join llm_system_provider 取得，本表不冗余存储。</p>
+ * 复制进 llm_user_config（is_system_preset=true），实现开箱即用。与 llm_user_config 字段对齐：
+ * provider_type/protocol/api_base_url 自带事实字段（创建预设时从 llm_provider_model 复制），
+ * 镜像时直接平移，不再 join 厂商表补全。</p>
  */
 @Data
 @TableName("llm_system_preset")
@@ -33,6 +34,21 @@ public class SystemPreset {
     @Schema(description = "能力标识", example = "CHAT")
     @TableField("capability")
     private String capability;
+
+    /** 与用户配置对齐：厂商类型快照，下沉自包含，镜像免 join。 */
+    @Schema(description = "厂商类型", example = "openai")
+    @TableField("provider_type")
+    private String providerType;
+
+    /** 与用户配置对齐：复制自模型能力层事实，镜像时平移给 llm_user_config。 */
+    @Schema(description = "调用协议", example = "openai")
+    @TableField("protocol")
+    private String protocol;
+
+    /** 与用户配置对齐：复制自模型能力层事实，镜像时平移给 llm_user_config。 */
+    @Schema(description = "调用入口基地址", example = "https://api.openai.com/v1")
+    @TableField("api_base_url")
+    private String apiBaseUrl;
 
     @Schema(description = "平台 Key（加密）")
     @TableField("api_key")
