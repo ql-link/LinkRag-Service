@@ -43,7 +43,7 @@ pipeline {
                 // 同机部署：镜像已在本机 docker 中，compose 直接按名引用
                 sh """
                     cd ${DEPLOY_DIR}
-                    export TAG=${TAG} SPRING_PROFILES_ACTIVE=dev
+                    export TAG=${TAG} SPRING_PROFILES_ACTIVE=prod
                     docker compose -f deploy/docker-compose.yml up -d
                 """
             }
