@@ -29,6 +29,8 @@ public enum ErrorCode {
     INVALID_MODEL_CAPABILITY(10011, "模型能力标识无效", 400),
     MODEL_DISABLED(10012, "模型已被关闭，不可选为生效", 400),
     PRESET_READONLY(10013, "系统预设为只读，不可修改或删除", 403),
+    MODEL_CONFIG_INCOMPLETE(10014, "模型能力缺少协议或入口，无法保存或展开", 400),
+    INVALID_PROTOCOL(10015, "协议不在支持范围内", 400),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),
@@ -39,15 +41,10 @@ public enum ErrorCode {
     DUPLICATE_USERNAME(20006, "用户名已存在", 409),
     DUPLICATE_EMAIL(20007, "邮箱已被使用", 409),
 
-    // 召回 / RAG 网关相关 (30001-39999)
-    // 用于建流前 HTTP 错误（数字 code + httpStatus）；建流后 SSE 的英文串码见 RecallSseError。
-    RECALL_INVALID_REQUEST(30001, "召回请求参数不合法", 400),
+    // 召回 / RAG 相关 (30001-39999)
+    // 召回 session 签发链路的数据集归属校验（前端直连 Python 召回，LINK-104）。
+    // 旧召回网关链路（Java 同步转发 Python 内部召回端点）已于 LINK-122 废弃，相关错误码一并移除。
     RECALL_SCOPE_FORBIDDEN(30002, "无权访问指定数据集", 403),
-    RECALL_RATE_LIMITED(30003, "召回请求过于频繁，请稍后再试", 429),
-    RECALL_INTERNAL_AUTH_FAILED(30004, "召回内部鉴权失败", 502),
-    RECALL_ALL_SOURCES_FAILED(30005, "召回失败，请稍后再试", 502),
-    RECALL_TIMEOUT(30006, "召回超时，请稍后再试", 504),
-    RECALL_UPSTREAM_ERROR(30007, "召回服务暂不可用，请稍后再试", 502),
 
     // 系统错误 (50001-59999)
     UNKNOWN_ERROR(50001, "系统内部错误", 500),

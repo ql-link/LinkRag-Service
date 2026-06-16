@@ -41,4 +41,18 @@ class OssObjectKeyGeneratorTest {
         assertThat(objectKey).doesNotContain("..");
         assertThat(objectKey.substring("cert/".length())).doesNotContain(".");
     }
+
+    @Test
+    void Should_Generate_Monthly_Object_Key_When_BizType_Is_Feedback() throws Exception {
+        Class<?> generatorClass = Class.forName("com.qingluo.link.service.oss.OssObjectKeyGenerator");
+        Constructor<?> constructor = generatorClass.getDeclaredConstructor();
+        Object generator = constructor.newInstance();
+        Method method = generatorClass.getMethod("generate", String.class, String.class);
+
+        String objectKey = (String) method.invoke(generator, "feedback", "png");
+
+        // 路径精确到月、不含日
+        assertThat(objectKey).matches("feedback/\\d{4}/\\d{2}/[a-f0-9]{32}\\.png");
+        assertThat(objectKey).doesNotMatch("feedback/\\d{4}/\\d{2}/\\d{2}/.*");
+    }
 }

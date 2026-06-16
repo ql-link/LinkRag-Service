@@ -19,15 +19,30 @@ public interface ProviderModelService {
     List<ProviderModel> listActiveModels(Long providerId, String capability);
 
     /**
+     * 批量查多个厂商的上架模型能力行，可按能力过滤（capability 为空表示不过滤）。
+     * 用户侧目录查询用它一次性取回全部厂商模型，避免逐厂商查询的 N+1。
+     * providerIds 为空时返回空列表，不触达数据库。
+     */
+    List<ProviderModel> listActiveModelsByProviderIds(List<Long> providerIds, String capability);
+
+    /**
      * 校验某厂商下某模型是否支持某能力且处于上架状态。
      * 按能力选生效模型前用它拦截「模型不支持该能力」。
      */
     boolean isModelCapabilityActive(Long providerId, String modelName, String capability);
 
     /**
-     * 管理端：新增一条模型能力（已存在则幂等确保上架）。
+     * 查某厂商下某模型某能力的上架行（含 protocol/api_base_url 事实），不存在返回 null。
+     * 创建系统预设时用它取事实字段复制进预设。
      */
-    ProviderModel addModelCapability(Long providerId, String modelName, String capability);
+    ProviderModel findActiveModelCapability(Long providerId, String modelName, String capability);
+
+    /**
+     * 管理端：新增一条模型能力（已存在则幂等确保上架并刷新事实字段）。
+     * protocol/api_base_url 是运行事实来源，均必填且 protocol 须在受支持集合内。
+     */
+    ProviderModel addModelCapability(Long providerId, String modelName, String capability,
+                                     String protocol, String apiBaseUrl);
 
     /**
      * 管理端：删除一条模型能力目录项。

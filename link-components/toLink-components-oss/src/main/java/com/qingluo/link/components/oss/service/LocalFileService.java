@@ -43,7 +43,7 @@ public class LocalFileService implements IOssService {
             Files.createDirectories(target.getParent());
             multipartFile.transferTo(target);
 
-            if (OssSavePlaceEnum.PRIVATE == ossSavePlaceEnum) {
+            if (returnsObjectKeyOnly(ossSavePlaceEnum)) {
                 return saveDirAndFileName;
             }
             return normalizePublicBaseUrl() + "/" + saveDirAndFileName;
@@ -62,7 +62,7 @@ public class LocalFileService implements IOssService {
             // contentType 对本地存储无意义（仅 MinIO 用），此处按对象键落盘即可。
             Files.copy(localFile.toPath(), target, StandardCopyOption.REPLACE_EXISTING);
 
-            if (OssSavePlaceEnum.PRIVATE == ossSavePlaceEnum) {
+            if (returnsObjectKeyOnly(ossSavePlaceEnum)) {
                 return saveDirAndFileName;
             }
             return normalizePublicBaseUrl() + "/" + saveDirAndFileName;
@@ -103,16 +103,29 @@ public class LocalFileService implements IOssService {
 
     @Override
     public String getBucketName(OssSavePlaceEnum ossSavePlaceEnum) {
-        return OssSavePlaceEnum.PUBLIC == ossSavePlaceEnum ? LOCAL_PUBLIC_BUCKET : LOCAL_PRIVATE_BUCKET;
+        return switch (ossSavePlaceEnum) {
+            case PUBLIC -> LOCAL_PUBLIC_BUCKET;
+            case PRIVATE -> LOCAL_PRIVATE_BUCKET;
+        };
+    }
+
+    @Override
+    public String resolvePublicUrl(OssSavePlaceEnum ossSavePlaceEnum, String objectKey) {
+        return normalizePublicBaseUrl() + "/" + objectKey;
+    }
+
+    private static boolean returnsObjectKeyOnly(OssSavePlaceEnum place) {
+        return place == OssSavePlaceEnum.PRIVATE;
     }
 
     private Path resolveStoragePath(OssSavePlaceEnum place, String objectKey) throws IOException {
         if (!StringUtils.hasText(objectKey)) {
             throw new IOException("Object key is blank");
         }
-        String basePath = OssSavePlaceEnum.PUBLIC == place
-                ? ossProperties.getFilePublicPath()
-                : ossProperties.getFilePrivatePath();
+        String basePath = switch (place) {
+            case PUBLIC -> ossProperties.getFilePublicPath();
+            case PRIVATE -> ossProperties.getFilePrivatePath();
+        };
         Path base = Path.of(basePath).toAbsolutePath().normalize();
         Path target = base.resolve(objectKey).normalize();
         if (!target.startsWith(base)) {

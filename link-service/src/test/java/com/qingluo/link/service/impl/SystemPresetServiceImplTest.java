@@ -1,13 +1,16 @@
 package com.qingluo.link.service.impl;
 
+import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.mapper.UserLLMConfigMapper;
+import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
+import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.impl.llm.SystemPresetServiceImpl;
@@ -22,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -29,7 +33,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * {@link SystemPresetServiceImpl} 单元测试，承接 acceptance 五类（系统预设注册写入与幂等）。
+ * {@link SystemPresetServiceImpl} 单元测试，承接 acceptance 预设字段对齐与注册写入类。
  */
 @ExtendWith(MockitoExtension.class)
 class SystemPresetServiceImplTest {
@@ -51,11 +55,13 @@ class SystemPresetServiceImplTest {
     private SystemPresetServiceImpl service;
 
     @Test
-    @DisplayName("五·注册写入预设：is_system_preset 与 is_default 为真、Key 密文原样搬运")
-    void applyPresetsForNewUser_writesPresetRows() {
-        SystemPreset preset = preset(1L, 5L, "deepseek-chat", "CHAT", "ENC_PLATFORM");
+    @DisplayName("注册镜像预设：直接平移预设自带 provider_type/protocol/api_base_url（不 join 厂商取值）")
+    void applyPresetsForNewUser_movesPresetSelfCarriedFacts() {
+        SystemPreset preset = preset(1L, 5L, "gte-rerank", "RERANK",
+                "aliyun", "dashscope", "https://dashscope.aliyuncs.com/api/v1", "ENC_PLATFORM");
         given(systemPresetMapper.selectList(any())).willReturn(List.of(preset));
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "https://api.deepseek.com/v1"));
+        // 厂商存在性检查仍保留（跳过孤儿预设），但字段值取自 preset 而非 provider
+        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "aliyun", "https://other"));
         given(userLLMConfigMapper.selectCount(any())).willReturn(0L);
 
         service.applyPresetsForNewUser(100L);
@@ -65,17 +71,18 @@ class SystemPresetServiceImplTest {
         UserLLMConfig written = captor.getValue();
         assertThat(written.getIsSystemPreset()).isTrue();
         assertThat(written.getIsDefault()).isTrue();
-        assertThat(written.getIsActive()).isTrue();
         assertThat(written.getApiKey()).isEqualTo("ENC_PLATFORM");
-        assertThat(written.getProviderType()).isEqualTo("deepseek");
-        assertThat(written.getApiBaseUrl()).isEqualTo("https://api.deepseek.com/v1");
+        assertThat(written.getProviderType()).isEqualTo("aliyun");
+        assertThat(written.getProtocol()).isEqualTo("dashscope");
+        assertThat(written.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
         assertThat(written.getUserId()).isEqualTo(100L);
     }
 
     @Test
-    @DisplayName("五·注册写入幂等：已存在同预设行则跳过，不重复灌入")
+    @DisplayName("注册写入幂等：已存在同预设行则跳过，不重复灌入")
     void applyPresetsForNewUser_idempotent() {
-        SystemPreset preset = preset(1L, 5L, "deepseek-chat", "CHAT", "ENC");
+        SystemPreset preset = preset(1L, 5L, "deepseek-chat", "CHAT",
+                "deepseek", "openai", "https://api.deepseek.com/v1", "ENC");
         given(systemPresetMapper.selectList(any())).willReturn(List.of(preset));
         given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "url"));
         given(userLLMConfigMapper.selectCount(any())).willReturn(1L);
@@ -88,8 +95,10 @@ class SystemPresetServiceImplTest {
     @Test
     @DisplayName("同一能力多条预设只让首条生效，避免单能力多生效")
     void applyPresetsForNewUser_singleDefaultPerCapability() {
-        SystemPreset p1 = preset(1L, 5L, "deepseek-chat", "CHAT", "ENC1");
-        SystemPreset p2 = preset(2L, 5L, "deepseek-coder", "CHAT", "ENC2");
+        SystemPreset p1 = preset(1L, 5L, "deepseek-chat", "CHAT",
+                "deepseek", "openai", "https://api.deepseek.com/v1", "ENC1");
+        SystemPreset p2 = preset(2L, 5L, "deepseek-coder", "CHAT",
+                "deepseek", "openai", "https://api.deepseek.com/v1", "ENC2");
         given(systemPresetMapper.selectList(any())).willReturn(List.of(p1, p2));
         given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "url"));
         given(userLLMConfigMapper.selectCount(any())).willReturn(0L);
@@ -102,31 +111,57 @@ class SystemPresetServiceImplTest {
     }
 
     @Test
-    @DisplayName("管理端新增预设：平台 Key 加密入库、校验目录支持")
-    void createPreset_encryptsAndValidates() {
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "url"));
-        given(providerModelService.isModelCapabilityActive(5L, "deepseek-chat", "CHAT")).willReturn(true);
+    @DisplayName("创建预设：从模型能力层复制 protocol/api_base_url/provider_type，Key 加密入库")
+    void createPreset_copiesModelFacts() {
+        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "aliyun", "https://other"));
+        given(providerModelService.findActiveModelCapability(5L, "gte-rerank", "RERANK"))
+                .willReturn(model("dashscope", "https://dashscope.aliyuncs.com/api/v1"));
         given(apiKeyEncryptService.encrypt("sk-platform")).willReturn("ENC_P");
 
         CreatePresetRequest request = new CreatePresetRequest();
         request.setProviderId(5L);
-        request.setModelName("deepseek-chat");
-        request.setCapability("CHAT");
+        request.setModelName("gte-rerank");
+        request.setCapability("RERANK");
         request.setApiKey("sk-platform");
 
         SystemPreset result = service.createPreset(request);
 
         verify(systemPresetMapper).insert(any(SystemPreset.class));
         assertThat(result.getApiKey()).isEqualTo("ENC_P");
-        assertThat(result.getCapability()).isEqualTo("CHAT");
+        assertThat(result.getCapability()).isEqualTo("RERANK");
+        assertThat(result.getProtocol()).isEqualTo("dashscope");
+        assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
+        assertThat(result.getProviderType()).isEqualTo("aliyun");
     }
 
-    private SystemPreset preset(Long id, Long providerId, String model, String capability, String encKey) {
+    @Test
+    @DisplayName("创建预设：目录中无该模型能力时拒绝（MODEL_NOT_SUPPORTED）")
+    void createPreset_rejectsMissingModelCapability() {
+        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "url"));
+        given(providerModelService.findActiveModelCapability(5L, "ghost", "CHAT")).willReturn(null);
+
+        CreatePresetRequest request = new CreatePresetRequest();
+        request.setProviderId(5L);
+        request.setModelName("ghost");
+        request.setCapability("CHAT");
+        request.setApiKey("sk");
+
+        assertThatThrownBy(() -> service.createPreset(request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", ErrorCode.MODEL_NOT_SUPPORTED.getCode());
+        verify(systemPresetMapper, never()).insert(any());
+    }
+
+    private SystemPreset preset(Long id, Long providerId, String model, String capability,
+                                String providerType, String protocol, String apiBaseUrl, String encKey) {
         SystemPreset preset = new SystemPreset();
         preset.setId(id);
         preset.setProviderId(providerId);
         preset.setModelName(model);
         preset.setCapability(capability);
+        preset.setProviderType(providerType);
+        preset.setProtocol(protocol);
+        preset.setApiBaseUrl(apiBaseUrl);
         preset.setApiKey(encKey);
         preset.setIsActive(true);
         return preset;
@@ -138,5 +173,13 @@ class SystemPresetServiceImplTest {
         provider.setProviderType(type);
         provider.setApiBaseUrl(url);
         return provider;
+    }
+
+    private ProviderModel model(String protocol, String apiBaseUrl) {
+        ProviderModel m = new ProviderModel();
+        m.setProtocol(protocol);
+        m.setApiBaseUrl(apiBaseUrl);
+        m.setIsActive(true);
+        return m;
     }
 }

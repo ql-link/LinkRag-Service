@@ -57,13 +57,14 @@ class CacheConsistencyServiceTest {
     void Should_DeleteImmediately_When_NoTransaction() {
         cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
 
-        verify(redisTemplate).delete(List.of("llm:pvd:openai"));
+        // SYSTEM_PROVIDER 连带删该厂商模型分片与厂商索引，使该厂商模型变更或厂商增减都失效用户侧目录
+        verify(redisTemplate).delete(List.of("llm:pvd:openai", "llm:pvd:catalog:models:openai", "llm:pvd:catalog:index"));
     }
 
     @Test
     @DisplayName("Should_NotThrow_When_FirstDeleteFails_NoTransaction")
     void Should_NotThrow_When_FirstDeleteFails_NoTransaction() {
-        when(redisTemplate.delete(List.of("llm:pvd:openai"))).thenThrow(new RuntimeException("redis down"));
+        when(redisTemplate.delete(List.of("llm:pvd:openai", "llm:pvd:catalog:models:openai", "llm:pvd:catalog:index"))).thenThrow(new RuntimeException("redis down"));
 
         assertThatCode(() -> cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai"))
                 .doesNotThrowAnyException();
@@ -130,7 +131,7 @@ class CacheConsistencyServiceTest {
     @Test
     @DisplayName("Should_KeepCompensationDeleteBehavior")
     void Should_KeepCompensationDeleteBehavior() {
-        when(redisTemplate.delete(List.of("llm:pvd:openai"))).thenThrow(new RuntimeException("redis down"));
+        when(redisTemplate.delete(List.of("llm:pvd:openai", "llm:pvd:catalog:models:openai", "llm:pvd:catalog:index"))).thenThrow(new RuntimeException("redis down"));
 
         assertThatThrownBy(() -> cacheConsistencyService.evictCompensation(CacheEvictTarget.SYSTEM_PROVIDER, "openai"))
                 .isInstanceOf(BusinessException.class)

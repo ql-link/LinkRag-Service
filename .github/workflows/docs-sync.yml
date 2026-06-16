@@ -2,9 +2,9 @@ name: Docs Sync Check
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [master, dev]
   push:
-    branches: [dev, main]
+    branches: [dev, master]
 
 jobs:
   check:

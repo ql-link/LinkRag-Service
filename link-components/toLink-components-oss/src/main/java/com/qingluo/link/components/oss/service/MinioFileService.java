@@ -11,6 +11,7 @@ import io.minio.RemoveObjectArgs;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -36,6 +37,7 @@ public class MinioFileService implements IOssService {
     public MinioFileService(OssProperties ossProperties) {
         this.ossProperties = ossProperties;
         OssProperties.Minio minio = ossProperties.getMinio();
+        validateBucketNames(minio);
         this.minioClient = MinioClient.builder()
             .endpoint(minio.getEndpoint())
             .credentials(minio.getAccessKey(), minio.getSecretKey())
@@ -56,10 +58,10 @@ public class MinioFileService implements IOssService {
                     .contentType(multipartFile.getContentType())
                     .build());
 
-            if (OssSavePlaceEnum.PRIVATE == ossSavePlaceEnum) {
+            if (returnsObjectKeyOnly(ossSavePlaceEnum)) {
                 return saveDirAndFileName;
             }
-            return normalizeEndpoint() + "/" + bucket + "/" + saveDirAndFileName;
+            return buildPublicUrl(bucket, saveDirAndFileName);
         } catch (Exception e) {
             log.error("Upload MinIO file failed, place={}, objectKey={}", ossSavePlaceEnum, saveDirAndFileName, e);
             return null;
@@ -80,10 +82,10 @@ public class MinioFileService implements IOssService {
                     .contentType(contentType)
                     .build());
 
-            if (OssSavePlaceEnum.PRIVATE == ossSavePlaceEnum) {
+            if (returnsObjectKeyOnly(ossSavePlaceEnum)) {
                 return saveDirAndFileName;
             }
-            return normalizeEndpoint() + "/" + bucket + "/" + saveDirAndFileName;
+            return buildPublicUrl(bucket, saveDirAndFileName);
         } catch (Exception e) {
             log.error("Upload MinIO file (from local file) failed, place={}, objectKey={}",
                 ossSavePlaceEnum, saveDirAndFileName, e);
@@ -95,11 +97,12 @@ public class MinioFileService implements IOssService {
     public boolean downloadFile(OssSavePlaceEnum ossSavePlaceEnum, String source, String target) {
         String bucket = resolveBucketName(ossSavePlaceEnum);
         try {
+            Path targetPath = prepareDownloadTarget(target);
             minioClient.downloadObject(
                 DownloadObjectArgs.builder()
                     .bucket(bucket)
                     .object(source)
-                    .filename(target)
+                    .filename(targetPath.toString())
                     .build());
             return true;
         } catch (Exception e) {
@@ -107,6 +110,16 @@ public class MinioFileService implements IOssService {
                 ossSavePlaceEnum, source, target, e);
             return false;
         }
+    }
+
+    static Path prepareDownloadTarget(String target) throws java.io.IOException {
+        Path targetPath = Path.of(target).normalize();
+        Path parent = targetPath.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.deleteIfExists(targetPath);
+        return targetPath;
     }
 
     @Override
@@ -130,6 +143,15 @@ public class MinioFileService implements IOssService {
         return resolveBucketName(ossSavePlaceEnum);
     }
 
+    @Override
+    public String resolvePublicUrl(OssSavePlaceEnum ossSavePlaceEnum, String objectKey) {
+        return buildPublicUrl(resolveBucketName(ossSavePlaceEnum), objectKey);
+    }
+
+    private String buildPublicUrl(String bucket, String objectKey) {
+        return normalizeEndpoint() + "/" + bucket + "/" + objectKey;
+    }
+
     private void ensureBucket(String bucket) throws Exception {
         if (ensuredBuckets.contains(bucket)) {
             return;
@@ -143,11 +165,28 @@ public class MinioFileService implements IOssService {
 
     private String resolveBucketName(OssSavePlaceEnum place) {
         OssProperties.Minio minio = ossProperties.getMinio();
-        String bucket = OssSavePlaceEnum.PUBLIC == place ? minio.getPublicBucketName() : minio.getPrivateBucketName();
+        String bucket = switch (place) {
+            case PUBLIC -> minio.getPublicBucketName();
+            case PRIVATE -> minio.getPrivateBucketName();
+        };
         if (!StringUtils.hasText(bucket)) {
             throw new IllegalStateException("MinIO bucket is not configured for " + place);
         }
         return bucket;
+    }
+
+    private static boolean returnsObjectKeyOnly(OssSavePlaceEnum place) {
+        return place == OssSavePlaceEnum.PRIVATE;
+    }
+
+    private void validateBucketNames(OssProperties.Minio minio) {
+        String publicBucket = minio.getPublicBucketName();
+        String privateBucket = minio.getPrivateBucketName();
+        if (StringUtils.hasText(publicBucket)
+            && StringUtils.hasText(privateBucket)
+            && publicBucket.equals(privateBucket)) {
+            throw new IllegalStateException("MinIO public and private buckets must be different");
+        }
     }
 
     private String normalizeEndpoint() {

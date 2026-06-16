@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class RecallSessionServiceImpl implements RecallSessionService {
 
-    private static final String STREAM_PATH = "/api/v1/recall/stream";
+    private static final String STREAM_PATH = "/api/v1/rag/stream";
 
     private final SysUserMapper sysUserMapper;
     private final RecallScopeResolver scopeResolver;
@@ -64,7 +64,8 @@ public class RecallSessionServiceImpl implements RecallSessionService {
     }
 
     /**
-     * 前端可见的 Python 直连地址 = sessionStreamBaseUrl + /api/v1/recall/stream。
+     * 前端可见的 Python 直连地址 = sessionStreamBaseUrl + /api/v1/rag/stream（LINK-138：Python LINK-131
+     * 把对外端点从 /api/v1/recall/stream 改名为 RAG 流式问答 /api/v1/rag/stream）。
      */
     private String buildStreamUrl() {
         String base = properties.getSessionStreamBaseUrl();

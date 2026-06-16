@@ -38,3 +38,12 @@ management:
       enabled: false
     rabbit:
       enabled: false
+
+# CDC 缓存补偿（Canal -> Kafka -> 本服务消费）：cdc.enabled 为总开关，true 开启 / false 关闭。
+# CDC 依赖 Kafka，仅当 tolink.mq.vender=kafka 时才真正生效；开启时必须配置 cdc.source-topic。
+tolink:
+  cache-consistency:
+    cdc:
+      enabled: false
+      # source-topic: tolink.canal.binlog   # 开启时必填：Canal 投递 binlog 的 Kafka topic
+      # group-id: tolink-cdc-bridge          # 可选，默认 tolink-cdc-bridge

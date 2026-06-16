@@ -117,10 +117,13 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `MINIO_ENDPOINT` | MinIO 服务地址（host:port） | 是* | 无 | `localhost:9000` |
 | `MINIO_ACCESS_KEY` | MinIO 访问密钥 | 是* | 无 | `your-minio-access-key-here` |
 | `MINIO_SECRET_KEY` | MinIO 密钥 | 是* | 无 | `your-minio-secret-key-here` |
-| `MINIO_PUBLIC_BUCKET` | MinIO 公开存储桶名 | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
-| `MINIO_PRIVATE_BUCKET` | MinIO 私有存储桶名 | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
+| `MINIO_PRIVATE_BUCKET` | MinIO 私有存储桶名（RAG 知识库文档） | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
+| `MINIO_PUBLIC_BUCKET` | MinIO 公开桶名（博客图片/Markdown 正文 + 反馈附件，需配置匿名读） | 否 | `tolink-public` | `tolink-public` |
 
 > \* MinIO 变量在 `OSS_SERVICE_TYPE=minio` 时必需
+>
+> 三桶已收敛为两桶：私有桶 `tolink-rag-docs`（RAG 文档）+ 公开桶 `tolink-public`（所有不敏感资源）。原博客专用桶 `tolink-blog` 已合并入公开桶，`MINIO_BLOG_BUCKET` 配置项废弃，部署侧待服务稳定后删除旧桶。
+> 反馈附件不新增独立桶配置，复用 `MINIO_PUBLIC_BUCKET` 公开桶；对象 key 由 Java 生成，格式为 `feedback/yyyy/MM/{uuid}.{suffix}`（精度到月），数据库只存 object key，可访问 URL 由后端按公开桶拼装。
 
 ### 4.8 阿里云 OSS（ALIYUN_OSS_*）
 
@@ -188,30 +191,22 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 **审计日志**：`AuditLog`（专用 logger 名 `AUDIT`，统一 `action=` 前缀，复用 traceId）为安全/高危动作留痕——登录成功/失败（`LOGIN_SUCCESS`/`LOGIN_FAIL`）、注册（`REGISTER`）、登出（`LOGOUT`）、改用户状态/角色（`USER_STATUS_CHANGE`/`USER_ROLE_CHANGE`，记操作人+目标+前后值）、配置厂商 Key（`LLM_PROVIDER_SETUP`）、删配置（`LLM_CONFIG_DELETE`）、厂商增删（`PROVIDER_CREATE`/`PROVIDER_DELETE`）。**仅记标识与结果，严禁记录明文密码、API Key、token**。可经 `logging.level.AUDIT` 单独调级或拆独立 appender。
 
-### 4.14 召回网关（RECALL_* / RAG_PYTHON_BASE_URL）
+### 4.14 召回 session 签发（RECALL_SESSION_*）
 
-用户态召回 SSE 网关配置，前缀 `tolink.recall`（`RecallProperties`）：
+前端直连 Python 召回的 session token 签发配置，前缀 `tolink.recall`（`RecallProperties`）：
 
 | 名称 | 用途 | 是否必需 | 默认值 |
 |------|------|----------|--------|
-| `RAG_PYTHON_BASE_URL` | Python RAG 服务地址（拼接 `/api/v1/internal/recall/stream`） | 否 | `http://tolink-rag:8000` |
-| `RECALL_INTERNAL_JWT_SECRET` | 内部 JWT HS256 密钥（须与 Python 验签端一致；生产用密钥管理系统） | 是（dev） | 空 |
-| `RECALL_JWT_EXP_SECONDS` | 内部 JWT 有效期（秒） | 否 | `30` |
-| `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致，**必须 ≠ `RECALL_INTERNAL_JWT_SECRET`**，否则启动失败） | 是 | 空 |
+| `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致） | 是 | 空 |
 | `RECALL_SESSION_JWT_EXP_SECONDS` | session token 有效期（秒），Python 强制校验 `exp` | 否 | `30` |
-| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python 召回地址（公网/网关），用于拼接响应 `streamUrl`；独立于内部 `RAG_PYTHON_BASE_URL` | 否 | `http://localhost:8000` |
-| `RECALL_STREAM_TIMEOUT_MS` | 召回整体超时（毫秒，作为 okhttp callTimeout） | 否 | `60000` |
-| `RECALL_EMITTER_TIMEOUT_BUFFER_MS` | SseEmitter 超时相对整体超时的缓冲（毫秒）；emitter 超时 = stream-timeout-ms + 本值，使上游超时先触发并发出 `RECALL_TIMEOUT`，避免前端流被静默关闭 | 否 | `5000` |
-| `RECALL_CONNECT_TIMEOUT_MS` | 连接 Python 超时（毫秒） | 否 | `3000` |
-| `RECALL_READ_TIMEOUT_MS` | 读取 Python 响应超时（毫秒） | 否 | `60000` |
-| `RECALL_RATE_LIMIT_PER_MINUTE` | 每用户每分钟召回上限（单机固定窗口计数，窗口内允许突发，超限返回 429） | 否 | `10` |
-| `RECALL_EXECUTOR_CORE_SIZE` | 召回转发线程池核心线程数 | 否 | `8` |
-| `RECALL_EXECUTOR_MAX_SIZE` | 召回转发线程池最大线程数 | 否 | `32` |
-| `RECALL_EXECUTOR_QUEUE_CAPACITY` | 召回转发线程池队列容量 | 否 | `64` |
+| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python RAG 流式问答地址（公网/网关），用于拼接响应 `streamUrl = base + /api/v1/rag/stream`（LINK-138：Python 端点由 `/api/v1/recall/stream` 改名） | 否 | `http://localhost:8000` |
 
-> 本地 `application-local.yml` 使用固定示例密钥联调；`internal-jwt-secret` 为空时召回会在签发 JWT 阶段失败（500），生产/dev 部署必须配置该密钥且与 Python 验签端一致。
+> `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空时直接 fail-fast，因此启用本服务必须配置一个非空 session 密钥。
 >
-> `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空或等于 `internal-jwt-secret` 时直接 fail-fast（密码学隔离），因此启用本服务必须配置一个非空且与内部密钥不同的 session 密钥。
+> **变更（LINK-122）**：旧召回网关链路（Java 中转代理 `/api/v1/recall/stream` → Python 内部端点）已废弃移除，其专属配置
+> `RAG_PYTHON_BASE_URL`、`RECALL_INTERNAL_JWT_SECRET`、`RECALL_JWT_EXP_SECONDS`、`RECALL_STREAM_TIMEOUT_MS`、
+> `RECALL_EMITTER_TIMEOUT_BUFFER_MS`、`RECALL_CONNECT_TIMEOUT_MS`、`RECALL_READ_TIMEOUT_MS`、
+> `RECALL_RATE_LIMIT_PER_MINUTE`、`RECALL_EXECUTOR_*` 一并删除，部署时可移除这些环境变量。
 
 ## 4.15 缓存一致性（tolink.cache-consistency.*）
 
@@ -226,6 +221,9 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `tolink.cache-consistency.null-cache-ttl-seconds` | 空值缓存 TTL（秒） | `60` | 读保护使用 |
 | `tolink.cache-consistency.ttl-jitter-seconds` | TTL 抖动上限（秒） | `300` | 读保护使用 |
 | `tolink.cache-consistency.load-wait-ms` | 并发回源等待时间（毫秒） | `50` | 读保护使用 |
+| `tolink.cache-consistency.cdc.enabled` | 是否启用 CDC 桥接生产端 | `false` | 默认全环境关闭；线上接入 Canal 后置 `true` 开启 |
+| `tolink.cache-consistency.cdc.source-topic` | Canal 原始变更 topic | 无 | `cdc.enabled=true` 时必填，如 `tolink.canal.binlog` |
+| `tolink.cache-consistency.cdc.group-id` | CDC 桥接消费者消费组 | `tolink-cdc-bridge` | — |
 
 补充说明：
 
@@ -234,6 +232,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
   - 无事务写路径：数据库写成功后立即执行
 - 只要数据库写已经成功，第一次删缓存失败都不会再改变请求结果，而是记录日志并依赖 `tolink.cache.evict` 补偿链路最终收敛。
 - CDC / MQ 驱动的第二次补偿删除仍保持强失败语义：删除失败时抛异常，由消费重试机制继续收敛。
+- CDC 桥接生产端（`tolink.cache-consistency.cdc.*`）默认 false 全环境关闭，主配置 `application.yml` 已显式声明 `cdc.enabled: false`；线上接入 Canal 后置 `true` 并配 `source-topic`。该开关同时控制桥接消费者与专用容器工厂的装配（共用同一条件），改这一个布尔即可整体开关 CDC。Canal 起始位点（首次从当前位点、不回放历史）属 Canal 容器侧运维配置，不在 Java 配置内。
 
 ## 5. 本地开发快速启动
 
@@ -340,8 +339,8 @@ services:
 | `OSS_MINIO_ENDPOINT` | `MINIO_ENDPOINT` | 简化前缀 |
 | `OSS_MINIO_ACCESS_KEY` | `MINIO_ACCESS_KEY` | 简化前缀 |
 | `OSS_MINIO_SECRET_KEY` | `MINIO_SECRET_KEY` | 简化前缀 |
-| `OSS_MINIO_PUBLIC_BUCKET` | `MINIO_PUBLIC_BUCKET` | 简化前缀 |
 | `OSS_MINIO_PRIVATE_BUCKET` | `MINIO_PRIVATE_BUCKET` | 简化前缀 |
+| `MINIO_BLOG_BUCKET` | `MINIO_PUBLIC_BUCKET` | 博客专用桶 `tolink-blog` 已并入公开桶 `tolink-public` |
 | `OSS_ALIYUN_ENDPOINT` | `ALIYUN_OSS_ENDPOINT` | 统一阿里云前缀 |
 | `OSS_ALIYUN_ACCESS_KEY_ID` | `ALIYUN_OSS_ACCESS_KEY_ID` | 统一阿里云前缀 |
 | `OSS_ALIYUN_ACCESS_KEY_SECRET` | `ALIYUN_OSS_ACCESS_KEY_SECRET` | 统一阿里云前缀 |
@@ -367,3 +366,11 @@ services:
 | `dataset-thresholds` | —（仅 yml） | 空 | 按数据集覆盖阈值，如 `dataset-thresholds.{datasetId}: 20m`；未配置回落 `default-threshold` |
 
 说明：调度由 `SchedulingConfig`（`@EnableScheduling`）开启。监控指标走 Micrometer（`spring-boot-starter-actuator`），本地 registry，不接外部平台；无 Micrometer 时降级为仅日志。退避重试参数（最多 3 次、1s→×2→上限 10s）固化在 `ParseResultKafkaConfig`。
+
+## 博客上传与权限配置
+
+- 博客正文和图片不设置业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用默认 multipart 限制为 20MB，需要支持更大文件时由部署环境调大。
+- 博客封面图片、编辑器上传的正文图片以及 Markdown 正文自动抓取的正文图片使用公开桶 `tolink-public`（`OssSavePlaceEnum.PUBLIC` 枚举），部署时必须对该桶配置匿名读策略（`mc anonymous set download tolink-public`）或公开反向代理。原 `tolink-blog` 专用桶已合并，存量对象不迁移、旧桶待服务稳定后删除。
+- Markdown 自动抓取远端正文图片时，单张图片业务上限为 10MB；仅允许 `http` / `https`、jpg/jpeg/png/gif/webp，拒绝 svg，并拦截 localhost、回环、私有网段、链路本地等地址。下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存。
+- `.md` 内本地相对路径图片不会随单文件上传进入后端，需要改成 `http` / `https`、`data:image/*;base64`，或在编辑器中粘贴/上传正文图片。
+- `SaTokenAnnotationConfig` 已启用 MVC 注解拦截，`@SaCheckRole("ADMIN")` 会在请求进入 Controller 前执行；`StpInterfaceImpl` 同时兼容数字和字符串形式的 loginId。

@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl.llm;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.components.redis.service.CacheConsistencyService;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
+import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
@@ -10,6 +11,7 @@ import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
+import com.qingluo.link.service.LLMProtocolService;
 import com.qingluo.link.service.ProviderModelService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ public class ProviderModelServiceImpl implements ProviderModelService {
     private final ProviderModelMapper providerModelMapper;
     private final SystemProviderMapper systemProviderMapper;
     private final LLMCapabilityService llmCapabilityService;
+    private final LLMProtocolService llmProtocolService;
     private final CacheConsistencyService cacheConsistencyService;
 
     @Override
@@ -39,6 +42,22 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
         LambdaQueryWrapper<ProviderModel> wrapper = new LambdaQueryWrapper<ProviderModel>()
                 .eq(ProviderModel::getProviderId, providerId)
+                .eq(ProviderModel::getIsActive, true);
+        if (normalizedCapability != null) {
+            wrapper.eq(ProviderModel::getCapability, normalizedCapability);
+        }
+        return providerModelMapper.selectList(wrapper);
+    }
+
+    @Override
+    public List<ProviderModel> listActiveModelsByProviderIds(List<Long> providerIds, String capability) {
+        if (providerIds == null || providerIds.isEmpty()) {
+            return List.of();
+        }
+        String normalizedCapability = normalizeCapabilityIfPresent(capability);
+        // provider_id IN (...) 命中 idx_provider_cap，一次查回全部厂商的上架模型
+        LambdaQueryWrapper<ProviderModel> wrapper = new LambdaQueryWrapper<ProviderModel>()
+                .in(ProviderModel::getProviderId, providerIds)
                 .eq(ProviderModel::getIsActive, true);
         if (normalizedCapability != null) {
             wrapper.eq(ProviderModel::getCapability, normalizedCapability);
@@ -59,14 +78,32 @@ public class ProviderModelServiceImpl implements ProviderModelService {
     }
 
     @Override
+    public ProviderModel findActiveModelCapability(Long providerId, String modelName, String capability) {
+        String normalizedCapability = normalizeCapability(capability);
+        return providerModelMapper.selectOne(
+                new LambdaQueryWrapper<ProviderModel>()
+                        .eq(ProviderModel::getProviderId, providerId)
+                        .eq(ProviderModel::getModelName, modelName)
+                        .eq(ProviderModel::getCapability, normalizedCapability)
+                        .eq(ProviderModel::getIsActive, true)
+        );
+    }
+
+    @Override
     @Transactional
     /**
-     * 新增模型能力目录项。已存在同 (厂商,模型,能力) 时幂等确保其上架，
-     * 避免管理员重复新增报唯一约束冲突。
+     * 新增模型能力目录项。已存在同 (厂商,模型,能力) 时幂等确保其上架并刷新事实字段，
+     * 避免管理员重复新增报唯一约束冲突。protocol/api_base_url 是运行事实，校验后写入。
      */
-    public ProviderModel addModelCapability(Long providerId, String modelName, String capability) {
+    public ProviderModel addModelCapability(Long providerId, String modelName, String capability,
+                                            String protocol, String apiBaseUrl) {
         SystemProvider provider = requireProvider(providerId);
         String normalizedCapability = normalizeCapability(capability);
+        // 事实字段校验前置：协议须在受支持集合内、入口不可空，校验失败不落库
+        llmProtocolService.validateProtocol(protocol);
+        if (!StringUtils.hasText(apiBaseUrl)) {
+            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
+        }
 
         ProviderModel existing = providerModelMapper.selectOne(
                 new LambdaQueryWrapper<ProviderModel>()
@@ -75,10 +112,10 @@ public class ProviderModelServiceImpl implements ProviderModelService {
                         .eq(ProviderModel::getCapability, normalizedCapability)
         );
         if (existing != null) {
-            if (!Boolean.TRUE.equals(existing.getIsActive())) {
-                existing.setIsActive(true);
-                providerModelMapper.updateById(existing);
-            }
+            existing.setProtocol(protocol);
+            existing.setApiBaseUrl(apiBaseUrl);
+            existing.setIsActive(true);
+            providerModelMapper.updateById(existing);
             evictProviderCache(provider);
             return existing;
         }
@@ -87,6 +124,8 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         model.setProviderId(providerId);
         model.setModelName(modelName);
         model.setCapability(normalizedCapability);
+        model.setProtocol(protocol);
+        model.setApiBaseUrl(apiBaseUrl);
         model.setIsActive(true);
         providerModelMapper.insert(model);
         evictProviderCache(provider);

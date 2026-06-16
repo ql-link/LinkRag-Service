@@ -1,0 +1,134 @@
+package com.qingluo.link.service.impl.admin;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+
+import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
+import com.qingluo.link.components.oss.service.IOssService;
+import com.qingluo.link.core.exception.BusinessException;
+import com.qingluo.link.mapper.UserFeedbackMapper;
+import com.qingluo.link.model.dto.entity.UserFeedback;
+import com.qingluo.link.model.dto.request.ReplyFeedbackRequest;
+import com.qingluo.link.model.dto.request.UpdateFeedbackPriorityRequest;
+import com.qingluo.link.model.dto.request.UpdateFeedbackStatusRequest;
+import com.qingluo.link.model.dto.response.FeedbackDTO;
+import com.qingluo.link.model.dto.response.PageResult;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class AdminFeedbackServiceImplTest {
+
+    @Mock
+    private UserFeedbackMapper userFeedbackMapper;
+
+    @Mock
+    private IOssService ossService;
+
+    @InjectMocks
+    private AdminFeedbackServiceImpl adminFeedbackService;
+
+    @Test
+    @DisplayName("查询反馈列表时返回筛选后的分页结果")
+    void Should_ReturnFilteredPage_When_ListFeedback() {
+        given(userFeedbackMapper.selectList(any())).willReturn(List.of(feedback(1L)));
+
+        PageResult<FeedbackDTO> result = adminFeedbackService.list(1, 20, "PENDING", "BUG");
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getType()).isEqualTo("BUG");
+    }
+
+    @Test
+    @DisplayName("反馈状态变为已解决时设置处理时间")
+    void Should_SetProcessedAt_When_StatusBecomesResolved() {
+        given(userFeedbackMapper.selectById(1L)).willReturn(feedback(1L));
+        UpdateFeedbackStatusRequest request = new UpdateFeedbackStatusRequest();
+        request.setStatus("RESOLVED");
+
+        FeedbackDTO result = adminFeedbackService.updateStatus(1L, request);
+
+        assertThat(result.getStatus()).isEqualTo("RESOLVED");
+        assertThat(result.getProcessedAt()).isNotNull();
+        verify(userFeedbackMapper).updateById(any(UserFeedback.class));
+    }
+
+    @Test
+    @DisplayName("优先级合法时更新反馈优先级")
+    void Should_UpdatePriority_When_ValueIsValid() {
+        given(userFeedbackMapper.selectById(1L)).willReturn(feedback(1L));
+        UpdateFeedbackPriorityRequest request = new UpdateFeedbackPriorityRequest();
+        request.setPriority(1);
+
+        adminFeedbackService.updatePriority(1L, request);
+
+        ArgumentCaptor<UserFeedback> captor = ArgumentCaptor.forClass(UserFeedback.class);
+        verify(userFeedbackMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getPriority()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("管理员回复反馈时不自动修改状态")
+    void Should_WriteReplyWithoutChangingStatus_When_AdminReplies() {
+        UserFeedback feedback = feedback(1L);
+        feedback.setStatus("PROCESSING");
+        given(userFeedbackMapper.selectById(1L)).willReturn(feedback);
+        ReplyFeedbackRequest request = new ReplyFeedbackRequest();
+        request.setReply("We are checking this.");
+
+        FeedbackDTO result = adminFeedbackService.reply(99L, 1L, request);
+
+        assertThat(result.getAdminId()).isEqualTo(99L);
+        assertThat(result.getAdminReply()).isEqualTo("We are checking this.");
+        assertThat(result.getStatus()).isEqualTo("PROCESSING");
+        assertThat(result.getProcessedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("查询反馈详情时由 objectKey 拼出可访问公开 URL")
+    void Should_ResolvePublicUrl_When_DetailHasAttachment() {
+        UserFeedback feedback = feedback(1L);
+        feedback.setAttachmentObjectKey("feedback/2026/06/abc.png");
+        given(userFeedbackMapper.selectById(1L)).willReturn(feedback);
+        given(ossService.resolvePublicUrl(OssSavePlaceEnum.PUBLIC, "feedback/2026/06/abc.png"))
+            .willReturn("http://minio:9000/tolink-public/feedback/2026/06/abc.png");
+
+        FeedbackDTO result = adminFeedbackService.detail(1L);
+
+        assertThat(result.getAttachmentObjectKey()).isEqualTo("feedback/2026/06/abc.png");
+        assertThat(result.getAttachmentUrl())
+            .isEqualTo("http://minio:9000/tolink-public/feedback/2026/06/abc.png");
+    }
+
+    @Test
+    @DisplayName("更新为非法反馈状态时拒绝请求")
+    void Should_RejectInvalidStatus_When_UpdateStatus() {
+        UpdateFeedbackStatusRequest request = new UpdateFeedbackStatusRequest();
+        request.setStatus("DONE");
+
+        assertThatThrownBy(() -> adminFeedbackService.updateStatus(1L, request))
+            .isInstanceOf(BusinessException.class)
+            .hasMessage("不支持的反馈状态");
+    }
+
+    private UserFeedback feedback(Long id) {
+        UserFeedback feedback = new UserFeedback();
+        feedback.setId(id);
+        feedback.setType("BUG");
+        feedback.setTitle("Title");
+        feedback.setContent("Content");
+        feedback.setStatus("PENDING");
+        feedback.setPriority(3);
+        return feedback;
+    }
+}

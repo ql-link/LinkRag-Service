@@ -20,7 +20,12 @@ public class CacheKeyRouter {
             case USER_ROLE -> List.of(userRoleKey(identifier));
             case LLM_CONFIG -> List.of("llm:cfg:" + identifier);
             case USER_DEFAULT_LLM_CONFIG -> List.of("llm:u_def:" + identifier);
-            case SYSTEM_PROVIDER -> List.of("llm:pvd:" + identifier);
+            // 除按厂商类型删单厂商 key 外，连带删该厂商的模型分片与厂商索引，
+            // 使该厂商模型变更或厂商增减都让用户侧目录缓存失效
+            // （分片/索引 key 对应 ProviderCatalogCacheService.MODELS_KEY_PREFIX / INDEX_KEY）。
+            case SYSTEM_PROVIDER -> List.of("llm:pvd:" + identifier,
+                    "llm:pvd:catalog:models:" + identifier,
+                    "llm:pvd:catalog:index");
         };
     }
 

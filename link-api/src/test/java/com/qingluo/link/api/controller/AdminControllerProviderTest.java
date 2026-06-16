@@ -169,7 +169,8 @@ class AdminControllerProviderTest {
         String requestJson = "{" +
                 "\"providerType\":\"" + providerType + "\"," +
                 "\"providerName\":\"Google AI\"," +
-                "\"apiBaseUrl\":\"https://generativelanguage.googleapis.com/v1\"," +
+                "\"apiBaseUrl\":\"https://generativelanguage.googleapis.com/v1beta\"," +
+                "\"defaultProtocol\":\"google\"," +
                 "\"isActive\":true," +
                 "\"priority\":80" +
                 "}";

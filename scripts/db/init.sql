@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS llm_system_provider (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '厂商唯一标识',
     provider_type   VARCHAR(32)    NOT NULL COMMENT '厂商类型：openai/claude/glm/deepseek',
     provider_name   VARCHAR(64)    NOT NULL COMMENT '厂商展示名称，如 "OpenAI"',
-    api_base_url    VARCHAR(512)   NOT NULL COMMENT '官方默认 API 地址',
+    api_base_url    VARCHAR(512)   NOT NULL COMMENT '默认 API 基地址（仅作新增模型预填模板，不参与运行决策）',
+    default_protocol VARCHAR(32)   NOT NULL DEFAULT 'openai' COMMENT '默认协议（模板值，新增模型能力预填用）',
     is_active       BOOLEAN        NOT NULL DEFAULT TRUE COMMENT '是否启用',
     priority        INT            NOT NULL DEFAULT 50 COMMENT '厂商优先级（1-100）',
     created_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS llm_provider_model (
     provider_id     BIGINT UNSIGNED NOT NULL COMMENT '关联 llm_system_provider.id',
     model_name      VARCHAR(128)    NOT NULL COMMENT '模型名',
     capability      VARCHAR(32)     NOT NULL COMMENT '单能力；一模型多能力=多行',
+    protocol        VARCHAR(32)     COMMENT '调用协议（事实来源；服务层保证非空，待回填后收紧 NOT NULL）',
+    api_base_url    VARCHAR(512)    COMMENT '调用入口完整端点 URL（事实来源，Python 直打不拼后缀；google 例外存 base 到 /v1beta）',
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '该模型能力是否上架',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -59,6 +62,9 @@ CREATE TABLE IF NOT EXISTS llm_system_preset (
     provider_id     BIGINT UNSIGNED NOT NULL COMMENT '关联 llm_system_provider.id',
     model_name      VARCHAR(128)    NOT NULL COMMENT '模型名',
     capability      VARCHAR(32)     NOT NULL COMMENT '能力标识',
+    provider_type   VARCHAR(32)     COMMENT '厂商类型（与用户配置对齐，镜像免 join）',
+    protocol        VARCHAR(32)     COMMENT '调用协议（创建预设时复制自模型能力层）',
+    api_base_url    VARCHAR(512)    COMMENT '调用入口完整端点 URL（复制自模型能力层）',
     api_key         VARCHAR(512)    NOT NULL COMMENT '平台 Key（加密）',
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否对新用户下发',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -74,7 +80,8 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     provider_id         BIGINT UNSIGNED NOT NULL COMMENT '关联 SystemProvider ID',
     provider_type       VARCHAR(32)     NOT NULL COMMENT '厂商类型快照，下游路由 SDK',
     api_key             VARCHAR(512)    NOT NULL COMMENT '厂商级 API Key（加密存储）',
-    api_base_url        VARCHAR(512)    COMMENT '实际生效地址：用户自定义或厂商默认',
+    api_base_url        VARCHAR(512)    COMMENT '实际生效地址：完整端点 URL，复制自模型能力层事实（不 fallback 厂商默认），Python 直打',
+    protocol            VARCHAR(32)     COMMENT '调用协议快照：复制自模型能力层，下游按 protocol+capability 选 adapter',
     model_name          VARCHAR(128)    NOT NULL COMMENT '具体模型名',
     capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/RERANK/OCR 等',
     is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '模型启停 + 生效过滤',
@@ -251,6 +258,83 @@ CREATE TABLE IF NOT EXISTS document_parse_pipeline (
     INDEX idx_parse_pipeline_superseded (superseded_by_task_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件后处理流水线表';
 
+-- 12. 博客文章表
+CREATE TABLE IF NOT EXISTS blog_post (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '博客文章唯一标识',
+    title               VARCHAR(255)    NOT NULL COMMENT '文章标题',
+    slug                VARCHAR(255)    NOT NULL COMMENT '公开访问标识',
+    summary             VARCHAR(1000)   DEFAULT NULL COMMENT '文章摘要',
+    content_object_key  VARCHAR(512)    DEFAULT NULL COMMENT 'Markdown 正文私有对象 Key',
+    cover_asset_id      BIGINT UNSIGNED DEFAULT NULL COMMENT '封面资源 ID，对应 blog_asset.id',
+    status              VARCHAR(20)     NOT NULL DEFAULT 'DRAFT' COMMENT '状态：DRAFT/PUBLISHED',
+    published_at        DATETIME        DEFAULT NULL COMMENT '首次发布时间',
+    created_by          BIGINT UNSIGNED NOT NULL COMMENT '创建管理员用户 ID，仅用于审计',
+    is_deleted          BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '逻辑删除标记',
+    deleted_seq         BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '删除判别列：活行=0，软删后置为自身 ID',
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_blog_post_slug_seq (slug, deleted_seq),
+    INDEX idx_blog_post_public_list (status, published_at, id),
+    INDEX idx_blog_post_admin_list (is_deleted, updated_at, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '博客文章表';
+
+-- 13. 博客文章资源表
+CREATE TABLE IF NOT EXISTS blog_asset (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '博客资源唯一标识',
+    post_id             BIGINT UNSIGNED NOT NULL COMMENT '所属博客文章 ID',
+    asset_type          VARCHAR(20)     NOT NULL COMMENT '资源类型：COVER/CONTENT_IMAGE',
+    original_filename   VARCHAR(255)    NOT NULL COMMENT '上传时的原始文件名',
+    content_type        VARCHAR(128)    NOT NULL COMMENT '文件 MIME 类型',
+    file_size           BIGINT UNSIGNED NOT NULL COMMENT '文件大小，单位字节',
+    object_key          VARCHAR(512)    NOT NULL COMMENT 'MinIO 对象 Key',
+    public_url          VARCHAR(1024)   NOT NULL COMMENT '资源公开访问 URL',
+    created_by          BIGINT UNSIGNED NOT NULL COMMENT '上传管理员用户 ID',
+    is_deleted          BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '逻辑删除标记',
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_blog_asset_object_key (object_key),
+    INDEX idx_blog_asset_post_type (post_id, asset_type, is_deleted, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '博客文章资源表';
+
+-- 14. 匿名用户反馈表
+CREATE TABLE IF NOT EXISTS user_feedback (
+    id                    BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '反馈 ID',
+    type                  VARCHAR(32)  NOT NULL DEFAULT 'OTHER' COMMENT '反馈类型：BUG 问题反馈，FEATURE 功能建议，EXPERIENCE 体验反馈，OTHER 其他',
+    title                 VARCHAR(128) NOT NULL COMMENT '反馈标题',
+    content               TEXT         NOT NULL COMMENT '反馈详细内容',
+    attachment_object_key VARCHAR(512) DEFAULT NULL COMMENT '附件 MinIO 私有对象 key，例如 feedback/2026/06/09/a.png',
+    status                VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT '处理状态：PENDING 待处理，PROCESSING 处理中，RESOLVED 已解决，CLOSED 已关闭',
+    priority              TINYINT      NOT NULL DEFAULT 3 COMMENT '处理优先级：1 高，2 中，3 低',
+    admin_id              BIGINT UNSIGNED DEFAULT NULL COMMENT '最后处理该反馈的管理员用户 ID',
+    admin_reply           TEXT DEFAULT NULL COMMENT '管理员回复或处理结论',
+    processed_at          DATETIME DEFAULT NULL COMMENT '管理员最后处理时间',
+    created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    INDEX idx_feedback_created (created_at),
+    INDEX idx_feedback_status_priority (status, priority, created_at),
+    INDEX idx_feedback_type_created (type, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '匿名用户反馈表';
+
+-- 15. 数据集解析/检索参数配置表（跨端共享：Java 读写、Python 直读；与 Python migration 0017 对齐，字段名/默认值/索引保持一致）
+CREATE TABLE IF NOT EXISTS dataset_parse_config (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置唯一标识',
+    user_id             BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',
+    dataset_id          BIGINT UNSIGNED NOT NULL COMMENT '所属数据集 ID，对应 dataset.id',
+    chunking_config     JSON            NOT NULL COMMENT '分块配置（3 项：heading_break_level / min_candidate_chunk_tokens / overlap_tokens）',
+    enhancement_config  JSON            NOT NULL COMMENT 'Markdown 增强配置（2 项开关：enable_table_enhancement / enable_image_enhancement；增强模型不在此选择，统一用发起用户 CHAT/VISION 默认模型）',
+    pdf_config          JSON            NOT NULL COMMENT 'PDF 解析配置（1 项：pdf_parser_backend）',
+    recall_config       JSON            NOT NULL COMMENT '召回检索配置（6 项：recall_result_limit / recall_context_token_budget / sparse_top_k / sparse_score_threshold / dense_top_k / dense_score_threshold）',
+    is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否启用',
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_user_dataset (user_id, dataset_id),
+    INDEX idx_dataset_parse_config_dataset (dataset_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '数据集解析/检索参数配置表';
+
 -- 设置所有表的自增起始值为 10000 (MySQL 8.0 推荐显式指定方式)
 ALTER TABLE sys_user AUTO_INCREMENT = 10000;
 ALTER TABLE llm_system_provider AUTO_INCREMENT = 10000;
@@ -265,6 +349,10 @@ ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_pipeline AUTO_INCREMENT = 10000;
+ALTER TABLE blog_post AUTO_INCREMENT = 10000;
+ALTER TABLE blog_asset AUTO_INCREMENT = 10000;
+ALTER TABLE user_feedback AUTO_INCREMENT = 10000;
+ALTER TABLE dataset_parse_config AUTO_INCREMENT = 10000;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 初始数据（LLM 厂商 + 模型目录）
