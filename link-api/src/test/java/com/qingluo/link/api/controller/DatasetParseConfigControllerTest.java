@@ -201,6 +201,21 @@ class DatasetParseConfigControllerTest {
             .andExpect(jsonPath("$.data.recall.dense_score_threshold").value(0.5));
     }
 
+    @Test
+    @DisplayName("更新配置刷新 updated_at")
+    void Should_RefreshUpdatedAt_When_Put() throws Exception {
+        putOk(d1, "{\"chunking\":{\"overlap_tokens\":32}}");
+        // 人为把 updated_at 置为很早的时间，模拟「上一次更新」；再 PUT 应被 DB ON UPDATE 刷新而非停留
+        jdbcTemplate.update(
+            "UPDATE dataset_parse_config SET updated_at = '2000-01-01 00:00:00' WHERE dataset_id = ?", d1);
+        putOk(d1, "{\"chunking\":{\"overlap_tokens\":48}}");
+
+        String updatedAt = jdbcTemplate.queryForObject(
+            "SELECT updated_at FROM dataset_parse_config WHERE dataset_id = ?", String.class, d1);
+        assertThat(updatedAt).isNotNull();
+        assertThat(updatedAt).doesNotStartWith("2000");
+    }
+
     // ===== 写入校验 =====
 
     @Test

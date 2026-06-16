@@ -39,11 +39,9 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     public DatasetParseConfigResponse updateConfig(Long userId, Long datasetId,
                                                    UpdateDatasetParseConfigRequest request) {
         datasetService.detail(userId, datasetId);
-        DatasetParseConfig entity = selectByOwner(userId, datasetId);
-        if (entity != null) {
-            applyConfigs(entity, request);
-            datasetParseConfigMapper.updateById(entity);
-            return assembleResponse(entity);
+        DatasetParseConfig existing = selectByOwner(userId, datasetId);
+        if (existing != null) {
+            return overwriteRow(existing.getId(), request);
         }
 
         DatasetParseConfig created = new DatasetParseConfig();
@@ -56,11 +54,22 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
             return assembleResponse(created);
         } catch (DataIntegrityViolationException e) {
             // 并发下唯一键 uk_user_dataset 撞行：转为更新已存在的行。
-            DatasetParseConfig existing = selectByOwner(userId, datasetId);
-            applyConfigs(existing, request);
-            datasetParseConfigMapper.updateById(existing);
-            return assembleResponse(existing);
+            DatasetParseConfig concurrent = selectByOwner(userId, datasetId);
+            return overwriteRow(concurrent.getId(), request);
         }
+    }
+
+    /**
+     * 整行覆盖四类配置。仅 set 主键与四类列，刻意不带 created_at/updated_at——
+     * 若把 select 出的旧 updated_at 一并 updateById，会以旧值显式赋值，抑制 DB 的
+     * ON UPDATE CURRENT_TIMESTAMP 自动刷新，导致「最后更新时间」不变。
+     */
+    private DatasetParseConfigResponse overwriteRow(Long id, UpdateDatasetParseConfigRequest request) {
+        DatasetParseConfig update = new DatasetParseConfig();
+        update.setId(id);
+        applyConfigs(update, request);
+        datasetParseConfigMapper.updateById(update);
+        return assembleResponse(update);
     }
 
     private DatasetParseConfig selectByOwner(Long userId, Long datasetId) {

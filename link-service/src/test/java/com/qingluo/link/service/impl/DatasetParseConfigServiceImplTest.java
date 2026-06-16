@@ -122,9 +122,15 @@ class DatasetParseConfigServiceImplTest {
 
         service.updateConfig(1L, 10L, req);
 
-        verify(datasetParseConfigMapper).updateById(existing);
+        ArgumentCaptor<DatasetParseConfig> captor = ArgumentCaptor.forClass(DatasetParseConfig.class);
+        verify(datasetParseConfigMapper).updateById(captor.capture());
         verify(datasetParseConfigMapper, never()).insert(any());
-        assertThat(existing.getChunkingConfig().getOverlapTokens()).isEqualTo(20);
+        DatasetParseConfig updated = captor.getValue();
+        assertThat(updated.getId()).isEqualTo(5L);
+        assertThat(updated.getChunkingConfig().getOverlapTokens()).isEqualTo(20);
+        // 修复「最后更新时间不变」：更新只写主键+四类，不显式写时间字段，交 DB ON UPDATE 刷新 updated_at
+        assertThat(updated.getUpdatedAt()).isNull();
+        assertThat(updated.getCreatedAt()).isNull();
     }
 
     @Test
