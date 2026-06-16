@@ -78,23 +78,25 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
      *
      * <p>只创建/更新自配行（is_system_preset=false），永不触碰预设行；故重复配置同一厂商
      * 时按 (用户,厂商,模型,能力,非预设) 命中既有自配行并更新其 Key/地址，不新增第二个连接。
-     * api_base_url 在此灌厂商默认地址，保证下游直读总能拿到可用地址。</p>
+     * protocol/api_base_url 复制自模型能力层事实快照，缺失即抛 MODEL_CONFIG_INCOMPLETE，绝不 fallback 厂商默认。</p>
      */
     public List<UserLLMConfigDTO> setupProvider(Long userId, SetupProviderRequest request) {
         SystemProvider provider = systemProviderService.getActiveByProviderType(request.getProviderType());
         String encryptedApiKey = apiKeyEncryptService.encrypt(request.getApiKey());
-        String apiBaseUrl = provider.getApiBaseUrl();
 
         // 从目录展开该厂商全部上架 (模型, 能力)，逐行写入用户配置
         List<ProviderModel> catalog = providerModelService.listActiveModels(provider.getId(), null);
 
         List<UserLLMConfig> result = new ArrayList<>();
         for (ProviderModel pm : catalog) {
+            // 协议与入口只取模型能力层事实，绝不 fallback 厂商默认；缺失即阻断整请求，不由下游临时猜测
+            requireModelFact(pm);
             UserLLMConfig existing = findSelfConfig(userId, provider.getId(), pm.getModelName(), pm.getCapability());
             if (existing != null) {
-                // 厂商级 Key 共用：重复配置厂商时统一更新该模型能力行的 Key 与地址，不动启停/生效标记
+                // 厂商级 Key 共用：重复配置厂商时统一刷新该模型能力行的 Key 与协议/地址快照，不动启停/生效标记
                 existing.setApiKey(encryptedApiKey);
-                existing.setApiBaseUrl(apiBaseUrl);
+                existing.setApiBaseUrl(pm.getApiBaseUrl());
+                existing.setProtocol(pm.getProtocol());
                 userLLMConfigMapper.updateById(existing);
                 result.add(existing);
             } else {
@@ -103,7 +105,8 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
                 config.setProviderId(provider.getId());
                 config.setProviderType(provider.getProviderType());
                 config.setApiKey(encryptedApiKey);
-                config.setApiBaseUrl(apiBaseUrl);
+                config.setApiBaseUrl(pm.getApiBaseUrl());
+                config.setProtocol(pm.getProtocol());
                 config.setModelName(pm.getModelName());
                 config.setCapability(pm.getCapability());
                 config.setIsActive(true);
@@ -311,6 +314,15 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     }
 
     /**
+     * 校验模型能力事实完整：缺协议或入口时阻断展开，避免生成下游无法使用的快照。
+     */
+    private void requireModelFact(ProviderModel pm) {
+        if (!StringUtils.hasText(pm.getProtocol()) || !StringUtils.hasText(pm.getApiBaseUrl())) {
+            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
+        }
+    }
+
+    /**
      * 将用户 LLM 配置实体转换为 DTO，并对 API Key 做脱敏（含预设 Key 不可见）。
      */
     private UserLLMConfigDTO toDTO(UserLLMConfig config) {
@@ -321,6 +333,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         dto.setCapability(config.getCapability());
         dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(config.getApiKey()));
         dto.setApiBaseUrl(config.getApiBaseUrl());
+        dto.setProtocol(config.getProtocol());
         dto.setIsActive(config.getIsActive());
         dto.setIsDefault(config.getIsDefault());
         dto.setIsSystemPreset(config.getIsSystemPreset());

@@ -32,9 +32,17 @@ public interface ProviderModelService {
     boolean isModelCapabilityActive(Long providerId, String modelName, String capability);
 
     /**
-     * 管理端：新增一条模型能力（已存在则幂等确保上架）。
+     * 查某厂商下某模型某能力的上架行（含 protocol/api_base_url 事实），不存在返回 null。
+     * 创建系统预设时用它取事实字段复制进预设。
      */
-    ProviderModel addModelCapability(Long providerId, String modelName, String capability);
+    ProviderModel findActiveModelCapability(Long providerId, String modelName, String capability);
+
+    /**
+     * 管理端：新增一条模型能力（已存在则幂等确保上架并刷新事实字段）。
+     * protocol/api_base_url 是运行事实来源，均必填且 protocol 须在受支持集合内。
+     */
+    ProviderModel addModelCapability(Long providerId, String modelName, String capability,
+                                     String protocol, String apiBaseUrl);
 
     /**
      * 管理端：删除一条模型能力目录项。

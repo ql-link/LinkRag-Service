@@ -22,8 +22,12 @@ public class CreateProviderRequest {
     private String providerName;
 
     @NotBlank(message = "API 地址不能为空")
-    @Schema(description = "API地址", example = "https://api.openai.com/v1")
+    @Schema(description = "默认API地址（模板值）", example = "https://api.openai.com/v1")
     private String apiBaseUrl;
+
+    @NotBlank(message = "默认协议不能为空")
+    @Schema(description = "默认协议（模板值，用于新增模型能力预填）", example = "openai")
+    private String defaultProtocol;
 
     @NotNull(message = "启用状态不能为空")
     @Schema(description = "是否启用", example = "true")

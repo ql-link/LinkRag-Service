@@ -29,6 +29,8 @@ public enum ErrorCode {
     INVALID_MODEL_CAPABILITY(10011, "模型能力标识无效", 400),
     MODEL_DISABLED(10012, "模型已被关闭，不可选为生效", 400),
     PRESET_READONLY(10013, "系统预设为只读，不可修改或删除", 403),
+    MODEL_CONFIG_INCOMPLETE(10014, "模型能力缺少协议或入口，无法保存或展开", 400),
+    INVALID_PROTOCOL(10015, "协议不在支持范围内", 400),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),

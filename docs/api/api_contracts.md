@@ -53,7 +53,46 @@
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
 >
-> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力生效唯一）。`PATCH /configs/toggle-model` 独立启停模型（关停后按能力选生效时不展示）。系统预设注册时写入用户配置（`is_system_preset=true`、`is_default=true`），常备只读，仅可经 `PATCH /configs/{id}/default` 按能力切换是否选其生效。`GET /configs` 支持 `capability` / `isActive` 过滤。错误码：删除预设 `10013`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
+> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力生效唯一）。`PATCH /configs/toggle-model` 独立启停模型（关停后按能力选生效时不展示）。系统预设注册时写入用户配置（`is_system_preset=true`、`is_default=true`），常备只读，仅可经 `PATCH /configs/{id}/default` 按能力切换是否选其生效。`GET /configs` 支持 `capability` / `isActive` 过滤。错误码：删除预设 `10013`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
+
+> **LLM 协议改造字段变更（破坏性 + 加法）**，详见下文「LLM 协议与入口契约」：
+> - `GET /api/v1/llm/providers`：`ModelCapabilityDTO.capabilities` 由 `List<String>`（能力名）**升级为** `List<ModelCapabilityDetailDTO>`，每元素为 `{ capability, protocol, apiBaseUrl }`（**破坏性，前端需同批适配**）。`apiBaseUrl` 为**完整端点 URL**（见下「base 形态约定」）。例：`{"modelName":"qwen-max","capabilities":[{"capability":"CHAT","protocol":"openai","apiBaseUrl":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"}]}`。
+> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `protocol`（运行快照，复制自模型能力层）；`SetupProviderRequest` 请求体不变。
+> - `POST /api/v1/admin/providers/{providerId}/models`：`AddProviderModelRequest` 新增 `protocol`（`NotBlank`，须为 5 协议枚举）、`apiBaseUrl`（`NotBlank`）；缺失或非法分别返回 `10014` / `10015`（400）。
+> - `POST /api/v1/admin/providers`：`CreateProviderRequest` 新增 `defaultProtocol`（厂商默认协议模板）。
+> - `POST /api/v1/admin/system-presets`：请求体不变；`createPreset` 内部按 (providerId, modelName, capability) 查 `llm_provider_model` 复制 `protocol` / `api_base_url`（事实来源单一，不接受管理员手填）。
+
+### LLM 协议与入口契约
+
+LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与请求/响应怎么拼）× `capability`（用途，决定调哪个端点）**。Java 管理端负责把协议与**完整调用端点**落成数据下发，Python RAG 执行端按 `protocol` 选 adapter 后**直接打** `api_base_url`。三层语义（厂商默认模板 / 模型能力事实 / 用户配置快照）与 `protocol` 枚举（`openai` / `anthropic` / `google` / `jina` / `dashscope`）见 `docs/api/mysql_schema.md`「协议与入口三层语义」。
+
+**`api_base_url` 形态约定（2026-06 与 Python PR #192 对齐，语义已反转，两端必须严格一致）**：
+
+- **模型能力层 / 用户配置层** `api_base_url` 存**完整端点 URL**，Python 直打、**不再拼接任何后缀**。例：`https://api.openai.com/v1/chat/completions`、`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`。
+- **厂商层** `llm_system_provider.api_base_url` 仍存「协议基地址」，仅作管理端新增模型能力时的表单预填模板，**不参与运行、Python 不读**。
+- 端点后缀知识从 Python adapter 移入 **Java seed 生成器**（`scripts/import_ragflow_configs.py` 的 `PROTOCOL_CAPABILITY_SUFFIX`）：完整 URL = 基地址 + `(protocol, capability)` 后缀。新增/改端点只动 Java 数据，adapter 零改动。
+- **唯一例外 `google`**：Gemini 原生流式需把 `:generateContent` 换成 `:streamGenerateContent?alt=sse`（流式开关编码在 URL 里，无法用单条静态 URL 表达），故 `google` 仍下发 base 到 `/v1beta`，由 Python 按 google 规则补全路径与流式后缀，鉴权用 `x-goog-api-key`。（`dashscope` ASR 异步轮询同类问题，本期不做，暂存 base。）
+
+**完整端点 URL 对照表（= 下发给 Python 的 `api_base_url` 值）**：
+
+| protocol | capability | api_base_url（完整端点，`google` 除外） |
+| --- | --- | --- |
+| `openai` | CHAT / VISION / OCR | `{base}/chat/completions`，如 `https://api.openai.com/v1/chat/completions` |
+| `openai` | EMBEDDING | `{base}/embeddings` |
+| `openai` | ASR | `{base}/audio/transcriptions`（whisper 同步） |
+| `anthropic` | CHAT / VISION | `https://api.anthropic.com/v1/messages` |
+| `google` | CHAT / EMBEDDING / VISION | **例外**：base `https://generativelanguage.googleapis.com/v1beta`，由 Python 补全 |
+| `jina` | RERANK | `https://api.jina.ai/v1/rerank` |
+| `jina` | EMBEDDING | `https://api.jina.ai/v1/embeddings` |
+| `dashscope` | RERANK | `https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank`（千问原生嵌套） |
+| `dashscope` | ASR | 本期不做，暂存 base `https://dashscope.aliyuncs.com/api/v1` |
+
+**adapter dispatch 契约**：
+
+- 执行端按 `(protocol, capability)` 二维选 adapter，**不依据 `provider_type`**；`provider_type` 仅作厂商身份、展示、审计保留。
+- adapter 职责 = 3 件套：① 拼鉴权头 ② 构建请求体 ③ 解析回包；**URL 直接用 `api_base_url`，不再拼后缀**（`google` 例外按协议补全）。
+- 未知 `(protocol, capability)` 组合返回明确错误，不回退猜测。本期 Python 实际落地组合：`openai`+CHAT/EMBEDDING、`anthropic`+CHAT、`google`+CHAT、`jina`+RERANK/EMBEDDING、`dashscope`+RERANK；VISION/OCR/ASR schema 与 seed 已支持、Python 后续批次接入。
+- 职责边界：完整端点 URL（多变的「去哪」）= 数据，Java 管；鉴权 + 请求体 + 回包解析（稳定的「怎么调」）= 代码，adapter 管。新增同协议厂商 Java 加一行数据即可，adapter 零改动。
 
 ## Chat
 
