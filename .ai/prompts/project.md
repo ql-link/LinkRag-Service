@@ -123,7 +123,24 @@ toLink-Service/
 
 ---
 
-## 三、文档目录
+## 三、分支与发布管理
+
+- `dev`：日常集成分支，承接日常开发 PR。
+- `master`：稳定发布分支。本仓库真实默认分支为 `master`，不要写作 `main`。
+- `feature/`、`refactor/`、`chore/`、`fix/`、`docs/`：日常开发分支，默认从 `dev` 拉出并 PR 合入 `dev`。
+- `release/<version>`：每周发布准备分支，从 `dev` 拉出，最终通过 release PR 合入 `master`。
+- `hotfix/<topic>`：从 `master` 拉出，修复后 PR 合入 `master`；发布后必须 merge 或 cherry-pick 回 `dev`。
+
+发布合并规则：
+
+- `master` 不接受日常 `feature/`、`refactor/`、`chore/` 直接合入。
+- `dev` / `release/<version>` 到 `master` 的发布合并必须使用普通 merge commit，禁止 squash merge。
+- release PR 描述必须列出包含的业务 PR、数据库/配置/契约变更、测试结果和风险。
+- release PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
+
+---
+
+## 四、文档目录
 
 | 目录 | 职责 |
 | --- | --- |
@@ -133,7 +150,7 @@ toLink-Service/
 
 开发流程（Spec-as-Test、分支 PR、issue 同步）不再单列文档目录，统一由本文档「二」与对应 skill 承接，贡献者入口见 `docs/contributing.md`。
 
-### 3.1 按任务查阅
+### 4.1 按任务查阅
 
 | 任务 | 先读 |
 | --- | --- |
@@ -150,7 +167,7 @@ toLink-Service/
 
 ---
 
-## 四、文档同步规则
+## 五、文档同步规则
 
 机器规则位于 `.claude/doc-sync-rules.yaml`，由 `scripts/check_docs_sync.py`、pre-commit 和 GitHub Actions 执行。
 

@@ -10,9 +10,16 @@
 - 产物放 `.specs/<需求名>/`（本地工作产物，不进 repo，合并后清理）
 - skill：`brief-generator` → `acceptance-generator` → `technical-design` → `implementation-execution`
 
-## 分支与提交
+## 分支与发布
 
-- 分支前缀：`feature/` `fix/` `refactor/` `docs/` `chore/` + 英文 kebab-case
+- `dev` 是日常集成分支；`master` 是稳定发布分支。本仓库默认分支为 `master`，文档和 CI 不使用 `main`。
+- 日常开发分支使用 `feature/`、`refactor/`、`chore/`、`fix/`、`docs/` + 英文 kebab-case，PR 默认合入 `dev`。
+- `master` 不接受日常 `feature/`、`refactor/`、`chore/` 直接合入。
+- 每周发布从 `dev` 拉出 `release/<version>` 发布准备分支，通过 release PR 合入 `master`。
+- `dev` / `release/<version>` 到 `master` 的发布合并必须使用普通 merge commit，禁止 squash merge。
+- release PR 描述必须列出包含的业务 PR、数据库/配置/契约变更、测试结果和风险。
+- release PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
+- `hotfix/<topic>` 必须从 `master` 拉出，修复后 PR 合入 `master`；发布后必须 merge 或 cherry-pick 回 `dev`，避免修复只存在于发布线。
 - 提交信息用 Conventional Commits（`feat` / `fix` / `refactor` / `docs` / `chore`）
 - 发 PR 用 `branch-pr-workflow` skill（含分支命名约定与 PR 描述模板）
 

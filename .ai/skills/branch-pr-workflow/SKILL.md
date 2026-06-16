@@ -27,6 +27,17 @@ when_to_use: "创建分支、提交、发 PR、把当前修改提 PR。"
 主题使用英文 kebab-case：`feature/recall-gateway`、`fix/mq-duplicate-consume`。
 避免泛泛名称，如 `feature/update`、`fix/bug`。
 
+## 分支模型
+
+- `dev` 是日常集成分支；`master` 是稳定发布分支。
+- 日常 `feature/`、`refactor/`、`chore/`、`fix/`、`docs/` 分支默认从 `dev` 拉出并 PR 回 `dev`。
+- `master` 不接受日常 `feature/`、`refactor/`、`chore/` 直接合入。
+- 每周发布从 `dev` 拉出 `release/<version>`，通过 release PR 合入 `master`。
+- `dev` / `release/<version>` 到 `master` 的发布合并必须使用普通 merge commit，禁止 squash merge。
+- release PR 描述必须列出包含的业务 PR、数据库/配置/契约变更、测试结果和风险。
+- release PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
+- `hotfix/<topic>` 从 `master` 拉出，PR 合入 `master` 后必须 merge 或 cherry-pick 回 `dev`。
+
 ## 工作流程
 
 ### 步骤 1：理解改动范围
@@ -80,7 +91,7 @@ feat(模块): 简短描述（不超过 70 字符）
 git push -u origin <branch-name>
 ```
 
-PR base 默认 `dev`，除非用户明确指定其他目标分支。
+PR base 默认 `dev`。仅 release PR 使用 `master` 作为 base；hotfix PR 先合入 `master`，发布后必须回合 `dev`。
 
 **关联 Issue**：检查 `.specs/<需求名>/feature_info.md` 和当前对话上下文中是否有 GitHub issue 号。有则在 PR 正文开头加 `Closes #<issue号>`，没有则跳过，不追问用户。
 
