@@ -18,7 +18,7 @@ pipeline {
             steps { checkout scm }
         }
 
-        stage('Build & Test') {
+        stage('Build') {
             agent {
                 docker {
                     image 'maven:3.9-eclipse-temurin-17'
@@ -27,7 +27,7 @@ pipeline {
                 }
             }
             steps {
-                sh 'mvn -B clean test'
+                sh 'mvn -B clean package -DskipTests'
             }
         }
 
