@@ -1,0 +1,149 @@
+package com.qingluo.link.service.impl;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.qingluo.link.core.exception.BusinessException;
+import com.qingluo.link.mapper.DatasetParseConfigMapper;
+import com.qingluo.link.model.dto.config.ChunkingConfig;
+import com.qingluo.link.model.dto.entity.DatasetParseConfig;
+import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
+import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
+import com.qingluo.link.service.DatasetService;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+/**
+ * 配置管理 Service 单测：归属校验（404）、读命中/未命中、写 insert/update 分支与「不补默认」。
+ * 无 MyBatis 启动扫描，手动初始化 MP TableInfo，使实体可用于 LambdaQueryWrapper。
+ */
+@ExtendWith(MockitoExtension.class)
+class DatasetParseConfigServiceImplTest {
+
+    @Mock
+    private DatasetParseConfigMapper datasetParseConfigMapper;
+
+    @Mock
+    private DatasetService datasetService;
+
+    @InjectMocks
+    private DatasetParseConfigServiceImpl service;
+
+    @BeforeAll
+    static void initMpTableInfo() {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
+        TableInfoHelper.initTableInfo(assistant, DatasetParseConfig.class);
+    }
+
+    @Test
+    @DisplayName("Should_EchoStored_When_ConfigRowExists")
+    void Should_EchoStored_When_ConfigRowExists() {
+        DatasetParseConfig entity = new DatasetParseConfig();
+        ChunkingConfig chunking = new ChunkingConfig();
+        chunking.setOverlapTokens(32);
+        entity.setChunkingConfig(chunking);
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(entity);
+
+        DatasetParseConfigResponse resp = service.getConfig(1L, 10L);
+
+        assertThat(resp.getChunking().getOverlapTokens()).isEqualTo(32);
+    }
+
+    @Test
+    @DisplayName("Should_ReturnEmptyAndNotInsert_When_NoConfigRow")
+    void Should_ReturnEmptyAndNotInsert_When_NoConfigRow() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        DatasetParseConfigResponse resp = service.getConfig(1L, 10L);
+
+        // 四类为空对象（非 null），且无任何字段值——未配置
+        assertThat(resp.getChunking()).isNotNull();
+        assertThat(resp.getChunking().getOverlapTokens()).isNull();
+        assertThat(resp.getRecall()).isNotNull();
+        verify(datasetParseConfigMapper, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("Should_InsertAllFourAndNotFillDefaults_When_NoRow")
+    void Should_InsertAllFourAndNotFillDefaults_When_NoRow() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        ChunkingConfig chunking = new ChunkingConfig();
+        chunking.setOverlapTokens(16);
+        req.setChunking(chunking);
+
+        service.updateConfig(1L, 10L, req);
+
+        ArgumentCaptor<DatasetParseConfig> captor = ArgumentCaptor.forClass(DatasetParseConfig.class);
+        verify(datasetParseConfigMapper).insert(captor.capture());
+        DatasetParseConfig saved = captor.getValue();
+        assertThat(saved.getUserId()).isEqualTo(1L);
+        assertThat(saved.getDatasetId()).isEqualTo(10L);
+        assertThat(saved.getIsActive()).isTrue();
+        assertThat(saved.getChunkingConfig().getOverlapTokens()).isEqualTo(16);
+        // 未提交字段不补默认
+        assertThat(saved.getChunkingConfig().getHeadingBreakLevel()).isNull();
+        // 未提交类写空对象（非 null，序列化为 {}）
+        assertThat(saved.getEnhancementConfig()).isNotNull();
+        assertThat(saved.getEnhancementConfig().getEnableTableEnhancement()).isNull();
+        verify(datasetParseConfigMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("Should_UpdateExistingRow_When_RowExists")
+    void Should_UpdateExistingRow_When_RowExists() {
+        DatasetParseConfig existing = new DatasetParseConfig();
+        existing.setId(5L);
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(existing);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        ChunkingConfig chunking = new ChunkingConfig();
+        chunking.setOverlapTokens(20);
+        req.setChunking(chunking);
+
+        service.updateConfig(1L, 10L, req);
+
+        ArgumentCaptor<DatasetParseConfig> captor = ArgumentCaptor.forClass(DatasetParseConfig.class);
+        verify(datasetParseConfigMapper).updateById(captor.capture());
+        verify(datasetParseConfigMapper, never()).insert(any());
+        DatasetParseConfig updated = captor.getValue();
+        assertThat(updated.getId()).isEqualTo(5L);
+        assertThat(updated.getChunkingConfig().getOverlapTokens()).isEqualTo(20);
+        // 修复「最后更新时间不变」：更新只写主键+四类，不显式写时间字段，交 DB ON UPDATE 刷新 updated_at
+        assertThat(updated.getUpdatedAt()).isNull();
+        assertThat(updated.getCreatedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("Should_Throw404AndNotWrite_When_DatasetNotOwned")
+    void Should_Throw404AndNotWrite_When_DatasetNotOwned() {
+        given(datasetService.detail(anyLong(), anyLong()))
+            .willThrow(new BusinessException(404, "数据集不存在或无权访问", 404));
+
+        assertThatThrownBy(() -> service.updateConfig(1L, 10L, new UpdateDatasetParseConfigRequest()))
+            .isInstanceOf(BusinessException.class)
+            .hasMessage("数据集不存在或无权访问");
+
+        verify(datasetParseConfigMapper, never()).insert(any());
+        verify(datasetParseConfigMapper, never()).updateById(any());
+    }
+}

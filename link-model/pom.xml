@@ -24,6 +24,13 @@
             <artifactId>mybatis-plus-boot-starter</artifactId>
         </dependency>
 
+        <!-- Jackson：四类配置值对象的 JSON 注解（@JsonNaming/@JsonInclude/@JsonIgnoreProperties），
+             并与实体的 JacksonTypeHandler 配合做 JSON 列读写（mybatis-plus 对 jackson 为 optional，需显式引入） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

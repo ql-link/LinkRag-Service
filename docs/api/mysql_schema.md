@@ -22,6 +22,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `blog_post` | `BlogPost` | 博客文章元数据、发布状态和 Markdown 对象指针 |
 | `blog_asset` | `BlogAsset` | 博客封面资源和正文图片资源元数据 |
 | `user_feedback` | `UserFeedback` | 匿名反馈、私有附件对象键、管理员处理状态与回复 |
+| `dataset_parse_config` | `DatasetParseConfig`（LINK-149 待建） | 数据集级解析/检索参数配置（4 类 JSON：chunking / enhancement / pdf / recall）；跨端共享，Java 读写、Python 直读 |
 
 ## 约定
 
@@ -72,6 +73,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。
 - `blog_asset.object_key` / `public_url` 指向公开封面或正文图片对象；`asset_type` 支持 `COVER` 和 `CONTENT_IMAGE`。正文图片可由编辑器上传，也可由 Markdown 导入/保存流程自动写入 PUBLIC OSS，并记录 `blog_asset`。
 - `user_feedback` 首版为纯匿名反馈，不保存 `user_id`、`contact`、`is_anonymous`、`is_deleted`、`is_resolved`。`attachment_object_key` 只保存私有 MinIO object key，不保存 URL 或 bucket。合法值：`type` = `BUG` / `FEATURE` / `EXPERIENCE` / `OTHER`，`status` = `PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED`，`priority` = `1` 高 / `2` 中 / `3` 低。Java 本地 schema 与 Python migration 必须保持字段名、默认值、索引一致。
+- `dataset_parse_config`（LINK-149）跨端共享：Java 端读写、Python 端直读，DDL 真值在 Python migration 0017，Java 本地 schema（`scripts/db/init.sql` 与 H2 运行时 `link-api/src/main/resources/schema.sql`）与之保持字段名、默认值、索引一致。唯一键 `uk_user_dataset (user_id, dataset_id)`，索引 `idx_dataset_parse_config_dataset (dataset_id)`。四个 JSON 列内字段以 Python `src/core/dataset_config/models.py` 的 Pydantic 模型为准：`chunking_config`（3 项：`heading_break_level` / `min_candidate_chunk_tokens` / `overlap_tokens`）、`enhancement_config`（2 项开关：`enable_table_enhancement` / `enable_image_enhancement`，不含模型名，增强模型统一取发起用户 CHAT/VISION 默认模型）、`pdf_config`（1 项：`pdf_parser_backend`）、`recall_config`（6 项：`recall_result_limit` / `recall_context_token_budget` / `sparse_top_k` / `sparse_score_threshold` / `dense_top_k` / `dense_score_threshold`）。`(user_id, dataset_id)` 无行时由 Python 降级系统默认。
 
 ## 删除语义（隐性删除）
 

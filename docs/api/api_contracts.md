@@ -114,6 +114,8 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | GET | `/api/v1/datasets/{datasetId}` | 数据集详情 |
 | PATCH | `/api/v1/datasets/{datasetId}` | 更新数据集 |
 | DELETE | `/api/v1/datasets/{datasetId}` | 删除数据集 |
+| GET | `/api/v1/datasets/{datasetId}/parse-config` | 读取数据集解析/检索配置（回显已存；无配置返回四类空对象 `{}`） |
+| PUT | `/api/v1/datasets/{datasetId}/parse-config` | 全量保存数据集解析/检索配置（整页保存，整行四类覆盖） |
 | POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件（异步：立即返回 `uploadStatus=UPLOADING`） |
 | GET | `/api/v1/datasets/{datasetId}/files` | 文件列表（支持按 `uploadStatus` 过滤，前端据此轮询上传终态） |
 | GET | `/api/v1/files/recent` | 当前用户全局最近文档列表 |
@@ -124,6 +126,8 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 解析结果列表 |
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
+
+> 解析/检索配置（`/parse-config`，LINK-149）：请求/响应为四类嵌套结构 `{chunking, enhancement, pdf, recall}`，字段名 snake_case，与 Python `dataset_config` Pydantic 模型对齐（12 项：chunking 3 / enhancement 2 开关 / pdf 1 / recall 6）。Java 只做存/改/回显，**PUT 为整行全量覆盖**（前端整页保存），不持有默认值——缺字段/缺类不补默认（缺类列存 `{}`），默认值与生效读取由 Python 消费时负责。关键校验即时拦截 400：`overlap_tokens` 0–64、`min_candidate_chunk_tokens` 128–256、`pdf_parser_backend` ∈ {`auto`,`mineru`,`opendataloader`,`naive`}；recall 各项范围不在 Java 拦截（Python 无 validator）。增强仅两个开关（`enable_table_enhancement`/`enable_image_enhancement`），历史残留的 `table_model`/`vision_model` 落库时丢弃；增强模型由 Python 取发起用户默认 CHAT/VISION（依赖 LINK-148 PR #190）。越权/不存在 404、未登录 401。
 
 ## OSS / Internal
 
