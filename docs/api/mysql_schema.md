@@ -67,7 +67,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - `document_parse_file.latest_parse_task_id` 指向 `document_parsed_log.task_id`；Markdown 产物定位由 Python 写入 `document_parsed_log`。
 - **端到端终态权威源 = `document_parse_pipeline.pipeline_status`（大写 `PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`）。** `document_parsed_log` 已不含 `task_status` / `failure_reason`（Python migration 0007 移除）；Java 判定首次 / 重试 / 已成功以 `document_parsed_log.parsed_object_key` + `pipeline_status` 为准，运行中扫描与结果消费的终态判定亦改用 `pipeline_status`。
 - 重试链双向：`document_parsed_log.retry_of_task_id`（本轮→上一轮）与 `document_parse_pipeline.superseded_by_task_id`（旧→新），均由 Python 写、Java 只读；`document_parse_pipeline` 不含 `retry_count` / `last_retry_at`。
-- parse_result 消息体的 `task_status`（小写 `success` / `failed`）与库侧 `pipeline_status`（大写）是两套取值，禁止混用。
+- Java 不再消费 `tolink.rag.parse_result`；解析终态以库侧 `document_parse_pipeline.pipeline_status`（大写）为准。
 - Document file upload config is resolved from Redis key `document:file-upload:config`, with `tolink.document-file.*` as the default fallback.
 - `blog_post.slug + deleted_seq` 唯一：`slug` 由后端生成去掉连字符的 32 位小写 UUID；活跃文章 `deleted_seq=0`，软删时写自身 ID。
 - `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。
