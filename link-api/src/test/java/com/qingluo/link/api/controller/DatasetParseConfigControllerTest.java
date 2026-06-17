@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * 数据集解析/检索配置接口端到端测试。覆盖 acceptance 18 Scenario：GET 回显 / PUT 全量覆盖 / 校验 / 权限 / 幂等，
- * 并验证 JSON 列经 JacksonTypeHandler 的存取往返（snake_case、不补默认、忽略历史模型字段）。
+ * 并验证 JSON 列经 JacksonTypeHandler 的存取往返（snake_case、召回新增项补默认、忽略历史模型字段）。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -114,17 +114,21 @@ class DatasetParseConfigControllerTest {
     // ===== 创建期 =====
 
     @Test
-    @DisplayName("创建数据集不写任何配置行")
-    void Should_NotWriteConfig_When_CreateDataset() throws Exception {
+    @DisplayName("创建数据集写入默认召回配置行")
+    void Should_WriteDefaultRecallConfig_When_CreateDataset() throws Exception {
         mockMvc.perform(post("/api/v1/datasets")
                 .header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"建集不写配置\",\"description\":\"\"}"))
+                .content("{\"name\":\"建集默认配置\",\"description\":\"\"}"))
             .andExpect(status().isOk());
 
         Long newId = jdbcTemplate.queryForObject(
-            "SELECT id FROM dataset WHERE user_id = ? AND name = '建集不写配置'", Long.class, ALICE_ID);
-        assertThat(configCount(newId)).isZero();
+            "SELECT id FROM dataset WHERE user_id = ? AND name = '建集默认配置'", Long.class, ALICE_ID);
+        assertThat(configCount(newId)).isEqualTo(1);
+        assertThat(column("recall_config", newId))
+            .contains("recall_enabled_sources")
+            .contains("rerank_top_n")
+            .contains("recall_strict");
     }
 
     // ===== 读取 =====
@@ -146,8 +150,29 @@ class DatasetParseConfigControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.chunking").exists())
             .andExpect(jsonPath("$.data.chunking.overlap_tokens").doesNotExist())
-            .andExpect(jsonPath("$.data.recall.recall_result_limit").doesNotExist());
+            .andExpect(jsonPath("$.data.recall.recall_result_limit").doesNotExist())
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[0]").value("bm25"))
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[1]").value("sparse"))
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[2]").value("dense"))
+            .andExpect(jsonPath("$.data.recall.rerank_top_n").value(8))
+            .andExpect(jsonPath("$.data.recall.recall_strict").value(false));
         assertThat(configCount(d1)).isZero();
+    }
+
+    @Test
+    @DisplayName("读取旧 recall JSON 缺失新增项时回落默认")
+    void Should_FillRecallDefaults_When_GetOldRecallJson() throws Exception {
+        putOk(d1, "{\"recall\":{\"recall_result_limit\":33,\"recall_context_token_budget\":4000,"
+            + "\"sparse_top_k\":10,\"sparse_score_threshold\":0.0,\"dense_top_k\":5,\"dense_score_threshold\":0.5}}");
+
+        mockMvc.perform(get("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.recall.recall_result_limit").value(33))
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[0]").value("bm25"))
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[1]").value("sparse"))
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[2]").value("dense"))
+            .andExpect(jsonPath("$.data.recall.rerank_top_n").value(8))
+            .andExpect(jsonPath("$.data.recall.recall_strict").value(false));
     }
 
     // ===== 更新：PUT 全量覆盖 =====
@@ -274,6 +299,45 @@ class DatasetParseConfigControllerTest {
         putOk(d1, "{\"recall\":{\"dense_top_k\":999}}");
         mockMvc.perform(get("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token))
             .andExpect(jsonPath("$.data.recall.dense_top_k").value(999));
+    }
+
+    @Test
+    @DisplayName("recall 新增项合法值被保存并归一化")
+    void Should_SaveNormalizedNewRecallFields_When_PutValidRecall() throws Exception {
+        putOk(d1, "{\"recall\":{\"recall_enabled_sources\":[\" dense \",\"\",\"bm25\",\"dense\"],"
+            + "\"rerank_top_n\":3,\"recall_strict\":true}}");
+
+        String recall = column("recall_config", d1);
+        assertThat(recall).contains("dense").contains("bm25").doesNotContain(" dense ");
+        mockMvc.perform(get("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[0]").value("dense"))
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[1]").value("bm25"))
+            .andExpect(jsonPath("$.data.recall.recall_enabled_sources[2]").doesNotExist())
+            .andExpect(jsonPath("$.data.recall.rerank_top_n").value(3))
+            .andExpect(jsonPath("$.data.recall.recall_strict").value(true));
+    }
+
+    @Test
+    @DisplayName("recall_enabled_sources 含未知值被拒绝")
+    void Should_Reject_When_RecallSourceUnknown() throws Exception {
+        mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"recall\":{\"recall_enabled_sources\":[\"bm25\",\"unknown\"]}}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message", containsString("recall_enabled_sources")));
+        assertThat(configCount(d1)).isZero();
+    }
+
+    @Test
+    @DisplayName("rerank_top_n 非正整数被拒绝")
+    void Should_Reject_When_RerankTopNNotPositive() throws Exception {
+        mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"recall\":{\"rerank_top_n\":0}}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message", containsString("rerank_top_n")));
+        assertThat(configCount(d1)).isZero();
     }
 
     // ===== 增强 =====

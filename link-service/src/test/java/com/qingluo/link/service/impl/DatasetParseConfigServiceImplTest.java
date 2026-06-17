@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.model.dto.config.ChunkingConfig;
+import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
@@ -28,7 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * 配置管理 Service 单测：归属校验（404）、读命中/未命中、写 insert/update 分支与「不补默认」。
+ * 配置管理 Service 单测：归属校验（404）、读命中/未命中、写 insert/update 分支与召回新增项默认/校验。
  * 无 MyBatis 启动扫描，手动初始化 MP TableInfo，使实体可用于 LambdaQueryWrapper。
  */
 @ExtendWith(MockitoExtension.class)
@@ -76,7 +77,28 @@ class DatasetParseConfigServiceImplTest {
         assertThat(resp.getChunking()).isNotNull();
         assertThat(resp.getChunking().getOverlapTokens()).isNull();
         assertThat(resp.getRecall()).isNotNull();
+        assertThat(resp.getRecall().getRecallEnabledSources()).containsExactly("bm25", "sparse", "dense");
+        assertThat(resp.getRecall().getRerankTopN()).isEqualTo(8);
+        assertThat(resp.getRecall().getRecallStrict()).isFalse();
         verify(datasetParseConfigMapper, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("Should_FillRecallDefaults_When_OldRowMissesNewFields")
+    void Should_FillRecallDefaults_When_OldRowMissesNewFields() {
+        RecallConfig storedRecall = new RecallConfig();
+        storedRecall.setDenseTopK(5);
+        DatasetParseConfig entity = new DatasetParseConfig();
+        entity.setRecallConfig(storedRecall);
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(entity);
+
+        DatasetParseConfigResponse resp = service.getConfig(1L, 10L);
+
+        assertThat(resp.getRecall().getDenseTopK()).isEqualTo(5);
+        assertThat(resp.getRecall().getRecallEnabledSources()).containsExactly("bm25", "sparse", "dense");
+        assertThat(resp.getRecall().getRerankTopN()).isEqualTo(8);
+        assertThat(resp.getRecall().getRecallStrict()).isFalse();
     }
 
     @Test
@@ -104,6 +126,67 @@ class DatasetParseConfigServiceImplTest {
         // 未提交类写空对象（非 null，序列化为 {}）
         assertThat(saved.getEnhancementConfig()).isNotNull();
         assertThat(saved.getEnhancementConfig().getEnableTableEnhancement()).isNull();
+        verify(datasetParseConfigMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("Should_NormalizeRecallSources_When_UpdateConfig")
+    void Should_NormalizeRecallSources_When_UpdateConfig() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        RecallConfig recall = new RecallConfig();
+        recall.setRecallEnabledSources(java.util.List.of(" dense ", "", "bm25", "dense"));
+        recall.setRerankTopN(3);
+        recall.setRecallStrict(true);
+        req.setRecall(recall);
+
+        DatasetParseConfigResponse resp = service.updateConfig(1L, 10L, req);
+
+        ArgumentCaptor<DatasetParseConfig> captor = ArgumentCaptor.forClass(DatasetParseConfig.class);
+        verify(datasetParseConfigMapper).insert(captor.capture());
+        assertThat(captor.getValue().getRecallConfig().getRecallEnabledSources()).containsExactly("dense", "bm25");
+        assertThat(resp.getRecall().getRecallEnabledSources()).containsExactly("dense", "bm25");
+        assertThat(resp.getRecall().getRerankTopN()).isEqualTo(3);
+        assertThat(resp.getRecall().getRecallStrict()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Should_RejectRecallSource_When_UpdateConfigContainsUnknown")
+    void Should_RejectRecallSource_When_UpdateConfigContainsUnknown() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        RecallConfig recall = new RecallConfig();
+        recall.setRecallEnabledSources(java.util.List.of("bm25", "unknown"));
+        req.setRecall(recall);
+
+        assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("recall_enabled_sources");
+
+        verify(datasetParseConfigMapper, never()).insert(any());
+        verify(datasetParseConfigMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("Should_RejectRerankTopN_When_UpdateConfigNotPositive")
+    void Should_RejectRerankTopN_When_UpdateConfigNotPositive() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        RecallConfig recall = new RecallConfig();
+        recall.setRerankTopN(0);
+        req.setRecall(recall);
+
+        assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("rerank_top_n");
+
+        verify(datasetParseConfigMapper, never()).insert(any());
         verify(datasetParseConfigMapper, never()).updateById(any());
     }
 
