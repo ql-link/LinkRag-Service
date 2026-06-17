@@ -4,7 +4,7 @@ import javax.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
- * Python 解析过程事件请求，终态由 parse_result MQ 承载。
+ * Python 解析过程事件请求；终态由 Python 写库，前端通过 parse-results 查询。
  */
 @Data
 public class DocumentParseCallbackRequest {

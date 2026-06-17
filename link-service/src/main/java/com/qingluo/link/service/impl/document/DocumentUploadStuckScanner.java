@@ -17,8 +17,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>进程内线程池不持久：进程重启/崩溃会让在途上传永久卡在 uploading。定时扫描创建后超过阈值仍为
  * uploading 的记录并置 failed（自愈到用户可重试态）。复用 {@link DocumentUploadStatusWriter#markUploadFailed}
- * 的<strong>状态守卫更新</strong>，即便记录在扫描与处置之间刚转终态也不会被误改。镜像
- * {@code DocumentParseStuckScanner} 的定时扫描思路。</p>
+ * 的<strong>状态守卫更新</strong>，即便记录在扫描与处置之间刚转终态也不会被误改。</p>
  */
 @Component
 @RequiredArgsConstructor

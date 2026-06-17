@@ -12,7 +12,6 @@ MQ 实现事实来源：
 | --- | --- | --- | --- |
 | `DocumentParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 文档解析任务 |
 | `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | Java -> Python | 删除通知（通知 Python 删衍生产物） |
-| `DocumentParseResultMQ` | `tolink.rag.parse_result` | Python -> Java | 解析终态结果 |
 | `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 缓存补偿删除（生产端为 CDC 桥接消费者，见下） |
 | Canal flatMessage（原始变更） | `tolink.canal.binlog` | Canal -> Java（CDC 桥接消费） | 行变更原始事件，桥接翻译为 `CacheCompensationMQ` |
 
@@ -22,6 +21,10 @@ MQ 实现事实来源：
 - 消息字段新增、删除、重命名、类型变化必须同步本文档和相关消费方。
 - Java/Python 双端共享的消息必须保持幂等字段和状态字段语义稳定。
 - 日志链路：Java 消费入口按消息自建 traceId 仅用于本端日志串联，**不写入消息体、不属于消息契约**；消息字段不变。
+
+## 已下线 topic
+
+- `tolink.rag.parse_result`：Java 侧自 LINK-165 起不再注册消费者，也不保留 `DocumentParseResultMQ` 消息模型。解析终态由 Python 写入共享数据库，前端通过 `GET /api/v1/datasets/{datasetId}/files/parse-results` 轮询 Java 查询结果。Python 停发该 topic 由 LINK-166 协调发布。
 
 ## 缓存补偿生产端（CDC 桥接）
 
@@ -44,15 +47,6 @@ MQ 实现事实来源：
 
 阶段恢复重试约定：`is_retry=true` 时复用上一轮 `document_parsed_log` 的 `parsed_bucket_name` / `parsed_object_key` 作为本次 `md_bucket` / `md_object_key`，让 Python 从失败的后处理阶段（含稀疏向量）续跑，不重新解析原文件。Java 发送前完整性校验：`is_retry=true` 时 `previous_task_id`、`md_bucket`、`md_object_key` 必须非空，缺字段不发送。`is_retry` 由 DB 状态（`document_parse_pipeline.pipeline_status=FAILED` 且已产出 Markdown）推导，与 `trigger_mode` 解耦。
 
-`DocumentParseResultMQ` 使用扁平 JSON，字段为：
-
-- `task_id`、`original_file_id`、`document_parsed_log_id`、`dataset_id`、`user_id`
-- `task_status`：仅 `success` 或 `failed`
-- `failure_reason`：失败必填，成功必须为空
-- `parse_finished_at`
-
-Python 在发送结果前先写入 `document_parsed_log` 与 `document_parse_file`；Java 消费结果只校验归属并转发 SSE，不回写终态。
-
 ## 删除通知字段
 
 `DocumentDeleteNotifyMQ`（topic `tolink.rag.document_delete`，`QUEUE` 点对点）使用扁平 JSON，按删除范围 `delete_type` 分流：
@@ -74,14 +68,3 @@ Python 在发送结果前先写入 `document_parsed_log` 与 `document_parse_fil
 - 可靠性：Java 生产侧**尽力发**——发送失败仅告警留痕并吞掉、不影响已提交的删除，**无 DLQ、无对账兜底**（接受偶尔漏发，漏发的衍生产物为惰性垃圾、不影响活记录）。
 - 幂等：Python 按 id 删天然幂等（删二次 no-op、删不存在产物 no-op），故消息**不带去重/追踪字段**。
 - Python 侧消费与删除实现在另一仓库；发布需两端协调（点对点队列，消费端就绪前 producer 不单独上生产，避免无消费者积压）。
-
-## parse_result 消费接收兜底
-
-消息体不变，仅强化 Java 消费侧的接收健壮性：
-
-- **专用容器工厂**：`parse_result` 使用专用 `ConcurrentKafkaListenerContainerFactory`（bean `parseResultKafkaListenerContainerFactory`）+ `SeekToCurrentErrorHandler`；`tolink.cache.evict` 等其他消费者仍走 Boot 默认工厂，互不影响。
-- **失败分类**：`task_id`/状态/归属不匹配（`NonRetryableParseResultException`）与坏 JSON（`IllegalArgumentException`/`DeserializationException`）判为不可重试，立即告警+提交跳过；`document_parsed_log` 暂不存在（`ParseResultPendingException`）与基础设施异常带退避重试（指数退避，最多 3 次，1s→×2→上限 10s），耗尽后告警+跳过。
-- **无 DLQ**：失败兜底为告警日志 + 监控指标（`tolink.parse_result.recover` 等），不静默丢弃、不引入死信队列。
-- **当前任务过滤**：结果消费与卡住补推前比对消息 `task_id` 与 `document_parse_file.latest_parse_task_id`，旧任务/乱序结果不推终态 SSE，指针为空时 fail-open 放行。
-- **卡住兜底**：定时扫描 `document_parse_pipeline` 中仍为 `PENDING`/`PROCESSING`（运行中）且超阈值的当前任务，重读 DB——已终态（`SUCCESS`/`FAILED`）则以 DB 为准补推一次终态 SSE，仍运行中则告警。Java 全程只读，不回写终态。
-- **终态判定迁移**：结果消费的状态一致性校验与卡住扫描原依据 `document_parsed_log.task_status`（已删除），现统一改用 `document_parse_pipeline.pipeline_status`（大写）。

@@ -2,7 +2,7 @@
 
 > ToLink 的 Java 管理端后端服务 · 当前版本 `v0.1.0`
 
-ToLink Service 是 ToLink 的 Java 管理端后端服务，负责用户、LLM 配置、对话、数据集、文档文件、OSS 上传、解析任务投递和解析结果回传。实际文档解析、RAG 执行和 LLM 调用由 Python RAG 执行端承担。
+ToLink Service 是 ToLink 的 Java 管理端后端服务，负责用户、LLM 配置、对话、数据集、文档文件、OSS 上传、解析任务投递和解析结果查询。实际文档解析、RAG 执行和 LLM 调用由 Python RAG 执行端承担。
 
 ## 系统边界
 
@@ -12,11 +12,11 @@ ToLink 采用「Java 管理端 + Python RAG 执行端」协作模式：
             ┌──────────────────────┐        MySQL / Redis        ┌─────────────────────┐
   前端 ───▶ │  Java 管理端 (本服务)  │ ◀── OSS / MinIO ──────────▶ │  Python RAG 执行端   │
             │  入口·权限·配置·文件   │ ─── MQ (parse_task) ──────▶ │  文档解析·RAG·LLM    │
-            │  状态查询·SSE 转发     │ ◀── MQ (parse_result) ───── │  解析产物·状态推进   │
+            │  状态查询·SSE 转发     │ ◀── Shared DB ───────────── │  解析产物·状态推进   │
             └──────────────────────┘     内部 HTTP (文件内容/召回)  └─────────────────────┘
 ```
 
-- **Java 端**：管理入口、用户态资源、配置、文件上传、对象存储定位、解析任务投递、结果查询与 SSE 转发。
+- **Java 端**：管理入口、用户态资源、配置、文件上传、对象存储定位、解析任务投递、结果查询与过程事件 SSE 转发。
 - **Python 端**：文档解析、RAG 执行、LLM 调用、解析产物生成与部分状态推进。
 - 两端通过 MySQL、MQ、OSS/MinIO 与必要的内部 HTTP 接口协作。
 
@@ -57,9 +57,9 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 - 用户与权限：注册、登录、退出、用户资料、管理员用户管理，基于 sa-token 与 `ADMIN/USER` 角色。
 - LLM 配置：系统厂商、用户 API Key 配置、默认配置、模型能力展示，API Key 使用 AES-256-GCM 加密。
 - 对话与用量：会话、消息、用量汇总、日度统计、明细查询。
-- 数据集与文档文件：数据集管理、原始文件上传、解析提交、解析状态查询、SSE 事件推送。
+- 数据集与文档文件：数据集管理、原始文件上传、解析提交、解析状态查询、SSE 过程事件推送。
 - OSS：本地存储和 MinIO 文件服务，区分 public/private 对象。
-- MQ：解析任务 `tolink.rag.parse_task` 投递，解析结果 `tolink.rag.parse_result` 回传，缓存补偿 `tolink.cache.evict`；`parse_result` 消费具备接收兜底（专用容器工厂、失败分类带退避重试、当前任务过滤、卡住扫描以 DB 为准补推，监控指标经 Micrometer/Actuator）。
+- MQ：解析任务 `tolink.rag.parse_task` 投递，删除通知 `tolink.rag.document_delete` 投递，缓存补偿 `tolink.cache.evict`；Java 不再消费 `tolink.rag.parse_result`，解析终态以 Python 写入的共享数据库为准，由前端轮询 `parse-results` 查询。
 - Redis：用户、LLM 配置、文档文件运行配置缓存，以及同步删除和补偿删除能力。
 - 召回 session 签发：聊天召回走「前端直连 Python」，Java 校验登录态、用户状态、数据集权限后签发短期 HS256 session token（含 `streamUrl`），前端凭 token 直连 Python 拉召回/生成 SSE；Java 不在召回/生成请求路径上。
 

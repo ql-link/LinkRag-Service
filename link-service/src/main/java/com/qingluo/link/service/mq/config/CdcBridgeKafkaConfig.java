@@ -15,7 +15,7 @@ import org.springframework.kafka.support.serializer.DeserializationException;
 /**
  * CDC 桥接（tolink.canal.binlog）专用的 Kafka 监听容器工厂与错误处理器。
  *
- * <p>对齐 {@link ParseResultKafkaConfig} 的失败分类，避免默认工厂零退避导致坏消息毫秒级空转：</p>
+ * <p>覆盖默认工厂零退避策略，避免坏消息毫秒级空转：</p>
  * <ul>
  *   <li>不可重试（坏 JSON / 缺字段 = {@link IllegalArgumentException}、Kafka 反序列化 = {@link DeserializationException}）→ 立即 recover，不重试；</li>
  *   <li>可重试（发送失败 / 基础设施异常）→ 指数退避重试，耗尽后 recover。</li>

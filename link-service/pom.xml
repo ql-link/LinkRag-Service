@@ -82,7 +82,7 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- Actuator / Micrometer：parse_result 消费兜底的监控指标载体（本地 registry，不接外部平台） -->
+        <!-- Actuator / Micrometer：CDC 桥接等服务指标载体（本地 registry，不接外部平台） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -135,13 +135,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- spring-kafka-test：EmbeddedKafka 集成测试（坏消息不阻塞后续 / 缓存补偿隔离） -->
-        <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
 

@@ -1,7 +1,6 @@
 package com.qingluo.link.service.impl.document;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.qingluo.link.components.mq.model.DocumentParseResultMQ;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.mapper.DocumentParsedLogMapper;
@@ -70,13 +69,6 @@ public class DocumentParseSseServiceImpl implements DocumentParseSseService {
         }
         DocumentOriginalFile file = requireFile(logRecord.getDocumentOriginalFileId());
         FileParseEventDTO event = buildEvent(file, "processing", request.getProgress(), null);
-        sendToFile(file.getId(), event);
-    }
-
-    @Override
-    public void publishResultEvent(DocumentParseResultMQ.MsgPayload payload) {
-        DocumentOriginalFile file = requireFile(payload.getOriginalFileId());
-        FileParseEventDTO event = buildEvent(file, payload.getTaskStatus(), null, payload.getFailureReason());
         sendToFile(file.getId(), event);
     }
 
