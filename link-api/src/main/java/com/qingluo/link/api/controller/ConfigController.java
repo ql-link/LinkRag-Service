@@ -41,7 +41,7 @@ public class ConfigController {
     @Operation(summary = "获取LLM配置列表", description = "获取当前用户的全部 LLM 配置，包含已禁用与系统预设，Key 脱敏")
     public Result<List<UserLLMConfigDTO>> getConfigs(
             @Parameter(description = "厂商类型，如openai") @RequestParam(required = false) String providerType,
-            @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam(required = false) String capability,
+            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam(required = false) String capability,
             @Parameter(description = "启用状态") @RequestParam(required = false) Boolean isActive) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         return Result.success(userLLMConfigService.getConfigs(userId, providerType, capability, isActive));
@@ -89,7 +89,7 @@ public class ConfigController {
     @SaCheckLogin
     @Operation(summary = "查询某能力生效配置", description = "按能力查询当前用户的生效 LLM 配置")
     public Result<UserLLMConfigDTO> getDefaultConfig(
-            @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam String capability) {
+            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam String capability) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         return Result.success(userLLMConfigService.getDefaultConfig(userId, capability));
     }
@@ -102,7 +102,7 @@ public class ConfigController {
     @Operation(summary = "设置某能力生效配置", description = "将当前用户的一条配置设为该能力生效，支持切换到或切回系统预设")
     public Result<Void> setDefaultConfig(
             @Parameter(description = "配置ID") @PathVariable Long id,
-            @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam String capability) {
+            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam String capability) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         userLLMConfigService.setDefaultConfig(userId, id, capability);
         return Result.ok(null);

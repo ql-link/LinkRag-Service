@@ -49,7 +49,7 @@
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
 
-> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。
+> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
 >
@@ -77,13 +77,13 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 | protocol | capability | api_base_url（完整端点，`google` 除外） |
 | --- | --- | --- |
-| `openai` | CHAT / VISION / OCR | `{base}/chat/completions`，如 `https://api.openai.com/v1/chat/completions` |
-| `openai` | EMBEDDING | `{base}/embeddings` |
+| `openai` | CHAT / VISION | `{base}/chat/completions`，如 `https://api.openai.com/v1/chat/completions` |
+| `openai` | EMBEDDING / SPARSE_EMBEDDING | `{base}/embeddings` |
 | `openai` | ASR | `{base}/audio/transcriptions`（whisper 同步） |
 | `anthropic` | CHAT / VISION | `https://api.anthropic.com/v1/messages` |
-| `google` | CHAT / EMBEDDING / VISION | **例外**：base `https://generativelanguage.googleapis.com/v1beta`，由 Python 补全 |
+| `google` | CHAT / EMBEDDING / SPARSE_EMBEDDING / VISION | **例外**：base `https://generativelanguage.googleapis.com/v1beta`，由 Python 补全 |
 | `jina` | RERANK | `https://api.jina.ai/v1/rerank` |
-| `jina` | EMBEDDING | `https://api.jina.ai/v1/embeddings` |
+| `jina` | EMBEDDING / SPARSE_EMBEDDING | `https://api.jina.ai/v1/embeddings` |
 | `dashscope` | RERANK | `https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank`（千问原生嵌套） |
 | `dashscope` | ASR | 本期不做，暂存 base `https://dashscope.aliyuncs.com/api/v1` |
 
@@ -91,7 +91,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 - 执行端按 `(protocol, capability)` 二维选 adapter，**不依据 `provider_type`**；`provider_type` 仅作厂商身份、展示、审计保留。
 - adapter 职责 = 3 件套：① 拼鉴权头 ② 构建请求体 ③ 解析回包；**URL 直接用 `api_base_url`，不再拼后缀**（`google` 例外按协议补全）。
-- 未知 `(protocol, capability)` 组合返回明确错误，不回退猜测。本期 Python 实际落地组合：`openai`+CHAT/EMBEDDING、`anthropic`+CHAT、`google`+CHAT、`jina`+RERANK/EMBEDDING、`dashscope`+RERANK；VISION/OCR/ASR schema 与 seed 已支持、Python 后续批次接入。
+- 未知 `(protocol, capability)` 组合返回明确错误，不回退猜测。本期 Python 实际落地组合：`openai`+CHAT/EMBEDDING、`anthropic`+CHAT、`google`+CHAT、`jina`+RERANK/EMBEDDING、`dashscope`+RERANK；VISION/SPARSE_EMBEDDING/ASR schema 与 seed 已支持，Python 端需后续对接具体 adapter 与请求/响应协议。
 - 职责边界：完整端点 URL（多变的「去哪」）= 数据，Java 管；鉴权 + 请求体 + 回包解析（稳定的「怎么调」）= 代码，adapter 管。新增同协议厂商 Java 加一行数据即可，adapter 零改动。
 
 ## Chat

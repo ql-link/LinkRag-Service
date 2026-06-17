@@ -17,9 +17,10 @@
 能力映射（RAGFlow model_types → toLink capability）：
   chat / vision / image2text → CHAT / VISION
   embedding → EMBEDDING
+  sparse_embedding / sparse_vector / sparse → SPARSE_EMBEDDING
   rerank    → RERANK
-  ocr       → OCR
-  asr / tts / doc_parse / speech2text → 跳过
+  asr / speech2text → ASR
+  ocr / tts / doc_parse → 跳过
 
 跳过以下厂商（本地推理框架 / 无公网 API / 专属工具）：
   ollama, vllm, localai, lmstudio, xinference, modelscope, gpustack, builtin,
@@ -45,11 +46,14 @@ CAPABILITY_MAP: dict[str, str | None] = {
     "vision":      "VISION",
     "image2text":  "VISION",   # llm_factories.json 里的旧字段
     "embedding":   "EMBEDDING",
+    "sparse_embedding": "SPARSE_EMBEDDING",
+    "sparse_vector":    "SPARSE_EMBEDDING",
+    "sparse":           "SPARSE_EMBEDDING",
     "rerank":      "RERANK",
-    "ocr":         "OCR",
     "asr":         "ASR",
     "speech2text": "ASR",      # llm_factories.json 里的旧字段
     # 以下跳过
+    "ocr":         None,       # 文档识别类模型与 VISION 调用层重叠，不再作为独立模型能力
     "tts":         None,       # 纯输出，RAG 场景不需要
     "doc_parse":   None,
 }
@@ -139,16 +143,18 @@ MODEL_PROTOCOL_OVERRIDE: dict[tuple[str, str], tuple[str, str]] = {
 PROTOCOL_CAPABILITY_SUFFIX: dict[tuple[str, str], str | None] = {
     ("openai", "CHAT"):      "/chat/completions",
     ("openai", "VISION"):    "/chat/completions",   # 视觉走 chat 端点
-    ("openai", "OCR"):       "/chat/completions",   # OCR = 视觉模型读图，无独立端点
     ("openai", "EMBEDDING"): "/embeddings",
+    ("openai", "SPARSE_EMBEDDING"): "/embeddings",
     ("openai", "ASR"):       "/audio/transcriptions",  # whisper 同步转写
     ("anthropic", "CHAT"):   "/v1/messages",
     ("anthropic", "VISION"): "/v1/messages",
     ("google", "CHAT"):      None,                  # 例外：保留 base 到 /v1beta
     ("google", "EMBEDDING"): None,
+    ("google", "SPARSE_EMBEDDING"): None,
     ("google", "VISION"):    None,
     ("jina", "RERANK"):      "/rerank",
     ("jina", "EMBEDDING"):   "/embeddings",
+    ("jina", "SPARSE_EMBEDDING"): "/embeddings",
     ("dashscope", "RERANK"): "/services/rerank/text-rerank/text-rerank",  # 千问原生嵌套 rerank
     ("dashscope", "ASR"):    None,                  # 例外：异步轮询，本期不做
 }

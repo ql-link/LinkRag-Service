@@ -28,7 +28,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
-- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。
+- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。`OCR` 已移除，不再作为独立模型能力；存量环境可执行 `scripts/db/remove_ocr_capability.sql` 清理 `llm_provider_model` / `llm_system_preset` / `llm_user_config` 中的 OCR 行。
 - 厂商→模型→能力目录迁至 `llm_provider_model`（一个模型多能力=多行，唯一键 `uk_provider_model_cap (provider_id, model_name, capability)`），`llm_system_provider` 已去掉 `supported_models` / `config_schema` JSON。用户「配置厂商」即按该表展开整厂商 (模型, 能力) 写入 `llm_user_config`。
 - `llm_system_preset`（自带加密平台 Key，唯一键 `uk_preset_provider_model_cap`）在用户注册时复制进 `llm_user_config`（`is_system_preset=true`、`is_default=true`），作为常备只读备选；预设已自带 `provider_type` / `protocol` / `api_base_url` 事实字段（见下「协议与入口三层语义」），注册镜像时直接平移这三列，不再 join 厂商表补全。
 - `llm_user_config` 一条配置按 (模型, 能力) 展开为多行，唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability, is_system_preset)`（含 `is_system_preset`，使同 (厂商,模型,能力) 的平台预设行与用户自配行可并存）。`is_active` 兼表「模型启停」与「生效过滤」，`is_default` 表按能力生效（单用户单能力唯一），`is_system_preset` 标记只读预设行；`api_base_url`（原 `custom_api_base_url`）由展开时复制自模型能力层事实值（不再灌厂商默认，见下「协议与入口三层语义」）。已删字段：`provider_name` / `config_name` / `priority` / `timeout_ms` / `max_retries` / `stream_enabled` / `extra_config`。按能力切换查询由 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑。
@@ -51,7 +51,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 >
 > **base 形态（2026-06 对齐 Python PR #192）**：`api_base_url` 语义在两层不同——**厂商层** `llm_system_provider.api_base_url` 存「协议基地址」（仅作新增模型时表单预填模板，不参与运行）；**模型能力层 / 用户配置层** 存「完整端点 URL」（Python 直打、不再拼后缀）。完整 URL = 基地址 + `(protocol, capability)` 端点后缀，后缀知识在 Java seed 生成器（`scripts/import_ragflow_configs.py`），唯一例外 `google` 仍下发 base 到 `/v1beta`。详见 `docs/api/api_contracts.md`「LLM 协议与入口契约」的完整端点对照表。
 
-**`protocol` 枚举（5 个，按 API 家族收敛，小写）**：`openai` / `anthropic` / `google` / `jina` / `dashscope`。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准，大小写敏感（`OPENAI` 等大写视为非法）。`openai` 吃掉所有 OpenAI 兼容厂商；`dashscope` 仅承载千问 rerank / ASR；`jina` 承载 Jina rerank / embedding。非法值由服务层抛 `INVALID_PROTOCOL(10015/400)`，缺协议或缺入口抛 `MODEL_CONFIG_INCOMPLETE(10014/400)`。
+**`protocol` 枚举（5 个，按 API 家族收敛，小写）**：`openai` / `anthropic` / `google` / `jina` / `dashscope`。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准，大小写敏感（`OPENAI` 等大写视为非法）。`openai` 吃掉所有 OpenAI 兼容厂商；`dashscope` 仅承载千问 rerank / ASR；`jina` 承载 Jina rerank / embedding / sparse embedding。非法值由服务层抛 `INVALID_PROTOCOL(10015/400)`，缺协议或缺入口抛 `MODEL_CONFIG_INCOMPLETE(10014/400)`。
 
 **协议与入口三层语义**：同一份 `protocol` / `api_base_url` 在三张表里语义不同，分清才能避免「用厂商默认值跑线上」的隐患。
 

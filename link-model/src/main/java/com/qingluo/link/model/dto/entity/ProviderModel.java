@@ -39,8 +39,8 @@ public class ProviderModel {
     @TableField("protocol")
     private String protocol;
 
-    /** 事实来源：本 (模型,能力) 真实调用入口基地址（不含 capability 后缀），用户配置展开时复制此值，必填。 */
-    @Schema(description = "调用入口基地址", example = "https://api.openai.com/v1")
+    /** 事实来源：本 (模型,能力) 真实调用入口完整端点，用户配置展开时复制此值，必填。 */
+    @Schema(description = "调用入口完整端点 URL", example = "https://api.openai.com/v1/chat/completions")
     @TableField("api_base_url")
     private String apiBaseUrl;
 

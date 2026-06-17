@@ -18,7 +18,7 @@ public class AddProviderModelRequest {
     private String modelName;
 
     @NotBlank(message = "能力标识不能为空")
-    @Schema(description = "模型能力，如 CHAT/OCR/EMBEDDING", example = "CHAT")
+    @Schema(description = "模型能力，如 CHAT/EMBEDDING/SPARSE_EMBEDDING", example = "CHAT")
     private String capability;
 
     @NotBlank(message = "协议不能为空")
@@ -26,6 +26,6 @@ public class AddProviderModelRequest {
     private String protocol;
 
     @NotBlank(message = "调用入口不能为空")
-    @Schema(description = "调用入口基地址（不含 capability 后缀）", example = "https://api.openai.com/v1")
+    @Schema(description = "调用入口完整端点 URL（google 等协议例外可存协议基地址）", example = "https://api.openai.com/v1/chat/completions")
     private String apiBaseUrl;
 }
