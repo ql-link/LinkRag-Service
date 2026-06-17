@@ -24,7 +24,7 @@ public class CreatePresetRequest {
     private String modelName;
 
     @NotBlank(message = "能力标识不能为空")
-    @Schema(description = "模型能力，如 CHAT/OCR/EMBEDDING", example = "CHAT")
+    @Schema(description = "模型能力，如 CHAT/EMBEDDING/SPARSE_EMBEDDING", example = "CHAT")
     private String capability;
 
     @NotBlank(message = "平台 Key 不能为空")

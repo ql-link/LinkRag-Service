@@ -2,7 +2,7 @@
 -- toLink-Service：LLM 厂商与模型目录种子数据
 -- 由 scripts/import_ragflow_configs.py 自动生成，请勿手动编辑
 -- 数据来源：RAGFlow conf/ 目录（2026-06-06 导出）
--- 厂商：45 个，模型能力记录：868 条
+-- 厂商：45 个，模型能力记录：860 条
 -- =============================================================
 
 USE tolink_rag_db;
@@ -148,8 +148,6 @@ UNION ALL
     SELECT id, 'gpt-3.5-turbo-16k-0613', 'CHAT', 'openai', 'https://api.302.ai/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = '302ai'
 UNION ALL
     SELECT id, 'whisper-v3-turbo', 'ASR', 'openai', 'https://api.302.ai/audio/transcriptions', FALSE FROM llm_system_provider WHERE provider_type = '302ai'
-UNION ALL
-    SELECT id, 'mistral-ocr-latest', 'OCR', 'openai', 'https://api.302.ai/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = '302ai'
 UNION ALL
     SELECT id, 'jina-embeddings-v3', 'EMBEDDING', 'openai', 'https://api.302.ai/embeddings', FALSE FROM llm_system_provider WHERE provider_type = '302ai'
 UNION ALL
@@ -508,8 +506,6 @@ UNION ALL
     SELECT id, 'embedding-v1', 'EMBEDDING', 'openai', 'https://qianfan.baidubce.com/v2/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'baidu'
 UNION ALL
     SELECT id, 'qwen3-reranker-4b', 'RERANK', 'openai', 'https://qianfan.baidubce.com/v2', FALSE FROM llm_system_provider WHERE provider_type = 'baidu'
-UNION ALL
-    SELECT id, 'paddleocr-vl-0.9b', 'OCR', 'openai', 'https://qianfan.baidubce.com/v2/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'baidu'
 ON DUPLICATE KEY UPDATE
     protocol     = VALUES(protocol),
     api_base_url = VALUES(api_base_url),
@@ -880,14 +876,6 @@ UNION ALL
     SELECT id, 'BAAI/bge-reranker-v2-m3', 'RERANK', 'openai', 'https://api.moark.ai/v1', FALSE FROM llm_system_provider WHERE provider_type = 'gitee'
 UNION ALL
     SELECT id, 'BAAI/bge-m3', 'EMBEDDING', 'openai', 'https://api.moark.ai/v1/embeddings', FALSE FROM llm_system_provider WHERE provider_type = 'gitee'
-UNION ALL
-    SELECT id, 'GOT-OCR2_0', 'OCR', 'openai', 'https://api.moark.ai/v1/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = 'gitee'
-UNION ALL
-    SELECT id, 'DeepSeek-OCR-2', 'OCR', 'openai', 'https://api.moark.ai/v1/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = 'gitee'
-UNION ALL
-    SELECT id, 'PaddleOCR-VL-1.5', 'OCR', 'openai', 'https://api.moark.ai/v1/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = 'gitee'
-UNION ALL
-    SELECT id, 'HunyuanOCR', 'OCR', 'openai', 'https://api.moark.ai/v1/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = 'gitee'
 ON DUPLICATE KEY UPDATE
     protocol     = VALUES(protocol),
     api_base_url = VALUES(api_base_url),
@@ -1176,8 +1164,6 @@ UNION ALL
     SELECT id, 'magistral-small-latest', 'CHAT', 'openai', 'https://api.mistral.ai/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = 'mistral'
 UNION ALL
     SELECT id, 'mistral-embed', 'EMBEDDING', 'openai', 'https://api.mistral.ai/embeddings', FALSE FROM llm_system_provider WHERE provider_type = 'mistral'
-UNION ALL
-    SELECT id, 'mistral-ocr-2512', 'OCR', 'openai', 'https://api.mistral.ai/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = 'mistral'
 UNION ALL
     SELECT id, 'mistral-saba-latest', 'CHAT', 'openai', 'https://api.mistral.ai/chat/completions', FALSE FROM llm_system_provider WHERE provider_type = 'mistral'
 UNION ALL
@@ -2060,8 +2046,6 @@ UNION ALL
     SELECT id, 'embedding-3', 'EMBEDDING', 'openai', 'https://open.bigmodel.cn/api/paas/v4/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
 UNION ALL
     SELECT id, 'glm-asr-2512', 'ASR', 'openai', 'https://open.bigmodel.cn/api/paas/v4/audio/transcriptions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-ocr', 'OCR', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
 UNION ALL
     SELECT id, 'rerank', 'RERANK', 'openai', 'https://open.bigmodel.cn/api/paas/v4', FALSE FROM llm_system_provider WHERE provider_type = 'glm'
 UNION ALL

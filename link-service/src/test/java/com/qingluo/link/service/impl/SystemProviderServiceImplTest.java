@@ -89,14 +89,15 @@ class SystemProviderServiceImplTest {
     void getActiveProviderModels_groupsMultiCapability() {
         givenCacheHit(new ProviderCatalogSnapshot(
                 List.of(ref(5L, "openai")),
-                List.of(pm(5L, "gpt-4o", "CHAT"), pm(5L, "gpt-4o", "VISION"), pm(5L, "gpt-4o", "OCR"))));
+                List.of(pm(5L, "gpt-4o", "CHAT"), pm(5L, "gpt-4o", "VISION"),
+                        pm(5L, "gpt-4o", "SPARSE_EMBEDDING"))));
 
         List<ProviderModelDTO> result = service.getActiveProviderModels(null);
 
         assertThat(result.get(0).getModels()).hasSize(1);
         assertThat(result.get(0).getModels().get(0).getCapabilities())
                 .extracting("capability")
-                .containsExactlyInAnyOrder("CHAT", "VISION", "OCR");
+                .containsExactlyInAnyOrder("CHAT", "VISION", "SPARSE_EMBEDDING");
     }
 
     @Test

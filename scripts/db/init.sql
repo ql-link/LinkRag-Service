@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     api_base_url        VARCHAR(512)    COMMENT '实际生效地址：完整端点 URL，复制自模型能力层事实（不 fallback 厂商默认），Python 直打',
     protocol            VARCHAR(32)     COMMENT '调用协议快照：复制自模型能力层，下游按 protocol+capability 选 adapter',
     model_name          VARCHAR(128)    NOT NULL COMMENT '具体模型名',
-    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/RERANK/OCR 等',
+    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/SPARSE_EMBEDDING/RERANK 等',
     is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '模型启停 + 生效过滤',
     is_default          BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '该能力是否生效（单用户单能力唯一）',
     is_system_preset    BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '系统预设行（只读）',

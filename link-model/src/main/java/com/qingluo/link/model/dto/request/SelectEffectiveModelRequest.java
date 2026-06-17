@@ -15,7 +15,7 @@ import javax.validation.constraints.NotBlank;
 public class SelectEffectiveModelRequest {
 
     @NotBlank(message = "能力标识不能为空")
-    @Schema(description = "模型能力，如 CHAT/OCR/EMBEDDING", example = "CHAT")
+    @Schema(description = "模型能力，如 CHAT/EMBEDDING/SPARSE_EMBEDDING", example = "CHAT")
     private String capability;
 
     @NotBlank(message = "厂商类型不能为空")
