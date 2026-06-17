@@ -326,7 +326,7 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
     chunking_config     JSON            NOT NULL COMMENT '分块配置（3 项：heading_break_level / min_candidate_chunk_tokens / overlap_tokens）',
     enhancement_config  JSON            NOT NULL COMMENT 'Markdown 增强配置（2 项开关：enable_table_enhancement / enable_image_enhancement；增强模型不在此选择，统一用发起用户 CHAT/VISION 默认模型）',
     pdf_config          JSON            NOT NULL COMMENT 'PDF 解析配置（1 项：pdf_parser_backend）',
-    recall_config       JSON            NOT NULL COMMENT '召回检索配置（6 项：recall_result_limit / recall_context_token_budget / sparse_top_k / sparse_score_threshold / dense_top_k / dense_score_threshold）',
+    recall_config       JSON            NOT NULL COMMENT '召回检索配置（9 项：recall_result_limit / recall_context_token_budget / sparse_top_k / sparse_score_threshold / dense_top_k / dense_score_threshold / recall_enabled_sources / rerank_top_n / recall_strict）',
     is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否启用',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
