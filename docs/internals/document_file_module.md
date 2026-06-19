@@ -7,12 +7,12 @@
 
 ## 职责
 
-文档文件模块负责数据集文件上传、解析任务提交、结果查询和 SSE 过程事件转发。
+文档文件模块负责数据集文件上传、解析任务提交和结果查询。
 
 ## 主要入口
 
 - Controller：`DocumentFileController`、`InternalDocumentFileController`
-- Service：`DocumentFileService`、`DocumentParseTaskService`、`DocumentParseSseService`
+- Service：`DocumentFileService`、`DocumentParseTaskService`
 - 上传异步化：`DocumentUploadAsyncExecutor`（池线程编排 OSS 上传→回写→清理）、`DocumentUploadStatusWriter`（终态守卫回写）、`DocumentUploadTempStorage`（临时文件物化/清理/启动清理）、`DocumentUploadStuckScanner`（uploading 超时扫描）；专用线程池 `documentUploadExecutor`（见 `docs/ops/configuration.md`）
 - Entity：`DocumentOriginalFile`、`DocumentParseFile`、`DocumentParsedLog`
 - MQ：`DocumentParseTaskMQ`

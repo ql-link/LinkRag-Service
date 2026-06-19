@@ -651,35 +651,6 @@ class DocumentFileControllerTest {
             .andExpect(jsonPath("$.data[0].parsedFilename").value("result.md"));
     }
 
-    @Test
-    void Should_AcceptProgressCallbackAndRejectTerminalCallback_When_ServiceTokenMatches() throws Exception {
-        Long fileId = uploadPlainFile("progress.txt", "parse progress");
-        Long parseFileId = jdbcTemplate.queryForObject(
-            "SELECT id FROM document_parse_file WHERE document_original_file_id = ?", Long.class, fileId);
-        jdbcTemplate.update("UPDATE document_parse_file SET latest_parse_task_id = ? WHERE id = ?",
-            "task-progress-1", parseFileId);
-        jdbcTemplate.update("""
-                INSERT INTO document_parsed_log (
-                    task_id, document_original_file_id, document_parse_file_id, trigger_mode
-                ) VALUES (?, ?, ?, ?)
-                """,
-            "task-progress-1", fileId, parseFileId, "manual_retry");
-
-        mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "task-progress-1")
-                .header("Authorization", "Bearer test-service-token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"eventType\":\"progress\",\"progress\":50}"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(200));
-
-        mockMvc.perform(post("/api/v1/internal/parse-tasks/{taskId}/events", "task-progress-1")
-                .header("Authorization", "Bearer test-service-token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"eventType\":\"success\"}"))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value(400));
-    }
-
     private Long uploadPlainFile(String filename, String content) throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", filename, MediaType.TEXT_PLAIN_VALUE, content.getBytes(StandardCharsets.UTF_8));

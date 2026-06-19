@@ -13,7 +13,6 @@ public class DocumentFileProperties {
     private long maxSizeBytes = 20L * 1024 * 1024;
     private String internalBaseUrl = "http://localhost:8080";
     private String serviceToken;
-    private long sseTimeoutMs = 300_000L;
 
     public Set<String> getAllowedSuffixes() {
         return allowedSuffixes;
@@ -47,11 +46,4 @@ public class DocumentFileProperties {
         this.serviceToken = serviceToken;
     }
 
-    public long getSseTimeoutMs() {
-        return sseTimeoutMs;
-    }
-
-    public void setSseTimeoutMs(long sseTimeoutMs) {
-        this.sseTimeoutMs = sseTimeoutMs;
-    }
 }

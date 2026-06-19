@@ -6,7 +6,7 @@
 
 ## 职责边界
 
-- Java：文件上传、元数据、权限、解析任务投递、结果查询、SSE 过程事件转发。
+- Java：文件上传、元数据、权限、解析任务投递、结果查询。
 - Python：文档解析、RAG 执行、LLM 调用、解析产物生成、解析终态持久化。
 
 ## 协作接口
@@ -14,7 +14,6 @@
 - Java -> Python：`tolink.rag.parse_task`
 - Java -> Python：`tolink.rag.document_delete`（删除通知，触发 Python 删衍生产物）
 - Python 读取原文：`GET /api/v1/internal/files/{fileId}/content`
-- Python 推送过程事件：`POST /api/v1/internal/parse-tasks/{taskId}/events`
 
 ## 联调关注点
 
@@ -30,5 +29,5 @@
 
 - Java 写入原文件与 `document_parse_file.latest_parse_task_id`；Python 写入 `document_parsed_log`（Markdown 产物 + `retry_of_task_id`）与 `document_parse_pipeline`（端到端终态 `pipeline_status` + `superseded_by_task_id`）。
 - `parse_task` 传递 `document_parse_file_id` 和 `trigger_mode`，便于 Python 创建日志记录；重试再带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标（`md_bucket`/`md_object_key`）做阶段恢复，已成功文件 Java 侧友好拒绝、不投递。
-- `processing` / `progress` 经内部 HTTP 接口上报；`success` / `failed` 终态由 Python 写入 `document_parse_pipeline.pipeline_status`，前端通过 Java `parse-results` 查询接口轮询读取。
+- `success` / `failed` 终态由 Python 写入 `document_parse_pipeline.pipeline_status`，前端通过 Java `parse-results` 查询接口轮询读取；Java 不再提供解析过程事件回调或 SSE 推送。
 - Java 侧已下线 `tolink.rag.parse_result` 消费方；Python 停发该 topic 需与 Java 发布窗口协调。

@@ -125,7 +125,6 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | GET | `/api/v1/files/{fileId}` | 文件详情 |
 | DELETE | `/api/v1/files/{fileId}` | 删除文件 |
 | POST | `/api/v1/files/{fileId}/parse` | 提交解析 |
-| GET | `/api/v1/datasets/{datasetId}/files/parse-events` | SSE 解析事件 |
 | GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 解析结果列表 |
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
@@ -138,7 +137,6 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | --- | --- | --- |
 | POST | `/api/v1/oss-files/{bizType}` | 通用 OSS 上传 |
 | GET | `/api/v1/internal/files/{fileId}/content` | Python 端读取私有文件内容 |
-| POST | `/api/v1/internal/parse-tasks/{taskId}/events` | Python 端推送解析过程事件 |
 
 ## Feedback
 
@@ -175,7 +173,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
 
-解析过程接口只接受 `processing` / `progress`。终态结果由 Python 写入共享数据库，Java 不再消费 `tolink.rag.parse_result`；解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。
+解析终态结果由 Python 写入共享数据库，Java 不再消费 `tolink.rag.parse_result`，也不再提供解析 SSE 事件订阅或过程事件回调入口；解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。
 
 ## Recall
 
