@@ -38,7 +38,7 @@ public class ProviderController {
     @SaCheckLogin
     @Operation(summary = "查询可用LLM厂商和模型", description = "用户添加配置前查询启用中的厂商和模型，支持按能力过滤")
     public Result<List<ProviderModelDTO>> getProviders(
-            @Parameter(description = "模型能力，如CHAT/OCR/EMBEDDING") @RequestParam(required = false) String capability) {
+            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam(required = false) String capability) {
         return Result.success(systemProviderService.getActiveProviderModels(capability));
     }
 }

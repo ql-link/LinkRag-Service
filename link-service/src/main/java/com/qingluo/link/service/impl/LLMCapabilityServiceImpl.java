@@ -18,7 +18,7 @@ import java.util.Set;
 public class LLMCapabilityServiceImpl implements LLMCapabilityService {
 
     private static final Set<String> SUPPORTED_CAPABILITIES = Set.of(
-            "CHAT", "EMBEDDING", "VISION", "RERANK", "OCR", "ASR"
+            "CHAT", "EMBEDDING", "SPARSE_EMBEDDING", "VISION", "RERANK", "ASR"
     );
 
     @Override

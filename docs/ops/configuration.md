@@ -355,18 +355,6 @@ services:
 2. 将旧名称替换为对应的新名称
 3. 重启服务验证配置生效
 
-## parse_result 卡住扫描配置
-
-前缀 `tolink.parse-result.stuck`（`ParseResultStuckProperties`），由 `DocumentParseStuckScanner` 使用：
-
-| 配置项 | 环境变量 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `default-threshold` | `PARSE_RESULT_STUCK_THRESHOLD` | `5m` | 卡住判定阈值。文件上传解析为用户在线等待场景，超过即视为异常 |
-| `scan-interval-ms` | `PARSE_RESULT_STUCK_SCAN_INTERVAL_MS` | `60000` | 扫描间隔（毫秒） |
-| `dataset-thresholds` | —（仅 yml） | 空 | 按数据集覆盖阈值，如 `dataset-thresholds.{datasetId}: 20m`；未配置回落 `default-threshold` |
-
-说明：调度由 `SchedulingConfig`（`@EnableScheduling`）开启。监控指标走 Micrometer（`spring-boot-starter-actuator`），本地 registry，不接外部平台；无 Micrometer 时降级为仅日志。退避重试参数（最多 3 次、1s→×2→上限 10s）固化在 `ParseResultKafkaConfig`。
-
 ## 博客上传与权限配置
 
 - 博客正文和图片不设置业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用默认 multipart 限制为 20MB，需要支持更大文件时由部署环境调大。

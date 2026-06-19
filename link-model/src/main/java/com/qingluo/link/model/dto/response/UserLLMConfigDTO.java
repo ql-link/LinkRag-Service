@@ -27,7 +27,7 @@ public class UserLLMConfigDTO {
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
 
-    @Schema(description = "专用能力标识：CHAT/EMBEDDING/RERANK/OCR", example = "CHAT")
+    @Schema(description = "专用能力标识：CHAT/EMBEDDING/SPARSE_EMBEDDING/RERANK", example = "CHAT")
     private String capability;
 
     @Schema(description = "API Key(脱敏)")

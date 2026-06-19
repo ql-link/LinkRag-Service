@@ -18,16 +18,12 @@ SELECT p.id, m.model_name, m.capability
 FROM llm_system_provider p
 JOIN (
     SELECT 'openai'   AS provider_type, 'gpt-4o'            AS model_name, 'CHAT'      AS capability UNION ALL
-    SELECT 'openai',   'gpt-4o',            'OCR'       UNION ALL
     SELECT 'openai',   'gpt-4o',            'VISION'    UNION ALL
     SELECT 'openai',   'gpt-4-turbo',       'CHAT'      UNION ALL
-    SELECT 'openai',   'o1-preview',        'REASONING' UNION ALL
     SELECT 'claude',   'claude-3-5-sonnet', 'CHAT'      UNION ALL
-    SELECT 'claude',   'claude-3-5-sonnet', 'OCR'       UNION ALL
     SELECT 'claude',   'claude-3-opus',     'CHAT'      UNION ALL
     SELECT 'deepseek', 'deepseek-v3',       'CHAT'      UNION ALL
     SELECT 'deepseek', 'deepseek-coder',    'CHAT'      UNION ALL
-    SELECT 'deepseek', 'deepseek-coder',    'CODE'      UNION ALL
     SELECT 'glm',      'glm-4v',            'CHAT'      UNION ALL
     SELECT 'glm',      'glm-4v',            'VISION'    UNION ALL
     SELECT 'glm',      'glm-4-plus',        'CHAT'      UNION ALL
