@@ -1,15 +1,17 @@
 package com.qingluo.link.model.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.qingluo.link.model.dto.entity.ChatMessage;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * ChatMessage 实体类测试
+ * ChatMessage 实体类测试（一行一轮：query + answer 同行）。
  */
 class ChatMessageTest {
 
@@ -18,6 +20,7 @@ class ChatMessageTest {
         TableName annotation = ChatMessage.class.getAnnotation(TableName.class);
         assertNotNull(annotation, "ChatMessage 应有 @TableName 注解");
         assertEquals("chat_message", annotation.value());
+        assertTrue(annotation.autoResultMap(), "references JSON 列查询回填需开启 autoResultMap");
     }
 
     @Test
@@ -26,10 +29,19 @@ class ChatMessageTest {
         assertFieldExists("conversationId");
         assertFieldExists("configId");
         assertFieldExists("modelName");
-        assertFieldExists("role");
-        assertFieldExists("content");
-        assertFieldExists("tokenCount");
+        assertFieldExists("query");
+        assertFieldExists("answer");
+        assertFieldExists("references");
+        assertFieldExists("requestId");
+        assertFieldExists("status");
         assertFieldExists("createdAt");
+    }
+
+    @Test
+    void Should_NotHaveLegacyFields_When_EntityDefined() {
+        assertThrows(NoSuchFieldException.class, () -> ChatMessage.class.getDeclaredField("role"));
+        assertThrows(NoSuchFieldException.class, () -> ChatMessage.class.getDeclaredField("content"));
+        assertThrows(NoSuchFieldException.class, () -> ChatMessage.class.getDeclaredField("tokenCount"));
     }
 
     @Test
@@ -41,9 +53,13 @@ class ChatMessageTest {
     }
 
     @Test
-    void Should_HaveDefaultTokenCount_When_ObjectCreated() {
-        ChatMessage message = new ChatMessage();
-        assertEquals(0, message.getTokenCount());
+    void Should_MapReferencesWithJsonTypeHandler_When_EntityDefined() throws Exception {
+        Field references = ChatMessage.class.getDeclaredField("references");
+        TableField annotation = references.getAnnotation(TableField.class);
+        assertNotNull(annotation, "references 字段应有 @TableField 注解");
+        assertEquals("`references`", annotation.value(), "references 为 MySQL 保留字，列名需反引号包裹");
+        assertEquals(JacksonTypeHandler.class, annotation.typeHandler());
+        assertEquals(List.class, references.getType());
     }
 
     private void assertFieldExists(String fieldName) throws Exception {

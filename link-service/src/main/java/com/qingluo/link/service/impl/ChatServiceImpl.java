@@ -6,7 +6,6 @@ import com.github.pagehelper.PageInfo;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.model.dto.request.CreateConversationRequest;
-import com.qingluo.link.model.dto.request.SendMessageRequest;
 import com.qingluo.link.model.dto.request.UpdateConversationRequest;
 import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.response.MessageDTO;
@@ -31,8 +30,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ChatServiceImpl implements ChatService {
-
-    private static final int MAX_TITLE_LENGTH = 255;
 
     private final ChatConversationMapper conversationMapper;
     private final ChatMessageMapper messageMapper;
@@ -134,42 +131,6 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional
     /**
-     * 向指定会话追加一条用户消息。
-     */
-    public MessageDTO sendMessage(Long userId, Long conversationId, SendMessageRequest request) {
-        ChatConversation conversation = getOwnedConversation(userId, conversationId);
-        boolean firstUserMessage = messageMapper.selectCount(new LambdaQueryWrapper<ChatMessage>()
-            .eq(ChatMessage::getConversationId, conversationId)
-            .eq(ChatMessage::getRole, "user")) == 0;
-
-        ChatMessage message = new ChatMessage();
-        message.setConversationId(conversationId);
-        message.setRole("user");
-        message.setContent(request.getContent().trim());
-        message.setConfigId(request.getConfigId());
-        message.setTokenCount(0);
-        messageMapper.insert(message);
-
-        // 维护会话元信息，确保列表按最近活跃时间排序。
-        conversation.setLastConfigId(request.getConfigId());
-        if (firstUserMessage) {
-            conversation.setTitle(toConversationTitle(message.getContent()));
-        }
-        conversationMapper.updateById(conversation);
-
-        return toDTO(message);
-    }
-
-    private String toConversationTitle(String content) {
-        if (content.length() <= MAX_TITLE_LENGTH) {
-            return content;
-        }
-        return content.substring(0, MAX_TITLE_LENGTH);
-    }
-
-    @Override
-    @Transactional
-    /**
      * 删除用户会话及其消息。
      */
     public void deleteConversation(Long userId, Long conversationId) {
@@ -203,11 +164,12 @@ public class ChatServiceImpl implements ChatService {
         MessageDTO dto = new MessageDTO();
         dto.setId(message.getId());
         dto.setConversationId(message.getConversationId());
-        dto.setRole(message.getRole());
-        dto.setContent(message.getContent());
+        dto.setQuery(message.getQuery());
+        dto.setAnswer(message.getAnswer());
         dto.setConfigId(message.getConfigId());
         dto.setModelName(message.getModelName());
-        dto.setTokenCount(message.getTokenCount());
+        dto.setReferences(message.getReferences());
+        dto.setStatus(message.getStatus());
         dto.setCreatedAt(message.getCreatedAt());
         return dto;
     }

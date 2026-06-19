@@ -2,7 +2,6 @@ package com.qingluo.link.api.controller;
 
 import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.request.CreateConversationRequest;
-import com.qingluo.link.model.dto.request.SendMessageRequest;
 import com.qingluo.link.model.dto.request.UpdateConversationRequest;
 import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.response.MessageDTO;
@@ -99,23 +98,6 @@ public class ChatController {
             @Valid @RequestBody UpdateConversationRequest request) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         return Result.success(chatService.updateConversation(userId, id, request));
-    }
-
-    /**
-     * 发送消息
-     *
-     * @param id      对话ID
-     * @param request 消息内容
-     * @return 新增的消息信息
-     */
-    @PostMapping("/{id}/messages")
-    @SaCheckLogin
-    @Operation(summary = "发送消息", description = "向指定对话追加一条用户消息")
-    public Result<MessageDTO> sendMessage(
-            @Parameter(description = "对话ID") @PathVariable Long id,
-            @Valid @RequestBody SendMessageRequest request) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(chatService.sendMessage(userId, id, request));
     }
 
     /**

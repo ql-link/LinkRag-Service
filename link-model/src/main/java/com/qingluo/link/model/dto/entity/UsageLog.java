@@ -65,6 +65,14 @@ public class UsageLog {
     @TableField("conversation_id")
     private Long conversationId;
 
+    @Schema(description = "关联消息ID（chat_message.id）", example = "1")
+    @TableField("message_id")
+    private Long messageId;
+
+    @Schema(description = "请求追踪ID/幂等键（与 chat_message.request_id 一致）", example = "req-20260619-001")
+    @TableField("request_id")
+    private String requestId;
+
     @Schema(description = "创建时间")
     @TableField("created_at")
     private LocalDateTime createdAt;
