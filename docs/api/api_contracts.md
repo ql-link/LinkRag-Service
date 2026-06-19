@@ -98,14 +98,15 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/v1/chat/conversations` | 创建会话 |
+| POST | `/api/v1/chat/conversations` | 创建会话（前端在发起 `/rag/stream` 问答前先建会话取 `conversation_id`） |
 | GET | `/api/v1/chat/conversations` | 会话列表 |
-| GET | `/api/v1/chat/conversations/{id}/messages` | 消息列表 |
+| GET | `/api/v1/chat/conversations/{id}/messages` | 消息列表（一行一轮：`query` / `answer` / `references` / `status`） |
 | PATCH | `/api/v1/chat/conversations/{id}` | 更新会话 |
-| POST | `/api/v1/chat/conversations/{id}/messages` | 保存消息 |
 | DELETE | `/api/v1/chat/conversations/{id}` | 删除会话 |
 
-会话标题允许重复；发送到某个会话的第一条用户消息会作为该会话标题，超过 `chat_conversation.title` 长度时按 255 字符截断。
+> 写入消息接口 `POST /api/v1/chat/conversations/{id}/messages` 已下线：对话轮次改由 Python 问答执行器经 `tolink.rag.chat_turn` 上报、Java 单事务落库 `chat_message` / `llm_usage_log` / `chat_conversation`（见 `docs/api/mq_contracts.md`）。前端职责简化为先创建会话拿到 `conversation_id`，随 `/api/v1/rag/stream` 请求带上。
+>
+> 会话标题由首轮 `query` 生成（超长按 30 字符截断加省略号；命中标题唯一约束 `(user_id, dataset_id, title)` 冲突时保留默认标题），不再依赖已下线的写消息接口。
 
 ## Dataset / Document File
 

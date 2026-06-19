@@ -12,6 +12,7 @@ MQ 实现事实来源：
 | --- | --- | --- | --- |
 | `DocumentParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 文档解析任务 |
 | `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | Java -> Python | 删除通知（通知 Python 删衍生产物） |
+| `ChatTurnMQ` | `tolink.rag.chat_turn` | Python -> Java | 对话轮次落库（一轮问答完整数据） |
 | `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 缓存补偿删除（生产端为 CDC 桥接消费者，见下） |
 | Canal flatMessage（原始变更） | `tolink.canal.binlog` | Canal -> Java（CDC 桥接消费） | 行变更原始事件，桥接翻译为 `CacheCompensationMQ` |
 
@@ -46,6 +47,33 @@ MQ 实现事实来源：
 - `previous_task_id`（重试时填上一轮失败任务 `task_id`，首次解析为空）
 
 阶段恢复重试约定：`is_retry=true` 时复用上一轮 `document_parsed_log` 的 `parsed_bucket_name` / `parsed_object_key` 作为本次 `md_bucket` / `md_object_key`，让 Python 从失败的后处理阶段（含稀疏向量）续跑，不重新解析原文件。Java 发送前完整性校验：`is_retry=true` 时 `previous_task_id`、`md_bucket`、`md_object_key` 必须非空，缺字段不发送。`is_retry` 由 DB 状态（`document_parse_pipeline.pipeline_status=FAILED` 且已产出 Markdown）推导，与 `trigger_mode` 解耦。
+
+## 对话轮次落库字段（Python → Java）
+
+`ChatTurnMQ`（topic `tolink.rag.chat_turn`，`QUEUE` 点对点）。Python 问答执行器在一轮问答**正常结束 / 生成失败 / 客户端断连**时各发一条，**空召回不发**；routing_key = `conversation_id`，保证同一对话有序。
+
+线格式为统一信封 `{"mq_type":"CHAT_TURN","mq_name":"tolink.rag.chat_turn","payload":{...}}`，业务字段在 `payload` 内、**全 snake_case**；Java 端 `ChatTurnMQ.parseMsg` 先解包 `payload` 再反序列化（兼容无信封扁平结构）。
+
+`payload` 字段：
+
+- `conversation_id`（int，必填）：所属对话。
+- `request_id`（string，必填）：幂等键，写入 `chat_message.request_id` 与 `llm_usage_log.request_id`。
+- `user_id`（int，必填）：用户 ID（取自 token），Java 用于归属校验。
+- `query`（string）：用户提问 → `chat_message.query`。
+- `answer`（string）：LLM 回答 → `chat_message.answer`（partial 为半截，failed 可空串）。
+- `config_id`（int）、`provider_type`（string）、`model_name`（string）：本轮配置与模型快照。
+- `prompt_tokens` / `completion_tokens` / `total_tokens`（int，流式未返回时为 0）。
+- `references`（string[]）：召回片段 chunk_id 列表（仅标识、不含正文）→ `chat_message.references`(JSON)。
+- `latency_ms`（int，可空）：生成延迟。
+- `status`（string，必填）：`success` / `partial`（客户端断连）/ `failed`（生成异常）。
+- 信封基类自带 `message_id` / `timestamp`（仅追踪用途，不入库）。
+
+Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内：① `INSERT chat_message`（一行一轮）；② `INSERT llm_usage_log`（关联 `conversation_id` / `message_id` / `request_id`）；③ `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`，并在首轮由 `query` 生成标题。两条必做约束：
+
+- **幂等去重**：以 `request_id` 在落库前做存在性校验，命中则跳过，应对 MQ 重投（同对话单分区有序，重投为顺序到达，存在性校验即可去重；不依赖 DB 唯一索引，避免与 Python 侧迁移产生 schema 漂移）。
+- **归属校验**：`conversation_id` 来自前端请求体、`user_id` 取自 token，Python 仅透传不校验；Java 落库前必须校验 `conversation` 属于该 `user_id`，不匹配直接丢弃并告警，防止跨用户写入。
+
+topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `ChatTurnMQ` 自动注册创建。发布顺序：Python 迁移 0021 → Python 发送侧 → Java 消费侧 + topic 注册，避免消息长时间堆积无人消费。
 
 ## 删除通知字段
 

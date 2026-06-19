@@ -1,0 +1,140 @@
+package com.qingluo.link.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.qingluo.link.components.mq.model.ChatTurnMQ;
+import com.qingluo.link.mapper.ChatConversationMapper;
+import com.qingluo.link.mapper.ChatMessageMapper;
+import com.qingluo.link.mapper.UsageLogMapper;
+import com.qingluo.link.model.dto.entity.ChatConversation;
+import com.qingluo.link.model.dto.entity.ChatMessage;
+import com.qingluo.link.model.dto.entity.UsageLog;
+import com.qingluo.link.service.ChatTurnPersistenceService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+/**
+ * 对话轮次落库实现。
+ *
+ * <p>消费侧约束：</p>
+ * <ul>
+ *   <li><b>幂等去重</b>：以 {@code request_id} 判断是否已落库，应对 MQ 重投。
+ *       routing_key = conversation_id 保证同对话有序，重投为顺序到达，存在性校验即可去重。</li>
+ *   <li><b>归属校验</b>：conversation_id 来自前端请求体、user_id 取自 token，Python 仅透传不校验；
+ *       落库前必须校验 conversation 属于该 user，不匹配直接丢弃并告警，防止跨用户写入。</li>
+ * </ul>
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceService {
+
+    private final ChatConversationMapper conversationMapper;
+    private final ChatMessageMapper messageMapper;
+    private final UsageLogMapper usageLogMapper;
+
+    /** 创建对话时的默认标题，首轮落库时用提问替换。 */
+    private static final String DEFAULT_TITLE = "新对话";
+    /** 由提问生成标题的最大长度。 */
+    private static final int TITLE_MAX_LENGTH = 30;
+
+    @Override
+    @Transactional
+    public void persist(ChatTurnMQ.MsgPayload payload) {
+        // 1. 幂等去重：request_id 已落库则跳过。
+        long persisted = messageMapper.selectCount(new LambdaQueryWrapper<ChatMessage>()
+                .eq(ChatMessage::getRequestId, payload.getRequestId()));
+        if (persisted > 0) {
+            log.info("chat_turn duplicate ignored, request_id={}", payload.getRequestId());
+            return;
+        }
+
+        // 2. 归属校验：conversation 必须属于 payload 中的 user。
+        ChatConversation conversation = conversationMapper.selectOne(new LambdaQueryWrapper<ChatConversation>()
+                .eq(ChatConversation::getId, payload.getConversationId()));
+        if (conversation == null || !payload.getUserId().equals(conversation.getUserId())) {
+            log.warn("chat_turn ownership mismatch, drop message. conversation_id={}, user_id={}, request_id={}",
+                    payload.getConversationId(), payload.getUserId(), payload.getRequestId());
+            return;
+        }
+
+        // 3. 写入 chat_message（一行一轮）。
+        ChatMessage message = new ChatMessage();
+        message.setConversationId(payload.getConversationId());
+        message.setConfigId(payload.getConfigId());
+        message.setModelName(payload.getModelName());
+        message.setQuery(payload.getQuery());
+        message.setAnswer(payload.getAnswer());
+        message.setReferences(payload.getReferences());
+        message.setRequestId(payload.getRequestId());
+        message.setStatus(payload.getStatus());
+        messageMapper.insert(message);
+
+        // 4. 写入 llm_usage_log，关联 conversation_id / message_id / request_id。
+        UsageLog usage = new UsageLog();
+        usage.setUserId(payload.getUserId());
+        usage.setConfigId(payload.getConfigId());
+        usage.setProviderType(nullToEmpty(payload.getProviderType()));
+        usage.setModelName(nullToEmpty(payload.getModelName()));
+        usage.setPromptTokens(zeroIfNull(payload.getPromptTokens()));
+        usage.setCompletionTokens(zeroIfNull(payload.getCompletionTokens()));
+        usage.setTotalTokens(zeroIfNull(payload.getTotalTokens()));
+        usage.setLatencyMs(payload.getLatencyMs());
+        usage.setStatus(payload.getStatus());
+        usage.setConversationId(payload.getConversationId());
+        usage.setMessageId(message.getId());
+        usage.setRequestId(payload.getRequestId());
+        usageLogMapper.insert(usage);
+
+        // 5. 更新对话元信息：last_config_id / last_model_name / updated_at；首轮由提问生成标题。
+        conversation.setLastConfigId(payload.getConfigId());
+        conversation.setLastModelName(payload.getModelName());
+        applyTitleFromFirstTurn(conversation, payload.getQuery());
+        conversationMapper.updateById(conversation);
+    }
+
+    /**
+     * 首轮落库时用提问生成标题：仅当当前标题为空或仍是默认标题；
+     * 为避免触碰对话标题的唯一约束 (user_id, dataset_id, title)，生成标题若与同库其它对话冲突则保留原标题。
+     */
+    private void applyTitleFromFirstTurn(ChatConversation conversation, String query) {
+        String current = conversation.getTitle();
+        boolean needTitle = !StringUtils.hasText(current) || DEFAULT_TITLE.equals(current.trim());
+        if (!needTitle || !StringUtils.hasText(query)) {
+            return;
+        }
+        String title = buildTitle(query);
+        if (title.equals(current)) {
+            return;
+        }
+        long conflict = conversationMapper.selectCount(new LambdaQueryWrapper<ChatConversation>()
+                .eq(ChatConversation::getUserId, conversation.getUserId())
+                .eq(ChatConversation::getDatasetId, conversation.getDatasetId())
+                .eq(ChatConversation::getTitle, title)
+                .ne(ChatConversation::getId, conversation.getId()));
+        if (conflict > 0) {
+            log.info("chat_turn title collision, keep default. conversation_id={}, title={}",
+                    conversation.getId(), title);
+            return;
+        }
+        conversation.setTitle(title);
+    }
+
+    private String buildTitle(String query) {
+        String trimmed = query.trim();
+        if (trimmed.length() <= TITLE_MAX_LENGTH) {
+            return trimmed;
+        }
+        return trimmed.substring(0, TITLE_MAX_LENGTH) + "…";
+    }
+
+    private int zeroIfNull(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+}

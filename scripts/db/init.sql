@@ -132,15 +132,18 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
 CREATE TABLE IF NOT EXISTS chat_message (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '消息唯一标识',
     conversation_id     BIGINT UNSIGNED NOT NULL COMMENT '所属对话 ID',
-    config_id           BIGINT UNSIGNED COMMENT '产生该消息所使用的 LLM 配置 ID',
+    config_id           BIGINT UNSIGNED COMMENT '本轮所用 LLM 配置 ID',
     model_name          VARCHAR(128)    COMMENT '模型名快照',
-    role                VARCHAR(16)     NOT NULL COMMENT '角色：user/assistant/system',
-    content             MEDIUMTEXT      NOT NULL COMMENT '消息内容',
-    token_count         INT             DEFAULT 0 COMMENT '该条消息消耗的 Token 数',
+    `query`             MEDIUMTEXT      COMMENT '用户提问',
+    answer              MEDIUMTEXT      COMMENT 'LLM 回答（partial 为半截，failed 可空）',
+    `references`        JSON            COMMENT '召回片段 chunk_id 列表（仅标识，不含正文）',
+    request_id          VARCHAR(64)     COMMENT '请求追踪 ID / 幂等键',
+    status              VARCHAR(16)     NOT NULL DEFAULT 'success' COMMENT '轮次状态：success/partial/failed',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    INDEX idx_conversation_created (conversation_id, created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话消息表';
+    INDEX idx_conversation_created (conversation_id, created_at),
+    INDEX idx_chat_message_request_id (request_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话消息表（一行一轮）';
 
 -- 7. LLM 调用用量日志表
 CREATE TABLE IF NOT EXISTS llm_usage_log (
@@ -157,11 +160,14 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     error_message       VARCHAR(512)    COMMENT '错误信息',
     fallback_config_id  BIGINT UNSIGNED COMMENT '触发 Fallback 时记录原配置 ID',
     conversation_id     BIGINT UNSIGNED COMMENT '关联对话 ID',
+    message_id          BIGINT UNSIGNED COMMENT '关联消息 ID（chat_message.id）',
+    request_id          VARCHAR(64)     COMMENT '请求追踪 ID / 幂等键（与 chat_message.request_id 一致）',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_user_date (user_id, created_at),
     INDEX idx_config_date (config_id, created_at),
-    INDEX idx_conversation_id (conversation_id)
+    INDEX idx_conversation_id (conversation_id),
+    INDEX idx_usage_message_id (message_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 调用用量日志表';
 
 -- 8. 文档文件原始文档上传记录表
