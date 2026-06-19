@@ -281,6 +281,15 @@ class ChatControllerTest {
             .andExpect(jsonPath("$.data.conversationId").value(createdConversationId))
             .andExpect(jsonPath("$.data.role").value("user"))
             .andExpect(jsonPath("$.data.content").value("你好，这是测试消息"));
+
+        mockMvc.perform(get("/api/v1/chat/conversations")
+                .header("satoken", token)
+                .param("page", "1")
+                .param("pageSize", "20"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.items[0].id").value(createdConversationId))
+            .andExpect(jsonPath("$.data.items[0].title").value("你好，这是测试消息"));
     }
 
     /**
@@ -349,6 +358,34 @@ class ChatControllerTest {
      */
     @Test
     @Order(7)
+    @DisplayName("允许同一数据集下创建重名对话")
+    void Should_AllowDuplicateConversationTitle_When_SameDataset() throws Exception {
+        String requestJson = "{\"title\":\"重复标题\",\"datasetId\":" + datasetId + "}";
+
+        MvcResult first = mockMvc.perform(post("/api/v1/chat/conversations")
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.title").value("重复标题"))
+            .andReturn();
+
+        MvcResult second = mockMvc.perform(post("/api/v1/chat/conversations")
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.title").value("重复标题"))
+            .andReturn();
+
+        deleteConversationFromResponse(first);
+        deleteConversationFromResponse(second);
+    }
+
+    @Test
+    @Order(8)
     @DisplayName("未登录访问应返回 401")
     void Should_Return401_When_NotLoggedIn() throws Exception {
         // 不携带 satoken header
@@ -368,5 +405,14 @@ class ChatControllerTest {
             TEST_USER_ID,
             datasetName
         );
+    }
+
+    private void deleteConversationFromResponse(MvcResult result) throws Exception {
+        String response = result.getResponse().getContentAsString();
+        Long conversationId = objectMapper.readTree(response).get("data").get("id").asLong();
+        mockMvc.perform(delete("/api/v1/chat/conversations/" + conversationId)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
     }
 }

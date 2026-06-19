@@ -19,7 +19,6 @@ import com.qingluo.link.model.dto.entity.ChatMessage;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.service.ChatService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -32,6 +31,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ChatServiceImpl implements ChatService {
+
+    private static final int MAX_TITLE_LENGTH = 255;
 
     private final ChatConversationMapper conversationMapper;
     private final ChatMessageMapper messageMapper;
@@ -52,11 +53,7 @@ public class ChatServiceImpl implements ChatService {
         conversation.setLastConfigId(request.getLastConfigId());
         conversation.setIsPinned(false);
 
-        try {
-            conversationMapper.insert(conversation);
-        } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(400, "当前数据集下已存在同名对话", 400);
-        }
+        conversationMapper.insert(conversation);
 
         return toDTO(conversation);
     }
@@ -130,11 +127,7 @@ public class ChatServiceImpl implements ChatService {
             throw new BusinessException(400, "请至少提供一个需要更新的字段", 400);
         }
 
-        try {
-            conversationMapper.updateById(conversation);
-        } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(400, "当前数据集下已存在同名对话", 400);
-        }
+        conversationMapper.updateById(conversation);
         return toDTO(conversation);
     }
 
@@ -145,6 +138,9 @@ public class ChatServiceImpl implements ChatService {
      */
     public MessageDTO sendMessage(Long userId, Long conversationId, SendMessageRequest request) {
         ChatConversation conversation = getOwnedConversation(userId, conversationId);
+        boolean firstUserMessage = messageMapper.selectCount(new LambdaQueryWrapper<ChatMessage>()
+            .eq(ChatMessage::getConversationId, conversationId)
+            .eq(ChatMessage::getRole, "user")) == 0;
 
         ChatMessage message = new ChatMessage();
         message.setConversationId(conversationId);
@@ -156,9 +152,19 @@ public class ChatServiceImpl implements ChatService {
 
         // 维护会话元信息，确保列表按最近活跃时间排序。
         conversation.setLastConfigId(request.getConfigId());
+        if (firstUserMessage) {
+            conversation.setTitle(toConversationTitle(message.getContent()));
+        }
         conversationMapper.updateById(conversation);
 
         return toDTO(message);
+    }
+
+    private String toConversationTitle(String content) {
+        if (content.length() <= MAX_TITLE_LENGTH) {
+            return content;
+        }
+        return content.substring(0, MAX_TITLE_LENGTH);
     }
 
     @Override
