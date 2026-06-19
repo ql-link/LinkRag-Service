@@ -80,7 +80,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 删除「数据集 / 文档文件」采用隐性删除（软删保留原文件），不物理删 OSS 原文件对象：
 
 - `dataset`、`document_original_file`：软删（实体 `@TableLogic is_deleted`），删除转 `UPDATE`、读自动过滤；新增判别列 `deleted_seq`（活行=0、软删时=自身 id）并纳入唯一键（`dataset` 的 `uk_dataset_user_name_seq`、`document_original_file` 的 `uk_dof_name_suffix_seq`），使软删死行退出唯一键“活名额”，支持删后同名重建 / 重传（删除走显式 `UPDATE set is_deleted=1, deleted_seq=id`，`@TableLogic` 仅保留读过滤）。
-- `chat_conversation`、`chat_message`：一律物理删；`chat_conversation` 已移除 `is_deleted` / `@TableLogic`（索引 `idx_chat_conversation_user_active_list` 不再含 `is_deleted`）；因物理删不存在软删占名额问题，唯一键 `uk_conversation_user_dataset_title (user_id, dataset_id, title)` 无需 `deleted_seq`。
+- `chat_conversation`、`chat_message`：一律物理删；`chat_conversation` 已移除 `is_deleted` / `@TableLogic`（索引 `idx_chat_conversation_user_active_list` 不再含 `is_deleted`）。对话标题允许重复，不设置 `(user_id, dataset_id, title)` 唯一键。
 - `document_parse_file`、`document_parsed_log`：删除时 Java 端不再触碰，交 Python 随删除通知清理（MQ 占位、未实现）。
 - 删除事务提交后（afterCommit）预留通知 Python 删除其侧衍生产物（OSS 清洗文件 / 向量等）的发送点（占位，不落 producer / topic / 消息体）。
 - `blog_post`：软删并写 `deleted_seq=id`，不删除 Markdown 私有对象，也不批量删除图片对象。

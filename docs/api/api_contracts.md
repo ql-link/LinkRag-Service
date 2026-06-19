@@ -105,6 +105,8 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | POST | `/api/v1/chat/conversations/{id}/messages` | 保存消息 |
 | DELETE | `/api/v1/chat/conversations/{id}` | 删除会话 |
 
+会话标题允许重复；发送到某个会话的第一条用户消息会作为该会话标题，超过 `chat_conversation.title` 长度时按 255 字符截断。
+
 ## Dataset / Document File
 
 | 方法 | 路径 | 说明 |
