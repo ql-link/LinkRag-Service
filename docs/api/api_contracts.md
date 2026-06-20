@@ -53,8 +53,18 @@
 | GET | `/api/v1/llm/usage/summary` | 用量汇总 |
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
+| GET | `/api/v1/llm/usage/by-model` | 按厂商+模型聚合 |
+| GET | `/api/v1/llm/usage/trend` | 用量环比趋势 |
 
-> 用量查询（`UsageController`）口径：`llm_usage_log` 自 LINK-184 起为全链路账本，含对话生成（chat 通道）与解析/召回系统侧调用（usage_report 通道）。三个端点新增可选入参 `stage`（默认 `chat`）：缺省/`chat` 仅统计对话用量（与改造前口径一致），`all` 统计全链路，传具体阶段名（`parse`/`recall`）只统计该阶段。`summary`/`daily` 的计数、token、平均延迟均随该过滤生效。`logs` 明细 `UsageLogDTO` 新增 `stage` / `operation` 两字段，供前端区分用量来源。
+> 用量查询（`UsageController`）口径：`llm_usage_log` 自 LINK-184 起为全链路账本，含对话生成（chat 通道）与解析/召回系统侧调用（usage_report 通道）。`summary`/`daily`/`logs` 新增可选入参 `stage`（默认 `chat`）：缺省/`chat` 仅统计对话用量（与改造前口径一致），`all` 统计全链路，传具体阶段名（`parse`/`recall`）只统计该阶段。`summary`/`daily` 的计数、token、平均延迟均随该过滤生效。`logs` 明细 `UsageLogDTO` 新增 `stage` / `operation` 两字段，供前端区分用量来源。
+>
+> `summary`（`UsageSummaryDTO`）扩展（LINK-182）：新增 `successCalls` / `failedCalls` / `successRate`（0~1，无调用为 0）；`averageLatencyMs` 口径改为**仅成功调用**（`status='success'`，大小写不敏感），避免失败/超时拉偏均值。
+>
+> `GET /by-model`（`List<ModelUsageDTO>`，LINK-182）：按「`provider_type` + `model_name`」SQL 聚合（`COUNT`/`SUM`），按 `totalTokens` 降序，无数据返回 `[]`。字段：`providerType`/`modelName`/`calls`/`promptTokens`/`completionTokens`/`totalTokens`。
+>
+> `GET /trend`（`UsageTrendDTO`，LINK-182）：当前周期 vs 紧邻的等长上一周期环比。字段：`currentTokens`/`previousTokens`/`currentCalls`/`previousCalls`/`tokenGrowthRate`/`callGrowthRate`。增长率为小数（`0.18`=+18%），**上一周期为 0（无可比基数）时为 `null`**（前端显示「—」，非 +∞）。
+>
+> `by-model` 与 `trend` 为**全链路口径**（不按 stage 过滤，反映全部模型/总体趋势），与 `summary`/`daily`/`logs` 默认仅 `chat` 的口径不同——展示侧若需对齐，对 `summary` 传 `stage=all`。入参 `startDate`/`endDate` 同为 `yyyy-MM-dd`（含端）；均 `@SaCheckLogin` 且按登录用户隔离。
 >
 > `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
 >
