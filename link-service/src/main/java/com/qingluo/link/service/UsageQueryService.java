@@ -1,9 +1,11 @@
 package com.qingluo.link.service;
 
 import com.qingluo.link.model.dto.response.DailyUsageDTO;
+import com.qingluo.link.model.dto.response.ModelUsageDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.UsageLogDTO;
 import com.qingluo.link.model.dto.response.UsageSummaryDTO;
+import com.qingluo.link.model.dto.response.UsageTrendDTO;
 import java.util.List;
 
 /**
@@ -35,4 +37,14 @@ public interface UsageQueryService {
      * @param stage 阶段过滤；null/空 → 仅 chat，{@code all} → 全链路，其余 → 指定阶段
      */
     PageResult<UsageLogDTO> getUsageLogs(Long userId, String startDate, String endDate, String stage, int page, int pageSize);
+
+    /**
+     * 按「厂商 + 模型」聚合用量（全链路口径，不按 stage 过滤），按总 Token 降序。
+     */
+    List<ModelUsageDTO> getUsageByModel(Long userId, String startDate, String endDate);
+
+    /**
+     * 当前周期 vs 等长上一周期的用量环比趋势（全链路口径，不按 stage 过滤）。
+     */
+    UsageTrendDTO getUsageTrend(Long userId, String startDate, String endDate);
 }
