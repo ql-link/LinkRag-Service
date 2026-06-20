@@ -8,12 +8,10 @@ import com.qingluo.link.model.dto.response.DocumentFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.service.DocumentFileService;
-import com.qingluo.link.service.DocumentParseSseService;
 import com.qingluo.link.service.DocumentParseTaskService;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequiredArgsConstructor
@@ -30,7 +27,6 @@ public class DocumentFileController {
 
     private final DocumentFileService documentFileService;
     private final DocumentParseTaskService documentParseTaskService;
-    private final DocumentParseSseService documentParseSseService;
 
     @PostMapping("/api/v1/datasets/{datasetId}/files")
     @SaCheckLogin
@@ -79,13 +75,6 @@ public class DocumentFileController {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         documentFileService.delete(userId, fileId);
         return Result.ok(null);
-    }
-
-    @GetMapping(value = "/api/v1/datasets/{datasetId}/files/parse-events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @SaCheckLogin
-    public SseEmitter subscribeParseEvents(@PathVariable Long datasetId, @RequestParam String fileIds) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        return documentParseSseService.subscribe(userId, datasetId, parseFileIds(fileIds));
     }
 
     @GetMapping("/api/v1/datasets/{datasetId}/files/parse-results")
