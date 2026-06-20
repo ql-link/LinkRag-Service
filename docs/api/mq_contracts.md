@@ -13,6 +13,7 @@ MQ 实现事实来源：
 | `DocumentParseTaskMQ` | `tolink.rag.parse_task` | Java -> Python | 文档解析任务 |
 | `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | Java -> Python | 删除通知（通知 Python 删衍生产物） |
 | `ChatTurnMQ` | `tolink.rag.chat_turn` | Python -> Java | 对话轮次落库（一轮问答完整数据） |
+| `UsageReportMQ` | `tolink.rag.usage_report` | Python -> Java | 全链路用量上报（非对话调用：解析/召回侧模型用量） |
 | `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 缓存补偿删除（生产端为 CDC 桥接消费者，见下） |
 | Canal flatMessage（原始变更） | `tolink.canal.binlog` | Canal -> Java（CDC 桥接消费） | 行变更原始事件，桥接翻译为 `CacheCompensationMQ` |
 
@@ -74,6 +75,41 @@ Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersis
 - **归属校验**：`conversation_id` 来自前端请求体、`user_id` 取自 token，Python 仅透传不校验；Java 落库前必须校验 `conversation` 属于该 `user_id`，不匹配直接丢弃并告警，防止跨用户写入。
 
 topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `ChatTurnMQ` 自动注册创建。发布顺序：Python 迁移 0021 → Python 发送侧 → Java 消费侧 + topic 注册，避免消息长时间堆积无人消费。
+
+## 全链路用量上报字段（Python → Java）
+
+`UsageReportMQ`（topic `tolink.rag.usage_report`，`QUEUE` 点对点，routing_key = `user_id`）。`llm_usage_log` 已升级为「全链路模型调用账本」，本通道承载**非对话调用**：解析侧 embed/vision/table、召回侧 embed/rerank；对话最终 generate 走 `ChatTurnMQ` 通道，两条通道落同一张 `llm_usage_log`、口径一致。
+
+线格式为统一信封 `{"mq_type":"USAGE_REPORT","mq_name":"tolink.rag.usage_report","payload":{...}}`，业务字段在 `payload` 内、**全 snake_case**；Java 端 `UsageReportMQ.parseMsg` 先解包 `payload` 再反序列化（兼容无信封扁平结构）。
+
+`payload` → `llm_usage_log` 映射：
+
+- `user_id`（string/int，必填）→ `user_id`（Python 以 string 传，Java 转 BIGINT）。
+- `provider_type`（string，必填）→ `provider_type`。
+- `model_name`（string，必填）→ `model_name`。
+- `stage`（string，必填）→ `stage`：`parse` / `recall` / `chat`。
+- `operation`（string，必填）→ `operation`：`embed` / `rerank` / `vision` / `table`（`generate` 走 chat_turn 通道补；`sparse` 本期预留不上报）。
+- `prompt_tokens` / `completion_tokens` / `total_tokens`（int，必填）→ 同名列；向量类（embed/rerank）`completion_tokens` 恒 0 是预期值，vision/table 为真实生成 token。
+- `config_id`（int，可空）→ `config_id`；系统配置调用（如召回 query 编码）缺省 → **NULL**。
+- `conversation_id`（int，可空）→ `conversation_id`；缺省 NULL。
+- `request_id`（string，可空）→ `request_id`；串联同一次召回多条用量，召回侧当前暂不透传 → NULL。
+- `latency_ms`（int，可空）→ `latency_ms`；缺省 NULL。
+- `status`（string，可空）→ `status`：`success`/`partial`/`failed`，缺省补 `success`。
+- `task_id`（string，可空）：parse·embed 携带的解析任务锚点；当前表无独立 task 列，仅作审计锚点（日志记录）、**不落库**。
+- 信封基类自带 `message_id` / `timestamp`（仅追踪用途，不入库）。
+
+Java 消费链路：`UsageReportKafkaReceiver` → `UsageReportConsumer` → `UsageReportPersistenceService`，每条上报 `INSERT llm_usage_log` 一行。
+
+可靠性边界：
+
+- **旁路、最终一致**：用量是事后算账的旁路记录，Python 上报失败只告警不阻断主链路，**偶发丢条可接受**，不要求强一致；全缓存命中（token=0）不上报。
+- **task 级聚合**：一次解析的多个 chunk 的 embed token 合并成一条上报，不是每 chunk 一条。
+- **幂等**：本通道默认 at-least-once、偶发重复可接受；未启用强去重以免与 Python 侧 schema 漂移，信封 `message_id` 仅用于排障追踪（不入库）。
+- **NULL 合法态**：`config_id`/`conversation_id`/`request_id`/`latency_ms` 缺省即落 NULL，不补默认值。
+
+topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `UsageReportMQ` 自动注册创建。
+
+> 全链路口径一致性（LINK-184 §8）：`chat_turn` 落库写 `llm_usage_log` 时由 Java 自行补 `stage='chat'` / `operation='generate'`，使两条通道在 `stage` / `operation` 维度可统一聚账。
 
 ## 删除通知字段
 

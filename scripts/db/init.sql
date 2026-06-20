@@ -149,9 +149,11 @@ CREATE TABLE IF NOT EXISTS chat_message (
 CREATE TABLE IF NOT EXISTS llm_usage_log (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '记录唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
-    config_id           BIGINT UNSIGNED NOT NULL COMMENT '用户配置 ID',
+    config_id           BIGINT UNSIGNED COMMENT '用户配置 ID；系统配置调用（如召回 query 编码）为 NULL',
     provider_type       VARCHAR(32)     NOT NULL COMMENT '厂商类型',
     model_name          VARCHAR(128)    NOT NULL COMMENT '模型名称',
+    stage               VARCHAR(16)     NOT NULL COMMENT '调用阶段：parse/recall/chat',
+    operation           VARCHAR(16)     NOT NULL COMMENT '调用操作：embed/rerank/vision/table/generate',
     prompt_tokens       INT             NOT NULL COMMENT '输入 Token 数',
     completion_tokens   INT             NOT NULL COMMENT '输出 Token 数',
     total_tokens        INT             NOT NULL COMMENT '总 Token 数',
@@ -167,7 +169,8 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     INDEX idx_user_date (user_id, created_at),
     INDEX idx_config_date (config_id, created_at),
     INDEX idx_conversation_id (conversation_id),
-    INDEX idx_usage_message_id (message_id)
+    INDEX idx_usage_message_id (message_id),
+    INDEX idx_usage_stage_operation (stage, operation)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 调用用量日志表';
 
 -- 8. 文档文件原始文档上传记录表

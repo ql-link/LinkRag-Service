@@ -11,7 +11,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `llm_provider_model` | `ProviderModel` | 厂商→模型→能力目录（取代 `supported_models` JSON） |
 | `llm_system_preset` | `SystemPreset` | 系统预设模板（自带加密平台 Key） |
 | `llm_user_config` | `UserLLMConfig` | 用户 LLM 配置（下游唯一生效源；预设与自配统一汇入） |
-| `llm_usage_log` | `UsageLog` | LLM 用量记录（含 `conversation_id` / `message_id` / `request_id`，由对话轮次落库写入） |
+| `llm_usage_log` | `UsageLog` | 全链路模型调用账本（含 `stage` / `operation` / `conversation_id` / `message_id` / `request_id`，由对话轮次落库与用量上报两通道写入） |
 | `chat_conversation` | `ChatConversation` | 对话 |
 | `chat_message` | `ChatMessage` | 对话消息（一行一轮：`query` + `answer` 同行；含 `references`(JSON) / `request_id` / `status`） |
 | `dataset` | `Dataset` | 数据集 |
@@ -29,6 +29,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
 - `chat_message` 为「一行一轮」结构（对应 Python 仓库迁移 0021）：删 `role` / `token_count`，加 `query` / `answer`（原 `content` 改名）/ `references`(JSON，`JacksonTypeHandler`，列名为 MySQL 保留字需反引号包裹) / `request_id` / `status`(success/partial/failed)。行数据由 Java 消费 `tolink.rag.chat_turn` 后落库（见 `docs/api/mq_contracts.md`），Python 不直接写本表；存量库迁移脚本见 `scripts/db/add_chat_message_persistence.sql`。
 - `llm_usage_log` 增补 `message_id`（关联 `chat_message.id`）/ `request_id`（与 `chat_message.request_id` 一致），并由对话轮次落库真正写入既有 `conversation_id`。
+- `llm_usage_log` 升级为「全链路模型调用账本」（LINK-184）：增补 `stage`(VARCHAR(16) NOT NULL，`parse`/`recall`/`chat`) / `operation`(VARCHAR(16) NOT NULL，`embed`/`rerank`/`vision`/`table`/`generate`)，并放开 `config_id` 的 NOT NULL（系统配置调用如召回 query 编码落 NULL）。两条写入通道：① 对话最终生成走 `tolink.rag.chat_turn`，Java 补 `stage='chat'`/`operation='generate'`；② 非对话调用走 `tolink.rag.usage_report`（`UsageReportMQ` → `UsageReportPersistenceService`，见 `docs/api/mq_contracts.md`）。新增索引 `idx_usage_stage_operation (stage, operation)`。存量库迁移脚本见 `scripts/db/add_usage_report_stage_operation.sql`。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
 - `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。`OCR` 已移除，不再作为独立模型能力；存量环境可执行 `scripts/db/remove_ocr_capability.sql` 清理 `llm_provider_model` / `llm_system_preset` / `llm_user_config` 中的 OCR 行。
 - 厂商→模型→能力目录迁至 `llm_provider_model`（一个模型多能力=多行，唯一键 `uk_provider_model_cap (provider_id, model_name, capability)`），`llm_system_provider` 已去掉 `supported_models` / `config_schema` JSON。用户「配置厂商」即按该表展开整厂商 (模型, 能力) 写入 `llm_user_config`。
