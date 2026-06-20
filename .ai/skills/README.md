@@ -35,6 +35,7 @@
 | `auto-test` | 生成 JUnit/Mockito/MockMvc/SpringBootTest 测试，强调 Mock 隔离与边界覆盖 | 只写测试；红绿重构 → tdd |
 | `tdd` | 红-绿-重构循环，先写测试 | 仅用户明确要 TDD 时 |
 | `run-all-tests` | 跑全量 `mvn test` 并回报 | 见上 |
+| `curl-api-test` | 对本地已启动服务构建并执行 curl 黑盒接口测试，覆盖边界，结果在对话返回 | 要 JUnit/MockMvc 单测转 auto-test；要验收契约转 acceptance-generator |
 | `code-review-and-quality` | 五维质量门禁 | 安全专项可叠加内置 `/security-review` |
 | `swagger-annotation` | 为 Controller / DTO 生成 SpringDoc 中文注解 | 仅注解，不改业务逻辑 |
 
