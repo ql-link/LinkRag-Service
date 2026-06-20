@@ -182,8 +182,8 @@ class DatasetControllerTest {
             datasetId
         );
         jdbcTemplate.update("""
-            INSERT INTO chat_message (conversation_id, role, content, token_count)
-            VALUES (?, 'user', 'hello', 1)
+            INSERT INTO chat_message (conversation_id, `query`, answer, status)
+            VALUES (?, 'hello', 'hi', 'success')
             """, conversationId);
         jdbcTemplate.update("""
             INSERT INTO document_original_file (

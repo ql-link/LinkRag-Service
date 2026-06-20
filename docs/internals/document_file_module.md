@@ -7,15 +7,15 @@
 
 ## 职责
 
-文档文件模块负责数据集文件上传、解析任务提交、结果查询和 SSE 事件转发。
+文档文件模块负责数据集文件上传、解析任务提交和结果查询。
 
 ## 主要入口
 
 - Controller：`DocumentFileController`、`InternalDocumentFileController`
-- Service：`DocumentFileService`、`DocumentParseTaskService`、`DocumentParseResultService`、`DocumentParseSseService`
+- Service：`DocumentFileService`、`DocumentParseTaskService`
 - 上传异步化：`DocumentUploadAsyncExecutor`（池线程编排 OSS 上传→回写→清理）、`DocumentUploadStatusWriter`（终态守卫回写）、`DocumentUploadTempStorage`（临时文件物化/清理/启动清理）、`DocumentUploadStuckScanner`（uploading 超时扫描）；专用线程池 `documentUploadExecutor`（见 `docs/ops/configuration.md`）
 - Entity：`DocumentOriginalFile`、`DocumentParseFile`、`DocumentParsedLog`
-- MQ：`DocumentParseTaskMQ`、`DocumentParseResultMQ`
+- MQ：`DocumentParseTaskMQ`
 
 ## 上传异步化
 
@@ -40,8 +40,8 @@
 
 ## 链路摘要
 
-Java 端保存原文件与 `document_parse_file` 聚合记录，触发解析时先按 `document_parsed_log.parsed_object_key` + `document_parse_pipeline.pipeline_status` 分类首次/重试/已成功/运行中（已成功友好拒绝、不发 MQ；失败重试携带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标做阶段恢复），更新最新任务指针并发送扁平任务 MQ。Python 端执行解析与后处理流水线（含稀疏向量），将 Markdown 产物写入 `document_parsed_log`、端到端终态写入 `document_parse_pipeline.pipeline_status`，再发送终态结果 MQ。Java 消费结果后只校验关联关系并推送前端 SSE 事件，并可沿 `retry_of_task_id` 回溯重试链（`DocumentParseRetryChainService`）。
+Java 端保存原文件与 `document_parse_file` 聚合记录，触发解析时先按 `document_parsed_log.parsed_object_key` + `document_parse_pipeline.pipeline_status` 分类首次/重试/已成功/运行中（已成功友好拒绝、不发 MQ；失败重试携带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标做阶段恢复），更新最新任务指针并发送扁平任务 MQ。Python 端执行解析与后处理流水线（含稀疏向量），将 Markdown 产物写入 `document_parsed_log`、端到端终态写入 `document_parse_pipeline.pipeline_status`。Java 不再消费 `tolink.rag.parse_result`，前端通过 `parse-results` 查询接口读取终态，并可沿 `retry_of_task_id` 回溯重试链（`DocumentParseRetryChainService`）。
 
-## 结果消费的接收兜底
+## 解析终态查询
 
-`DocumentParseResultServiceImpl` 在归属校验通过后增加“当前任务过滤”：仅当消息 `task_id` 等于 `document_parse_file.latest_parse_task_id` 才推送终态 SSE，旧任务/乱序结果只记审计、不误推前端，指针缺失时 fail-open 放行。`DocumentParseStuckScanner` 定时扫描 `document_parse_pipeline` 中仍运行中（`PENDING`/`PROCESSING`）且超阈值的当前任务，重读其 `pipeline_status`：已终态（`SUCCESS`/`FAILED`）则以 DB 为准复用 `publishResultEvent` 补推（兜底通知丢失），仍运行中则告警。Java 在所有分支均只读 DB，不回写 Python 负责的终态字段。错误处理与容器工厂细节见 `docs/internals/mq_module.md`。解析结果消费者与卡住扫描入口均建立独立 traceId（消费者按消息自建、扫描每轮自建），异步上传线程池经 MDC 透传保留发起请求的 traceId，日志可全链路串联，详见 `docs/ops/configuration.md` §4.13。
+解析终态以 Python 写入的共享数据库为准。`GET /api/v1/datasets/{datasetId}/files/parse-results` 通过 `document_parse_file.latest_parse_task_id` 定位当前任务，读取对应 `document_parsed_log` 与 `document_parse_pipeline.pipeline_status`，Java 只读不回写 Python 负责的终态字段。

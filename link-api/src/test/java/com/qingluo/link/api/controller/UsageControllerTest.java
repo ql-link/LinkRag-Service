@@ -162,6 +162,8 @@ class UsageControllerTest {
         log1.setConfigId(TEST_CONFIG_ID);
         log1.setProviderType("openai");
         log1.setModelName("gpt-4");
+        log1.setStage("chat");          // 调用阶段
+        log1.setOperation("generate");  // 调用操作
         log1.setPromptTokens(100);      // 提示词 token 数
         log1.setCompletionTokens(50);   // 补全 token 数
         log1.setTotalTokens(150);       // 总 token 数
@@ -176,6 +178,8 @@ class UsageControllerTest {
         log2.setConfigId(TEST_CONFIG_ID);
         log2.setProviderType("openai");
         log2.setModelName("gpt-3.5-turbo");
+        log2.setStage("chat");
+        log2.setOperation("generate");
         log2.setPromptTokens(200);
         log2.setCompletionTokens(100);
         log2.setTotalTokens(300);
@@ -183,6 +187,22 @@ class UsageControllerTest {
         log2.setStatus("success");
         log2.setCreatedAt(LocalDateTime.now());
         usageLogMapper.insert(log2);
+
+        // 用量记录 3: 全链路 usage_report 通道写入的解析侧 embed 行（非对话）
+        // 用于验证读侧按 stage 过滤：缺省仅统计 chat，应排除本行；stage=all 才纳入。
+        UsageLog log3 = new UsageLog();
+        log3.setUserId(TEST_USER_ID);
+        log3.setConfigId(null);          // 系统配置调用 → config_id 为 NULL
+        log3.setProviderType("openai");
+        log3.setModelName("text-embedding-3-large");
+        log3.setStage("parse");
+        log3.setOperation("embed");
+        log3.setPromptTokens(12840);
+        log3.setCompletionTokens(0);     // 向量类恒 0
+        log3.setTotalTokens(12840);
+        log3.setStatus("success");
+        log3.setCreatedAt(LocalDateTime.now());
+        usageLogMapper.insert(log3);
 
         // ===== 步骤 4: 编程式登录 =====
         StpUtil.login(TEST_USER_ID);
@@ -213,12 +233,55 @@ class UsageControllerTest {
         String today = java.time.LocalDate.now().toString();
         String startDate = java.time.LocalDate.now().minusDays(7).toString();
 
+        // 缺省 stage：仅统计对话(chat) 两行，排除 parse·embed 行（口径与 LINK-184 前一致）。
         mockMvc.perform(get("/api/v1/llm/usage/summary")
                 .header("satoken", token)
                 .param("startDate", startDate)
                 .param("endDate", today))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(200));
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.totalCalls").value(2))
+            .andExpect(jsonPath("$.data.totalTokens").value(450));
+    }
+
+    /**
+     * 测试用例 1b：stage=all 统计全链路（含 parse·embed 行）。
+     */
+    @Test
+    @Order(5)
+    @DisplayName("全链路用量汇总 - GET /api/v1/llm/usage/summary?stage=all")
+    void Should_IncludeAllStages_When_StageAll() throws Exception {
+        String today = java.time.LocalDate.now().toString();
+        String startDate = java.time.LocalDate.now().minusDays(7).toString();
+
+        mockMvc.perform(get("/api/v1/llm/usage/summary")
+                .header("satoken", token)
+                .param("startDate", startDate)
+                .param("endDate", today)
+                .param("stage", "all"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalCalls").value(3))
+            .andExpect(jsonPath("$.data.totalTokens").value(13290));
+    }
+
+    /**
+     * 测试用例 1c：明细行暴露 stage/operation，且缺省仅返回 chat 行。
+     */
+    @Test
+    @Order(6)
+    @DisplayName("明细暴露 stage/operation 且缺省仅 chat - GET /api/v1/llm/usage/logs")
+    void Should_ExposeStageAndScopeToChat_When_GetUsageLogsDefault() throws Exception {
+        String today = java.time.LocalDate.now().toString();
+        String startDate = java.time.LocalDate.now().minusDays(7).toString();
+
+        mockMvc.perform(get("/api/v1/llm/usage/logs")
+                .header("satoken", token)
+                .param("startDate", startDate)
+                .param("endDate", today))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(2))
+            .andExpect(jsonPath("$.data.items[0].stage").value("chat"))
+            .andExpect(jsonPath("$.data.items[0].operation").value("generate"));
     }
 
     /**

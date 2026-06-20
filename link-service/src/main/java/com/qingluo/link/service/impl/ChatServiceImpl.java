@@ -6,7 +6,6 @@ import com.github.pagehelper.PageInfo;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.model.dto.request.CreateConversationRequest;
-import com.qingluo.link.model.dto.request.SendMessageRequest;
 import com.qingluo.link.model.dto.request.UpdateConversationRequest;
 import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.response.MessageDTO;
@@ -19,7 +18,6 @@ import com.qingluo.link.model.dto.entity.ChatMessage;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.service.ChatService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -52,11 +50,7 @@ public class ChatServiceImpl implements ChatService {
         conversation.setLastConfigId(request.getLastConfigId());
         conversation.setIsPinned(false);
 
-        try {
-            conversationMapper.insert(conversation);
-        } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(400, "当前数据集下已存在同名对话", 400);
-        }
+        conversationMapper.insert(conversation);
 
         return toDTO(conversation);
     }
@@ -130,35 +124,8 @@ public class ChatServiceImpl implements ChatService {
             throw new BusinessException(400, "请至少提供一个需要更新的字段", 400);
         }
 
-        try {
-            conversationMapper.updateById(conversation);
-        } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(400, "当前数据集下已存在同名对话", 400);
-        }
-        return toDTO(conversation);
-    }
-
-    @Override
-    @Transactional
-    /**
-     * 向指定会话追加一条用户消息。
-     */
-    public MessageDTO sendMessage(Long userId, Long conversationId, SendMessageRequest request) {
-        ChatConversation conversation = getOwnedConversation(userId, conversationId);
-
-        ChatMessage message = new ChatMessage();
-        message.setConversationId(conversationId);
-        message.setRole("user");
-        message.setContent(request.getContent().trim());
-        message.setConfigId(request.getConfigId());
-        message.setTokenCount(0);
-        messageMapper.insert(message);
-
-        // 维护会话元信息，确保列表按最近活跃时间排序。
-        conversation.setLastConfigId(request.getConfigId());
         conversationMapper.updateById(conversation);
-
-        return toDTO(message);
+        return toDTO(conversation);
     }
 
     @Override
@@ -197,11 +164,12 @@ public class ChatServiceImpl implements ChatService {
         MessageDTO dto = new MessageDTO();
         dto.setId(message.getId());
         dto.setConversationId(message.getConversationId());
-        dto.setRole(message.getRole());
-        dto.setContent(message.getContent());
+        dto.setQuery(message.getQuery());
+        dto.setAnswer(message.getAnswer());
         dto.setConfigId(message.getConfigId());
         dto.setModelName(message.getModelName());
-        dto.setTokenCount(message.getTokenCount());
+        dto.setReferences(message.getReferences());
+        dto.setStatus(message.getStatus());
         dto.setCreatedAt(message.getCreatedAt());
         return dto;
     }

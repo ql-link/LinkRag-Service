@@ -41,9 +41,11 @@ public class UsageController {
             @Parameter(description = "开始日期，格式yyyy-MM-dd", example = "2026-04-01")
             @RequestParam String startDate,
             @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
-            @RequestParam String endDate) {
+            @RequestParam String endDate,
+            @Parameter(description = "阶段过滤：缺省仅统计对话(chat)，all 统计全链路，或指定 parse/recall", example = "chat")
+            @RequestParam(defaultValue = "chat") String stage) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(usageQueryService.getSummary(userId, startDate, endDate));
+        return Result.success(usageQueryService.getSummary(userId, startDate, endDate, stage));
     }
 
     /**
@@ -60,9 +62,11 @@ public class UsageController {
             @Parameter(description = "开始日期，格式yyyy-MM-dd", example = "2026-04-01")
             @RequestParam String startDate,
             @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
-            @RequestParam String endDate) {
+            @RequestParam String endDate,
+            @Parameter(description = "阶段过滤：缺省仅统计对话(chat)，all 统计全链路，或指定 parse/recall", example = "chat")
+            @RequestParam(defaultValue = "chat") String stage) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(usageQueryService.getDailyUsage(userId, startDate, endDate));
+        return Result.success(usageQueryService.getDailyUsage(userId, startDate, endDate, stage));
     }
 
     /**
@@ -82,9 +86,11 @@ public class UsageController {
             @RequestParam String startDate,
             @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
             @RequestParam String endDate,
+            @Parameter(description = "阶段过滤：缺省仅统计对话(chat)，all 统计全链路，或指定 parse/recall", example = "chat")
+            @RequestParam(defaultValue = "chat") String stage,
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") int pageSize) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(usageQueryService.getUsageLogs(userId, startDate, endDate, page, pageSize));
+        return Result.success(usageQueryService.getUsageLogs(userId, startDate, endDate, stage, page, pageSize));
     }
 }

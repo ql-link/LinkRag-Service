@@ -2,7 +2,7 @@ package com.qingluo.link.service.mq;
 
 import com.qingluo.link.components.mq.MQMsgReceiver;
 import com.qingluo.link.components.mq.constant.MQVenderChoose;
-import com.qingluo.link.components.mq.model.DocumentParseResultMQ;
+import com.qingluo.link.components.mq.model.UsageReportMQ;
 import com.qingluo.link.core.trace.TraceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,27 +10,30 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+/**
+ * 用量上报 Kafka 接收器：监听 {@code tolink.rag.usage_report}，反序列化后转交业务消费者。
+ *
+ * <p>topic 由 KafkaMQTopologyScanner 扫描 {@link UsageReportMQ}（实现 AbstractMQ）自动注册创建，
+ * 与 chat_turn 一致。本接收器仅做线程级日志 traceId 串联，不写入消息体。</p>
+ */
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = MQVenderChoose.YML_VENDER_KEY, havingValue = MQVenderChoose.KAFKA)
 @Slf4j
-public class DocumentParseResultKafkaReceiver implements MQMsgReceiver {
+public class UsageReportKafkaReceiver implements MQMsgReceiver {
 
-    private final DocumentParseResultMQ.MQReceiver receiver;
+    private final UsageReportMQ.MQReceiver receiver;
 
     @Override
     @KafkaListener(
-        topics = DocumentParseResultMQ.MQ_NAME,
-        groupId = "${tolink.mq.parse-result.group-id:tolink-java-parse-result-worker}",
-        // 指向 parse_result 专用容器工厂（带退避重试 + 失败分类 + 告警/指标 recoverer）；
-        // 缓存补偿等其他消费者仍走 Boot 默认工厂，不受影响。
-        containerFactory = "parseResultKafkaListenerContainerFactory"
+            topics = UsageReportMQ.MQ_NAME,
+            groupId = "${tolink.mq.usage-report.group-id:tolink-java-usage-report-worker}"
     )
     public void receive(String msg) {
         TraceContext.startNew();
         try {
-            log.info("Receive parse result MQ message");
-            receiver.receive(DocumentParseResultMQ.parseMsg(msg));
+            log.info("Receive usage report MQ message");
+            receiver.receive(UsageReportMQ.parseMsg(msg));
         } finally {
             TraceContext.clear();
         }

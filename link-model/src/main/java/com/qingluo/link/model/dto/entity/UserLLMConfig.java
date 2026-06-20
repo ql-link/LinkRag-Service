@@ -52,7 +52,7 @@ public class UserLLMConfig {
     @TableField("model_name")
     private String modelName;
 
-    @Schema(description = "专用能力标识：CHAT/EMBEDDING/RERANK/OCR", example = "CHAT")
+    @Schema(description = "专用能力标识：CHAT/EMBEDDING/SPARSE_EMBEDDING/RERANK", example = "CHAT")
     @TableField("capability")
     private String capability = "CHAT";
 
