@@ -49,6 +49,8 @@
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
 
+> 用量查询（`UsageController`）口径：`llm_usage_log` 自 LINK-184 起为全链路账本，含对话生成（chat 通道）与解析/召回系统侧调用（usage_report 通道）。三个端点新增可选入参 `stage`（默认 `chat`）：缺省/`chat` 仅统计对话用量（与改造前口径一致），`all` 统计全链路，传具体阶段名（`parse`/`recall`）只统计该阶段。`summary`/`daily` 的计数、token、平均延迟均随该过滤生效。`logs` 明细 `UsageLogDTO` 新增 `stage` / `operation` 两字段，供前端区分用量来源。
+>
 > `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。

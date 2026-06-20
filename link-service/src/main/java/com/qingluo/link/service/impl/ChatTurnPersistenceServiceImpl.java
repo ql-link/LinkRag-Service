@@ -1,7 +1,10 @@
 package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.qingluo.link.components.mq.constant.UsageOperation;
+import com.qingluo.link.components.mq.constant.UsageStage;
 import com.qingluo.link.components.mq.model.ChatTurnMQ;
+import com.qingluo.link.core.util.NumberUtil;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.UsageLogMapper;
@@ -78,9 +81,12 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
         usage.setConfigId(payload.getConfigId());
         usage.setProviderType(nullToEmpty(payload.getProviderType()));
         usage.setModelName(nullToEmpty(payload.getModelName()));
-        usage.setPromptTokens(zeroIfNull(payload.getPromptTokens()));
-        usage.setCompletionTokens(zeroIfNull(payload.getCompletionTokens()));
-        usage.setTotalTokens(zeroIfNull(payload.getTotalTokens()));
+        // 全链路口径：对话最终生成补 stage=chat / operation=generate，与 usage_report 通道落同一张表口径一致（LINK-184）。
+        usage.setStage(UsageStage.CHAT.code());
+        usage.setOperation(UsageOperation.GENERATE.code());
+        usage.setPromptTokens(NumberUtil.zeroIfNull(payload.getPromptTokens()));
+        usage.setCompletionTokens(NumberUtil.zeroIfNull(payload.getCompletionTokens()));
+        usage.setTotalTokens(NumberUtil.zeroIfNull(payload.getTotalTokens()));
         usage.setLatencyMs(payload.getLatencyMs());
         usage.setStatus(payload.getStatus());
         usage.setConversationId(payload.getConversationId());
@@ -128,10 +134,6 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
             return trimmed;
         }
         return trimmed.substring(0, TITLE_MAX_LENGTH) + "…";
-    }
-
-    private int zeroIfNull(Integer value) {
-        return value == null ? 0 : value;
     }
 
     private String nullToEmpty(String value) {

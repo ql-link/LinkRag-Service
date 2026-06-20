@@ -34,6 +34,14 @@ public class UsageLog {
     @TableField("model_name")
     private String modelName;
 
+    @Schema(description = "调用阶段：parse/recall/chat", example = "parse")
+    @TableField("stage")
+    private String stage;
+
+    @Schema(description = "调用操作：embed/rerank/vision/table/generate", example = "embed")
+    @TableField("operation")
+    private String operation;
+
     @Schema(description = "提示词Token数", example = "100")
     @TableField("prompt_tokens")
     private Integer promptTokens;

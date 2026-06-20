@@ -9,9 +9,11 @@ import com.qingluo.link.model.dto.response.UsageLogDTO;
 import com.qingluo.link.model.dto.response.UsageSummaryDTO;
 import com.qingluo.link.mapper.UsageLogMapper;
 import com.qingluo.link.model.dto.entity.UsageLog;
+import com.qingluo.link.components.mq.constant.UsageStage;
 import com.qingluo.link.service.UsageQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,19 +31,35 @@ public class UsageQueryServiceImpl implements UsageQueryService {
 
     private final UsageLogMapper usageLogMapper;
 
+    /** 缺省阶段：未指定时仅统计对话生成，保持 LINK-184 前的用量口径。 */
+    private static final String DEFAULT_STAGE = UsageStage.CHAT.code();
+    /** 全链路标记：查询所有阶段（parse/recall/chat），不加 stage 过滤。 */
+    private static final String STAGE_ALL = "all";
+
+    /**
+     * 构造按用户 + 时间范围的基础查询，并按 {@code stage} 入参附加阶段过滤：
+     * null/空 → 仅 {@link #DEFAULT_STAGE}，{@link #STAGE_ALL} → 不过滤，其余 → 指定阶段。
+     */
+    private LambdaQueryWrapper<UsageLog> scopedQuery(Long userId, LocalDateTime start, LocalDateTime end, String stage) {
+        String effectiveStage = StringUtils.hasText(stage) ? stage.trim() : DEFAULT_STAGE;
+        LambdaQueryWrapper<UsageLog> wrapper = new LambdaQueryWrapper<UsageLog>()
+                .eq(UsageLog::getUserId, userId)
+                .between(UsageLog::getCreatedAt, start, end);
+        if (!STAGE_ALL.equalsIgnoreCase(effectiveStage)) {
+            wrapper.eq(UsageLog::getStage, effectiveStage);
+        }
+        return wrapper;
+    }
+
     @Override
     /**
      * 汇总指定时间范围内的调用统计数据。
      */
-    public UsageSummaryDTO getSummary(Long userId, String startDate, String endDate) {
+    public UsageSummaryDTO getSummary(Long userId, String startDate, String endDate, String stage) {
         LocalDateTime start = LocalDate.parse(startDate, DateTimeFormatter.ISO_DATE).atStartOfDay();
         LocalDateTime end = LocalDate.parse(endDate, DateTimeFormatter.ISO_DATE).atTime(23, 59, 59);
 
-        List<UsageLog> logs = usageLogMapper.selectList(
-            new LambdaQueryWrapper<UsageLog>()
-                .eq(UsageLog::getUserId, userId)
-                .between(UsageLog::getCreatedAt, start, end)
-        );
+        List<UsageLog> logs = usageLogMapper.selectList(scopedQuery(userId, start, end, stage));
 
         if (logs.isEmpty()) {
             return new UsageSummaryDTO(0, 0, 0, 0, 0.0);
@@ -64,15 +82,11 @@ public class UsageQueryServiceImpl implements UsageQueryService {
     /**
      * 按天聚合指定时间范围内的调用数据。
      */
-    public List<DailyUsageDTO> getDailyUsage(Long userId, String startDate, String endDate) {
+    public List<DailyUsageDTO> getDailyUsage(Long userId, String startDate, String endDate, String stage) {
         LocalDateTime start = LocalDate.parse(startDate, DateTimeFormatter.ISO_DATE).atStartOfDay();
         LocalDateTime end = LocalDate.parse(endDate, DateTimeFormatter.ISO_DATE).atTime(23, 59, 59);
 
-        List<UsageLog> logs = usageLogMapper.selectList(
-            new LambdaQueryWrapper<UsageLog>()
-                .eq(UsageLog::getUserId, userId)
-                .between(UsageLog::getCreatedAt, start, end)
-        );
+        List<UsageLog> logs = usageLogMapper.selectList(scopedQuery(userId, start, end, stage));
 
         Map<String, List<UsageLog>> byDate = logs.stream()
             .collect(Collectors.groupingBy(
@@ -98,16 +112,13 @@ public class UsageQueryServiceImpl implements UsageQueryService {
     /**
      * 分页查询指定时间范围内的调用日志。
      */
-    public PageResult<UsageLogDTO> getUsageLogs(Long userId, String startDate, String endDate, int page, int pageSize) {
+    public PageResult<UsageLogDTO> getUsageLogs(Long userId, String startDate, String endDate, String stage, int page, int pageSize) {
         LocalDateTime start = LocalDate.parse(startDate, DateTimeFormatter.ISO_DATE).atStartOfDay();
         LocalDateTime end = LocalDate.parse(endDate, DateTimeFormatter.ISO_DATE).atTime(23, 59, 59);
 
         PageHelper.startPage(page, pageSize);
         List<UsageLog> logs = usageLogMapper.selectList(
-            new LambdaQueryWrapper<UsageLog>()
-                .eq(UsageLog::getUserId, userId)
-                .between(UsageLog::getCreatedAt, start, end)
-                .orderByDesc(UsageLog::getCreatedAt)
+            scopedQuery(userId, start, end, stage).orderByDesc(UsageLog::getCreatedAt)
         );
 
         PageInfo<UsageLog> pageInfo = new PageInfo<>(logs);
@@ -126,6 +137,8 @@ public class UsageQueryServiceImpl implements UsageQueryService {
         dto.setConfigId(log.getConfigId());
         dto.setProviderType(log.getProviderType());
         dto.setModelName(log.getModelName());
+        dto.setStage(log.getStage());
+        dto.setOperation(log.getOperation());
         dto.setPromptTokens(log.getPromptTokens());
         dto.setCompletionTokens(log.getCompletionTokens());
         dto.setTotalTokens(log.getTotalTokens());
