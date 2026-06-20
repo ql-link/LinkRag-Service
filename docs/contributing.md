@@ -27,6 +27,7 @@
 
 - 全量 `mvn test`；单模块 `mvn -pl <module> test`
 - 规范见 [internals/testing.md](internals/testing.md)；写/补测试用 `auto-test`，跑全量用 `run-all-tests`
+- 对已启动服务做 curl 黑盒接口测试（含边界、直连库造数）用 `curl-api-test`
 
 ## 文档同步（机器强制）
 
