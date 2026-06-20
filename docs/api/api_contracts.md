@@ -26,6 +26,11 @@
 | PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |
 | PATCH | `/api/v1/admin/feedback/{id}/priority` | 更新反馈优先级：`1` 高 / `2` 中 / `3` 低 |
 | PATCH | `/api/v1/admin/feedback/{id}/reply` | 写入管理员回复，不自动修改反馈状态 |
+| GET | `/api/v1/admin/providers` | 管理端厂商列表（分页，按优先级倒序） |
+| POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol`） |
+| PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，变更后双删缓存 |
+| DELETE | `/api/v1/admin/providers/{id}` | 删除系统厂商 |
+| PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数） |
 | POST | `/api/v1/admin/providers/{providerId}/models` | 新增厂商模型能力目录项 |
 | DELETE | `/api/v1/admin/provider-models/{id}` | 删除模型能力目录项 |
 | PATCH | `/api/v1/admin/provider-models/{id}/active` | 上/下架模型能力目录项 |

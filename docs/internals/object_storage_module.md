@@ -6,6 +6,8 @@ OSS 组件位于 `link-components/toLink-components-oss`，业务上传入口位
 
 ## 当前能力
 
+OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOssService` / `LocalFileService` / `MinioFileService` / `PrivateFileResolver`。业务门面与对象 key/规则（`OssApplicationService` / `OssObjectKeyGenerator` / `OssUploadRuleRegistry`）位于 `link-service/.../service` 与 `service/oss`，不在组件内。
+
 - `IOssService`：统一对象存储接口，提供两种上传重载：
   - `upload2PreviewUrl(place, MultipartFile, key)`：从请求期 `MultipartFile` 上传（同步入口）。
   - `upload2PreviewUrl(place, File, contentType, key)`：从已物化的本地 `File` 上传，供请求外/异步场景使用（如文档上传异步化在线程池里上传）——请求期 `MultipartFile` 在请求结束后不可再读，故异步链路改传本地文件 + 显式 `contentType`。
