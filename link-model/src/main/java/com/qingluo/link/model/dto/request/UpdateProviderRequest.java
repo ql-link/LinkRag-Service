@@ -16,6 +16,9 @@ public class UpdateProviderRequest {
     @Schema(description = "API地址", example = "https://api.openai.com/v1")
     private String apiBaseUrl;
 
+    @Schema(description = "默认协议（模板值，用于新增模型能力预填）", example = "openai")
+    private String defaultProtocol;
+
     @Schema(description = "是否启用", example = "true")
     private Boolean isActive;
 

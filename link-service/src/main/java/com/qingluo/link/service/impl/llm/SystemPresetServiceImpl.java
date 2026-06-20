@@ -12,6 +12,7 @@ import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
+import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
@@ -131,6 +132,41 @@ public class SystemPresetServiceImpl implements SystemPresetService {
     }
 
     @Override
+    @Transactional
+    public SystemPreset updatePreset(Long id, UpdatePresetRequest request) {
+        SystemPreset preset = requirePreset(id);
+        Long providerId = request.getProviderId() != null ? request.getProviderId() : preset.getProviderId();
+        String modelName = StringUtils.hasText(request.getModelName()) ? request.getModelName() : preset.getModelName();
+        String capability = StringUtils.hasText(request.getCapability())
+                ? request.getCapability().toUpperCase(Locale.ROOT)
+                : preset.getCapability();
+
+        boolean modelBindingChanged = !providerId.equals(preset.getProviderId())
+                || !modelName.equals(preset.getModelName())
+                || !capability.equals(preset.getCapability());
+        if (modelBindingChanged) {
+            applyModelFacts(preset, providerId, modelName, capability);
+        }
+        if (StringUtils.hasText(request.getApiKey())) {
+            preset.setApiKey(apiKeyEncryptService.encrypt(request.getApiKey()));
+        }
+        if (request.getIsActive() != null) {
+            preset.setIsActive(request.getIsActive());
+        }
+
+        systemPresetMapper.updateById(preset);
+        return preset;
+    }
+
+    @Override
+    @Transactional
+    public void togglePreset(Long id, boolean isActive) {
+        SystemPreset preset = requirePreset(id);
+        preset.setIsActive(isActive);
+        systemPresetMapper.updateById(preset);
+    }
+
+    @Override
     /**
      * 列出全部系统预设，Key 脱敏返回（不向管理端暴露平台 Key 明文）。
      */
@@ -138,6 +174,36 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         List<SystemPreset> presets = systemPresetMapper.selectList(null);
         presets.forEach(preset -> preset.setApiKey(apiKeyEncryptService.maskApiKey(preset.getApiKey())));
         return presets;
+    }
+
+    private SystemPreset requirePreset(Long id) {
+        SystemPreset preset = systemPresetMapper.selectById(id);
+        if (preset == null) {
+            throw new NotFoundException(ErrorCode.USER_CONFIG_NOT_FOUND, "系统预设不存在");
+        }
+        return preset;
+    }
+
+    private void applyModelFacts(SystemPreset preset, Long providerId, String modelName, String capability) {
+        SystemProvider provider = systemProviderMapper.selectById(providerId);
+        if (provider == null) {
+            throw NotFoundException.providerNotFound();
+        }
+        llmCapabilityService.validateCapability(capability);
+        ProviderModel model = providerModelService.findActiveModelCapability(providerId, modelName, capability);
+        if (model == null) {
+            throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "目录中无该模型能力，无法预设");
+        }
+        if (!StringUtils.hasText(model.getProtocol()) || !StringUtils.hasText(model.getApiBaseUrl())) {
+            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
+        }
+
+        preset.setProviderId(providerId);
+        preset.setModelName(modelName);
+        preset.setCapability(capability);
+        preset.setProviderType(provider.getProviderType());
+        preset.setProtocol(model.getProtocol());
+        preset.setApiBaseUrl(model.getApiBaseUrl());
     }
 
     /**

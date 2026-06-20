@@ -1,6 +1,8 @@
 package com.qingluo.link.service;
 
 import com.qingluo.link.model.dto.entity.ProviderModel;
+import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
+import com.qingluo.link.model.dto.response.PageResult;
 
 import java.util.List;
 
@@ -38,6 +40,11 @@ public interface ProviderModelService {
     ProviderModel findActiveModelCapability(Long providerId, String modelName, String capability);
 
     /**
+     * 管理端：分页查询模型能力目录，可包含下架行。
+     */
+    PageResult<ProviderModel> listModels(int page, int size, Long providerId, String capability, Boolean isActive);
+
+    /**
      * 管理端：新增一条模型能力（已存在则幂等确保上架并刷新事实字段）。
      * protocol/api_base_url 是运行事实来源，均必填且 protocol 须在受支持集合内。
      */
@@ -48,6 +55,11 @@ public interface ProviderModelService {
      * 管理端：删除一条模型能力目录项。
      */
     void deleteModelCapability(Long id);
+
+    /**
+     * 管理端：更新一条模型能力目录项。
+     */
+    ProviderModel updateModelCapability(Long id, UpdateProviderModelRequest request);
 
     /**
      * 管理端：上/下架某条模型能力。

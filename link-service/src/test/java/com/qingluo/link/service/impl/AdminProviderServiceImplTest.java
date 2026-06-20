@@ -11,6 +11,7 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.response.PageResult;
+import com.qingluo.link.service.LLMProtocolService;
 import com.qingluo.link.service.impl.admin.AdminProviderServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,8 @@ class AdminProviderServiceImplTest {
 
     @Mock
     private CacheConsistencyService cacheConsistencyService;
+    @Mock
+    private LLMProtocolService llmProtocolService;
 
     @InjectMocks
     private AdminProviderServiceImpl adminProviderService;
@@ -65,6 +68,7 @@ class AdminProviderServiceImplTest {
         request.setProviderType("openai");
         request.setProviderName("OpenAI");
         request.setApiBaseUrl("https://api.openai.com/v1");
+        request.setDefaultProtocol("openai");
         request.setIsActive(true);
         request.setPriority(100);
         given(systemProviderMapper.selectCount(any())).willReturn(0L);
@@ -80,6 +84,7 @@ class AdminProviderServiceImplTest {
     void Should_ThrowConflictException_When_ProviderTypeDuplicate() {
         CreateProviderRequest request = new CreateProviderRequest();
         request.setProviderType("openai");
+        request.setDefaultProtocol("openai");
         given(systemProviderMapper.selectCount(any())).willReturn(1L);
 
         assertThatThrownBy(() -> adminProviderService.createProvider(request))
@@ -96,6 +101,7 @@ class AdminProviderServiceImplTest {
 
         UpdateProviderRequest request = new UpdateProviderRequest();
         request.setProviderName("OpenAI Updated");
+        request.setDefaultProtocol("openai");
         request.setPriority(80);
         adminProviderService.updateProvider(1L, request);
 

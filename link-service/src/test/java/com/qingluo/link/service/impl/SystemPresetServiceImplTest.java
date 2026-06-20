@@ -10,6 +10,7 @@ import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
+import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
@@ -150,6 +151,49 @@ class SystemPresetServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", ErrorCode.MODEL_NOT_SUPPORTED.getCode());
         verify(systemPresetMapper, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("更新预设绑定：重新复制模型能力层事实并加密新 Key")
+    void updatePreset_rebindsModelFactsAndEncryptsKey() {
+        SystemPreset existing = preset(1L, 5L, "deepseek-chat", "CHAT",
+                "deepseek", "openai", "https://old", "ENC_OLD");
+        given(systemPresetMapper.selectById(1L)).willReturn(existing);
+        given(systemProviderMapper.selectById(6L)).willReturn(provider(6L, "aliyun", "https://other"));
+        given(providerModelService.findActiveModelCapability(6L, "gte-rerank", "RERANK"))
+                .willReturn(model("dashscope", "https://dashscope.aliyuncs.com/api/v1"));
+        given(apiKeyEncryptService.encrypt("sk-new")).willReturn("ENC_NEW");
+
+        UpdatePresetRequest request = new UpdatePresetRequest();
+        request.setProviderId(6L);
+        request.setModelName("gte-rerank");
+        request.setCapability("rerank");
+        request.setApiKey("sk-new");
+        request.setIsActive(false);
+
+        SystemPreset result = service.updatePreset(1L, request);
+
+        assertThat(result.getProviderId()).isEqualTo(6L);
+        assertThat(result.getProviderType()).isEqualTo("aliyun");
+        assertThat(result.getCapability()).isEqualTo("RERANK");
+        assertThat(result.getProtocol()).isEqualTo("dashscope");
+        assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
+        assertThat(result.getApiKey()).isEqualTo("ENC_NEW");
+        assertThat(result.getIsActive()).isFalse();
+        verify(systemPresetMapper).updateById(existing);
+    }
+
+    @Test
+    @DisplayName("启停预设：仅更新 is_active")
+    void togglePreset_updatesActiveFlag() {
+        SystemPreset existing = preset(1L, 5L, "deepseek-chat", "CHAT",
+                "deepseek", "openai", "https://old", "ENC_OLD");
+        given(systemPresetMapper.selectById(1L)).willReturn(existing);
+
+        service.togglePreset(1L, false);
+
+        assertThat(existing.getIsActive()).isFalse();
+        verify(systemPresetMapper).updateById(existing);
     }
 
     private SystemPreset preset(Long id, Long providerId, String model, String capability,
