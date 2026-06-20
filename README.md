@@ -62,6 +62,9 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 - MQ：解析任务 `tolink.rag.parse_task` 投递，删除通知 `tolink.rag.document_delete` 投递，缓存补偿 `tolink.cache.evict`；Java 不再消费 `tolink.rag.parse_result`，解析终态以 Python 写入的共享数据库为准，由前端轮询 `parse-results` 查询。
 - Redis：用户、LLM 配置、文档文件运行配置缓存，以及同步删除和补偿删除能力。
 - 召回 session 签发：聊天召回走「前端直连 Python」，Java 校验登录态、用户状态、数据集权限后签发短期 HS256 session token（含 `streamUrl`），前端凭 token 直连 Python 拉召回/生成 SSE；Java 不在召回/生成请求路径上。
+- 博客：文章草稿/发布管理、Markdown 正文与封面/正文图片对象存储、公开端查询。
+- 反馈：匿名用户反馈提交（可选附件）与管理端反馈处理（状态、优先级、回复）。
+- CDC 缓存补偿：消费 Canal binlog 经 CDC 桥接翻译为 `tolink.cache.evict`，对用户/配置/厂商等缓存目标做最终一致补偿失效。
 
 ## 快速开始
 
@@ -129,6 +132,8 @@ docker compose up -d
 | Dataset | `/api/v1/datasets` |
 | Document File | `/api/v1/datasets/{datasetId}/files`、`/api/v1/files/{fileId}` |
 | Recall | `/api/v1/recall/sessions`（签发前端直连 Python 召回的 session token） |
+| Blog | `/api/v1/blog`（公开端）、`/api/v1/admin/blog`（管理端） |
+| Feedback | `/api/v1/feedback`（提交）、`/api/v1/admin/feedback`（管理端处理） |
 | OSS File | `/api/v1/oss-files/{bizType}` |
 | Internal | `/api/v1/internal/files/{fileId}/content`、`/api/v1/internal/parse-tasks/{taskId}/events` |
 

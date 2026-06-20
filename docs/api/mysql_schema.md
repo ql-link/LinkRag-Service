@@ -22,7 +22,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `blog_post` | `BlogPost` | 博客文章元数据、发布状态和 Markdown 对象指针 |
 | `blog_asset` | `BlogAsset` | 博客封面资源和正文图片资源元数据 |
 | `user_feedback` | `UserFeedback` | 匿名反馈、私有附件对象键、管理员处理状态与回复 |
-| `dataset_parse_config` | `DatasetParseConfig`（LINK-149 待建） | 数据集级解析/检索参数配置（4 类 JSON：chunking / enhancement / pdf / recall）；跨端共享，Java 读写、Python 直读 |
+| `dataset_parse_config` | `DatasetParseConfig` | 数据集级解析/检索参数配置（4 类 JSON：chunking / enhancement / pdf / recall）；跨端共享，Java 读写、Python 直读 |
 
 ## 约定
 
