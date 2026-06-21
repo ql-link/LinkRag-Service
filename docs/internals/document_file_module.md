@@ -41,7 +41,7 @@
 
 ## 链路摘要
 
-Java 端保存原文件与 `document_parse_file` 聚合记录，触发解析时先按 `document_parsed_log.parsed_object_key` + `document_parse_pipeline.pipeline_status` 分类首次/重试/已成功/运行中（已成功友好拒绝、不发 MQ；失败重试携带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标做阶段恢复），更新最新任务指针并发送扁平任务 MQ。Python 端执行解析与后处理流水线（含稀疏向量），将 Markdown 产物写入 `document_parsed_log`、端到端终态写入 `document_parse_pipeline.pipeline_status`。Java 不再消费 `tolink.rag.parse_result`，前端通过 `parse-results` 查询接口读取终态，并可沿 `retry_of_task_id` 回溯重试链（`DocumentParseRetryChainService`）。
+Java 端保存原文件与 `document_parse_file` 聚合记录，触发解析时先按 `document_parsed_log.parsed_object_key` + `document_parse_pipeline.pipeline_status` 分类首次/重试/已成功/运行中（已成功友好拒绝、不发 MQ；失败重试携带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标做阶段恢复），更新最新任务指针并发送扁平任务 MQ。PDF 文件会读取数据集级 `pdf_config.pdf_parser_backend`，配置非空且合法时以 `pdf_parser_backend` 透传给 Python；Java 不在 MQ 层补默认值，未配置时由 Python 继续兜底。Python 端执行解析与后处理流水线（含稀疏向量），将 Markdown 产物写入 `document_parsed_log`、端到端终态写入 `document_parse_pipeline.pipeline_status`。Java 不再消费 `tolink.rag.parse_result`，前端通过 `parse-results` 查询接口读取终态，并可沿 `retry_of_task_id` 回溯重试链（`DocumentParseRetryChainService`）。
 
 ## 解析终态查询
 
