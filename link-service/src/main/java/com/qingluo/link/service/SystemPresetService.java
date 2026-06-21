@@ -2,6 +2,7 @@ package com.qingluo.link.service;
 
 import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
+import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 
 import java.util.List;
 
@@ -28,6 +29,16 @@ public interface SystemPresetService {
      * 管理端：删除一条系统预设。
      */
     void deletePreset(Long id);
+
+    /**
+     * 管理端：更新一条系统预设。
+     */
+    SystemPreset updatePreset(Long id, UpdatePresetRequest request);
+
+    /**
+     * 管理端：启用/禁用一条系统预设。
+     */
+    void togglePreset(Long id, boolean isActive);
 
     /**
      * 管理端：列出全部系统预设（Key 脱敏返回）。

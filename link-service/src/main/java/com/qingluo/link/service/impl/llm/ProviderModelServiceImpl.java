@@ -1,6 +1,7 @@
 package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qingluo.link.components.redis.service.CacheConsistencyService;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
@@ -9,6 +10,8 @@ import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
+import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.LLMProtocolService;
@@ -90,6 +93,28 @@ public class ProviderModelServiceImpl implements ProviderModelService {
     }
 
     @Override
+    public PageResult<ProviderModel> listModels(int page, int size, Long providerId, String capability, Boolean isActive) {
+        String normalizedCapability = normalizeCapabilityIfPresent(capability);
+        LambdaQueryWrapper<ProviderModel> wrapper = new LambdaQueryWrapper<ProviderModel>()
+                .orderByAsc(ProviderModel::getProviderId)
+                .orderByAsc(ProviderModel::getModelName)
+                .orderByAsc(ProviderModel::getCapability);
+        if (providerId != null) {
+            wrapper.eq(ProviderModel::getProviderId, providerId);
+        }
+        if (normalizedCapability != null) {
+            wrapper.eq(ProviderModel::getCapability, normalizedCapability);
+        }
+        if (isActive != null) {
+            wrapper.eq(ProviderModel::getIsActive, isActive);
+        }
+
+        Page<ProviderModel> pageParam = new Page<>(page, size);
+        Page<ProviderModel> result = providerModelMapper.selectPage(pageParam, wrapper);
+        return new PageResult<>(result.getRecords(), result.getTotal(), page, size);
+    }
+
+    @Override
     @Transactional
     /**
      * 新增模型能力目录项。已存在同 (厂商,模型,能力) 时幂等确保其上架并刷新事实字段，
@@ -138,6 +163,35 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         ProviderModel model = requireModel(id);
         providerModelMapper.deleteById(id);
         evictProviderCache(systemProviderMapper.selectById(model.getProviderId()));
+    }
+
+    @Override
+    @Transactional
+    public ProviderModel updateModelCapability(Long id, UpdateProviderModelRequest request) {
+        ProviderModel model = requireModel(id);
+        if (StringUtils.hasText(request.getModelName())) {
+            model.setModelName(request.getModelName());
+        }
+        if (StringUtils.hasText(request.getCapability())) {
+            model.setCapability(normalizeCapability(request.getCapability()));
+        }
+        if (StringUtils.hasText(request.getProtocol())) {
+            llmProtocolService.validateProtocol(request.getProtocol());
+            model.setProtocol(request.getProtocol());
+        }
+        if (StringUtils.hasText(request.getApiBaseUrl())) {
+            model.setApiBaseUrl(request.getApiBaseUrl());
+        }
+        if (request.getIsActive() != null) {
+            model.setIsActive(request.getIsActive());
+        }
+        if (!StringUtils.hasText(model.getProtocol()) || !StringUtils.hasText(model.getApiBaseUrl())) {
+            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
+        }
+
+        providerModelMapper.updateById(model);
+        evictProviderCache(systemProviderMapper.selectById(model.getProviderId()));
+        return model;
     }
 
     @Override

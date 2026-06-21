@@ -8,9 +8,15 @@ import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.DatasetMapper;
+import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
+import com.qingluo.link.model.dto.config.ChunkingConfig;
+import com.qingluo.link.model.dto.config.EnhancementConfig;
+import com.qingluo.link.model.dto.config.PdfConfig;
+import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
+import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.model.dto.request.CreateDatasetRequest;
 import com.qingluo.link.model.dto.request.UpdateDatasetRequest;
@@ -35,8 +41,10 @@ import org.springframework.util.StringUtils;
 public class DatasetServiceImpl implements DatasetService {
 
     private static final String DATASET_STATUS_ACTIVE = "ACTIVE";
+    private static final List<String> DEFAULT_RECALL_ENABLED_SOURCES = List.of("bm25", "sparse", "dense");
 
     private final DatasetMapper datasetMapper;
+    private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final ChatConversationMapper chatConversationMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
@@ -58,6 +66,7 @@ public class DatasetServiceImpl implements DatasetService {
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(400, "当前用户下已存在同名数据集", 400);
         }
+        insertDefaultParseConfig(userId, dataset.getId());
         return toDTO(dataset);
     }
 
@@ -169,6 +178,26 @@ public class DatasetServiceImpl implements DatasetService {
         } else {
             deleteNotifier.notifyDatasetDeleted(datasetId, userId);
         }
+    }
+
+    private void insertDefaultParseConfig(Long userId, Long datasetId) {
+        DatasetParseConfig config = new DatasetParseConfig();
+        config.setUserId(userId);
+        config.setDatasetId(datasetId);
+        config.setChunkingConfig(new ChunkingConfig());
+        config.setEnhancementConfig(new EnhancementConfig());
+        config.setPdfConfig(new PdfConfig());
+        config.setRecallConfig(defaultRecallConfig());
+        config.setIsActive(true);
+        datasetParseConfigMapper.insert(config);
+    }
+
+    private RecallConfig defaultRecallConfig() {
+        RecallConfig recall = new RecallConfig();
+        recall.setRecallEnabledSources(DEFAULT_RECALL_ENABLED_SOURCES);
+        recall.setRerankTopN(8);
+        recall.setRecallStrict(false);
+        return recall;
     }
 
     /**

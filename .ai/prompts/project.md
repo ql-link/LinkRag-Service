@@ -1,6 +1,6 @@
 # toLink-Service
 
-`toLink-Service` 是 ToLink 的 Java 管理端服务，基于 Spring Boot 和 Maven 多模块组织，负责用户、LLM 配置、数据集、知识文件、OSS 文件入口、MQ 解析任务投递与解析结果回传。
+`toLink-Service` 是 ToLink 的 Java 管理端服务，基于 Spring Boot 和 Maven 多模块组织，负责用户与权限、LLM 配置、对话、数据集、知识文件、OSS 文件入口、MQ 解析任务投递与结果落库、用量账本、博客内容、用户反馈、召回 session 签发，以及基于 CDC 的缓存补偿。
 
 本文件是项目的 **AI Agent 与贡献者统一入口**。新需求开发采用 Spec-as-Test 工作流：`brief.md → acceptance.feature → technical_design.md → Code + Tests`。旧七阶段 `requirement.md / testing_delivery.md` 流程已废弃。
 
@@ -50,7 +50,7 @@ python3 scripts/check_docs_sync.py --working
 | `link-core` | 异常体系、全局异常处理、认证上下文、加密与基础工具 |
 | `link-components` | Redis、MQ、OSS 等横向组件 |
 | `link-mapper` | MyBatis-Plus Mapper |
-| `link-service` | 用户、配置、数据集、知识文件、解析任务、用量等业务逻辑 |
+| `link-service` | 用户、配置、数据集、知识文件、解析任务、用量、博客、反馈、管理端、召回签发、CDC 缓存补偿等业务逻辑 |
 | `link-api` | Controller、启动入口、接口层配置与测试入口 |
 
 ### 1.4 系统边界

@@ -13,6 +13,7 @@ import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.mapper.DatasetMapper;
+import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
@@ -37,6 +38,9 @@ class DatasetServiceImplTest {
 
     @Mock
     private DatasetMapper datasetMapper;
+
+    @Mock
+    private DatasetParseConfigMapper datasetParseConfigMapper;
 
     @Mock
     private ChatConversationMapper chatConversationMapper;

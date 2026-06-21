@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     api_base_url        VARCHAR(512)    COMMENT '实际生效地址：完整端点 URL，复制自模型能力层事实（不 fallback 厂商默认），Python 直打',
     protocol            VARCHAR(32)     COMMENT '调用协议快照：复制自模型能力层，下游按 protocol+capability 选 adapter',
     model_name          VARCHAR(128)    NOT NULL COMMENT '具体模型名',
-    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/RERANK/OCR 等',
+    capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/SPARSE_EMBEDDING/RERANK 等',
     is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '模型启停 + 生效过滤',
     is_default          BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '该能力是否生效（单用户单能力唯一）',
     is_system_preset    BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '系统预设行（只读）',
@@ -125,31 +125,35 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     INDEX idx_chat_conversation_user_active_list (user_id, is_pinned, updated_at),
-    INDEX idx_chat_conversation_dataset_updated (dataset_id, updated_at),
-    UNIQUE KEY uk_conversation_user_dataset_title (user_id, dataset_id, title)
+    INDEX idx_chat_conversation_dataset_updated (dataset_id, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话表';
 
 -- 6. 对话消息表
 CREATE TABLE IF NOT EXISTS chat_message (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '消息唯一标识',
     conversation_id     BIGINT UNSIGNED NOT NULL COMMENT '所属对话 ID',
-    config_id           BIGINT UNSIGNED COMMENT '产生该消息所使用的 LLM 配置 ID',
+    config_id           BIGINT UNSIGNED COMMENT '本轮所用 LLM 配置 ID',
     model_name          VARCHAR(128)    COMMENT '模型名快照',
-    role                VARCHAR(16)     NOT NULL COMMENT '角色：user/assistant/system',
-    content             MEDIUMTEXT      NOT NULL COMMENT '消息内容',
-    token_count         INT             DEFAULT 0 COMMENT '该条消息消耗的 Token 数',
+    `query`             MEDIUMTEXT      COMMENT '用户提问',
+    answer              MEDIUMTEXT      COMMENT 'LLM 回答（partial 为半截，failed 可空）',
+    `references`        JSON            COMMENT '召回片段 chunk_id 列表（仅标识，不含正文）',
+    request_id          VARCHAR(64)     COMMENT '请求追踪 ID / 幂等键',
+    status              VARCHAR(16)     NOT NULL DEFAULT 'success' COMMENT '轮次状态：success/partial/failed',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    INDEX idx_conversation_created (conversation_id, created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话消息表';
+    INDEX idx_conversation_created (conversation_id, created_at),
+    INDEX idx_chat_message_request_id (request_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话消息表（一行一轮）';
 
 -- 7. LLM 调用用量日志表
 CREATE TABLE IF NOT EXISTS llm_usage_log (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '记录唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
-    config_id           BIGINT UNSIGNED NOT NULL COMMENT '用户配置 ID',
+    config_id           BIGINT UNSIGNED COMMENT '用户配置 ID；系统配置调用（如召回 query 编码）为 NULL',
     provider_type       VARCHAR(32)     NOT NULL COMMENT '厂商类型',
     model_name          VARCHAR(128)    NOT NULL COMMENT '模型名称',
+    stage               VARCHAR(16)     NOT NULL COMMENT '调用阶段：parse/recall/chat',
+    operation           VARCHAR(16)     NOT NULL COMMENT '调用操作：embed/rerank/vision/table/generate',
     prompt_tokens       INT             NOT NULL COMMENT '输入 Token 数',
     completion_tokens   INT             NOT NULL COMMENT '输出 Token 数',
     total_tokens        INT             NOT NULL COMMENT '总 Token 数',
@@ -158,11 +162,15 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     error_message       VARCHAR(512)    COMMENT '错误信息',
     fallback_config_id  BIGINT UNSIGNED COMMENT '触发 Fallback 时记录原配置 ID',
     conversation_id     BIGINT UNSIGNED COMMENT '关联对话 ID',
+    message_id          BIGINT UNSIGNED COMMENT '关联消息 ID（chat_message.id）',
+    request_id          VARCHAR(64)     COMMENT '请求追踪 ID / 幂等键（与 chat_message.request_id 一致）',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_user_date (user_id, created_at),
     INDEX idx_config_date (config_id, created_at),
-    INDEX idx_conversation_id (conversation_id)
+    INDEX idx_conversation_id (conversation_id),
+    INDEX idx_usage_message_id (message_id),
+    INDEX idx_usage_stage_operation (stage, operation)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 调用用量日志表';
 
 -- 8. 文档文件原始文档上传记录表
@@ -326,7 +334,7 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
     chunking_config     JSON            NOT NULL COMMENT '分块配置（3 项：heading_break_level / min_candidate_chunk_tokens / overlap_tokens）',
     enhancement_config  JSON            NOT NULL COMMENT 'Markdown 增强配置（2 项开关：enable_table_enhancement / enable_image_enhancement；增强模型不在此选择，统一用发起用户 CHAT/VISION 默认模型）',
     pdf_config          JSON            NOT NULL COMMENT 'PDF 解析配置（1 项：pdf_parser_backend）',
-    recall_config       JSON            NOT NULL COMMENT '召回检索配置（6 项：recall_result_limit / recall_context_token_budget / sparse_top_k / sparse_score_threshold / dense_top_k / dense_score_threshold）',
+    recall_config       JSON            NOT NULL COMMENT '召回检索配置（9 项：recall_result_limit / recall_context_token_budget / sparse_top_k / sparse_score_threshold / dense_top_k / dense_score_threshold / recall_enabled_sources / rerank_top_n / recall_strict）',
     is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否启用',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

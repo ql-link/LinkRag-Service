@@ -85,8 +85,9 @@ class UserLLMConfigServiceImplTest {
         given(systemProviderService.getActiveByProviderType("openai")).willReturn(provider);
         given(apiKeyEncryptService.encrypt("sk-alice")).willReturn("ENC");
         given(providerModelService.listActiveModels(5L, null)).willReturn(List.of(
-                pm("gpt-4o", "CHAT"), pm("gpt-4o", "VISION"), pm("gpt-4o", "OCR"),
-                pm("gpt-4o-mini", "CHAT"), pm("text-embedding-3", "EMBEDDING")));
+                pm("gpt-4o", "CHAT"), pm("gpt-4o", "VISION"),
+                pm("gpt-4o-mini", "CHAT"), pm("text-embedding-3", "EMBEDDING"),
+                pm("bge-m3", "SPARSE_EMBEDDING")));
         given(userLLMConfigMapper.selectOne(any())).willReturn(null);
         given(apiKeyEncryptService.maskApiKey("ENC")).willReturn("EN****1234");
 
@@ -146,6 +147,7 @@ class UserLLMConfigServiceImplTest {
         given(providerModelService.listActiveModels(5L, null)).willReturn(List.of(
                 pm("qwen-max", "CHAT", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
                 pm("qwen-embedding", "EMBEDDING", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                pm("qwen-sparse", "SPARSE_EMBEDDING", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
                 pm("gte-rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1"),
                 pm("qwen3-asr", "ASR", "dashscope", "https://dashscope.aliyuncs.com/api/v1")));
         given(userLLMConfigMapper.selectOne(any())).willReturn(null);
@@ -156,12 +158,13 @@ class UserLLMConfigServiceImplTest {
         service.setupProvider(7L, request);
 
         ArgumentCaptor<UserLLMConfig> captor = ArgumentCaptor.forClass(UserLLMConfig.class);
-        verify(userLLMConfigMapper, times(4)).insert(captor.capture());
+        verify(userLLMConfigMapper, times(5)).insert(captor.capture());
         assertThat(captor.getAllValues())
                 .extracting(UserLLMConfig::getCapability, UserLLMConfig::getProtocol)
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("CHAT", "openai"),
                         org.assertj.core.groups.Tuple.tuple("EMBEDDING", "openai"),
+                        org.assertj.core.groups.Tuple.tuple("SPARSE_EMBEDDING", "openai"),
                         org.assertj.core.groups.Tuple.tuple("RERANK", "dashscope"),
                         org.assertj.core.groups.Tuple.tuple("ASR", "dashscope"));
     }

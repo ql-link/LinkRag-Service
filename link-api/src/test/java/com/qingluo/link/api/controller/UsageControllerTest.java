@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -162,6 +163,8 @@ class UsageControllerTest {
         log1.setConfigId(TEST_CONFIG_ID);
         log1.setProviderType("openai");
         log1.setModelName("gpt-4");
+        log1.setStage("chat");          // 调用阶段
+        log1.setOperation("generate");  // 调用操作
         log1.setPromptTokens(100);      // 提示词 token 数
         log1.setCompletionTokens(50);   // 补全 token 数
         log1.setTotalTokens(150);       // 总 token 数
@@ -176,6 +179,8 @@ class UsageControllerTest {
         log2.setConfigId(TEST_CONFIG_ID);
         log2.setProviderType("openai");
         log2.setModelName("gpt-3.5-turbo");
+        log2.setStage("chat");
+        log2.setOperation("generate");
         log2.setPromptTokens(200);
         log2.setCompletionTokens(100);
         log2.setTotalTokens(300);
@@ -183,6 +188,22 @@ class UsageControllerTest {
         log2.setStatus("success");
         log2.setCreatedAt(LocalDateTime.now());
         usageLogMapper.insert(log2);
+
+        // 用量记录 3: 全链路 usage_report 通道写入的解析侧 embed 行（非对话）
+        // 用于验证读侧按 stage 过滤：缺省仅统计 chat，应排除本行；stage=all 才纳入。
+        UsageLog log3 = new UsageLog();
+        log3.setUserId(TEST_USER_ID);
+        log3.setConfigId(null);          // 系统配置调用 → config_id 为 NULL
+        log3.setProviderType("openai");
+        log3.setModelName("text-embedding-3-large");
+        log3.setStage("parse");
+        log3.setOperation("embed");
+        log3.setPromptTokens(12840);
+        log3.setCompletionTokens(0);     // 向量类恒 0
+        log3.setTotalTokens(12840);
+        log3.setStatus("success");
+        log3.setCreatedAt(LocalDateTime.now());
+        usageLogMapper.insert(log3);
 
         // ===== 步骤 4: 编程式登录 =====
         StpUtil.login(TEST_USER_ID);
@@ -213,12 +234,55 @@ class UsageControllerTest {
         String today = java.time.LocalDate.now().toString();
         String startDate = java.time.LocalDate.now().minusDays(7).toString();
 
+        // 缺省 stage：仅统计对话(chat) 两行，排除 parse·embed 行（口径与 LINK-184 前一致）。
         mockMvc.perform(get("/api/v1/llm/usage/summary")
                 .header("satoken", token)
                 .param("startDate", startDate)
                 .param("endDate", today))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(200));
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.totalCalls").value(2))
+            .andExpect(jsonPath("$.data.totalTokens").value(450));
+    }
+
+    /**
+     * 测试用例 1b：stage=all 统计全链路（含 parse·embed 行）。
+     */
+    @Test
+    @Order(5)
+    @DisplayName("全链路用量汇总 - GET /api/v1/llm/usage/summary?stage=all")
+    void Should_IncludeAllStages_When_StageAll() throws Exception {
+        String today = java.time.LocalDate.now().toString();
+        String startDate = java.time.LocalDate.now().minusDays(7).toString();
+
+        mockMvc.perform(get("/api/v1/llm/usage/summary")
+                .header("satoken", token)
+                .param("startDate", startDate)
+                .param("endDate", today)
+                .param("stage", "all"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalCalls").value(3))
+            .andExpect(jsonPath("$.data.totalTokens").value(13290));
+    }
+
+    /**
+     * 测试用例 1c：明细行暴露 stage/operation，且缺省仅返回 chat 行。
+     */
+    @Test
+    @Order(6)
+    @DisplayName("明细暴露 stage/operation 且缺省仅 chat - GET /api/v1/llm/usage/logs")
+    void Should_ExposeStageAndScopeToChat_When_GetUsageLogsDefault() throws Exception {
+        String today = java.time.LocalDate.now().toString();
+        String startDate = java.time.LocalDate.now().minusDays(7).toString();
+
+        mockMvc.perform(get("/api/v1/llm/usage/logs")
+                .header("satoken", token)
+                .param("startDate", startDate)
+                .param("endDate", today))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(2))
+            .andExpect(jsonPath("$.data.items[0].stage").value("chat"))
+            .andExpect(jsonPath("$.data.items[0].operation").value("generate"));
     }
 
     /**
@@ -298,5 +362,74 @@ class UsageControllerTest {
                 .param("startDate", startDate)
                 .param("endDate", today))
             .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * 测试用例 7：汇总扩展字段——成功/失败次数与成功率（缺省 chat 口径，两行均成功）。
+     */
+    @Test
+    @Order(7)
+    @DisplayName("汇总成功率扩展 - GET /api/v1/llm/usage/summary")
+    void Should_ReturnSuccessMetrics_When_GetSummary() throws Exception {
+        String today = java.time.LocalDate.now().toString();
+        String startDate = java.time.LocalDate.now().minusDays(7).toString();
+
+        mockMvc.perform(get("/api/v1/llm/usage/summary")
+                .header("satoken", token)
+                .param("startDate", startDate)
+                .param("endDate", today))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.successCalls").value(2))
+            .andExpect(jsonPath("$.data.failedCalls").value(0))
+            .andExpect(jsonPath("$.data.successRate").value(1.0));
+    }
+
+    /**
+     * 测试用例 8：按模型聚合（全链路口径，含 parse 行），按总 Token 降序。
+     */
+    @Test
+    @Order(8)
+    @DisplayName("按模型聚合 - GET /api/v1/llm/usage/by-model")
+    void Should_AggregateByModel_When_GetUsageByModel() throws Exception {
+        String today = java.time.LocalDate.now().toString();
+        String startDate = java.time.LocalDate.now().minusDays(7).toString();
+
+        mockMvc.perform(get("/api/v1/llm/usage/by-model")
+                .header("satoken", token)
+                .param("startDate", startDate)
+                .param("endDate", today))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray())
+            // 三个模型：gpt-4 / gpt-3.5-turbo / text-embedding-3-large（不按 stage 过滤）
+            .andExpect(jsonPath("$.data.length()").value(3))
+            // 按总 Token 降序：embedding(12840) 居首
+            .andExpect(jsonPath("$.data[0].modelName").value("text-embedding-3-large"))
+            .andExpect(jsonPath("$.data[0].totalTokens").value(12840))
+            .andExpect(jsonPath("$.data[0].calls").value(1));
+    }
+
+    /**
+     * 测试用例 9：用量环比趋势——当前周期有数据、上一周期为空 → 增长率为 null。
+     */
+    @Test
+    @Order(9)
+    @DisplayName("用量环比趋势 - GET /api/v1/llm/usage/trend")
+    void Should_ReturnTrendWithNullGrowth_When_PreviousPeriodEmpty() throws Exception {
+        String today = java.time.LocalDate.now().toString();
+        String startDate = java.time.LocalDate.now().minusDays(7).toString();
+
+        mockMvc.perform(get("/api/v1/llm/usage/trend")
+                .header("satoken", token)
+                .param("startDate", startDate)
+                .param("endDate", today))
+            .andExpect(status().isOk())
+            // 当前周期三行合计 150 + 300 + 12840 = 13290，3 次调用
+            .andExpect(jsonPath("$.data.currentTokens").value(13290))
+            .andExpect(jsonPath("$.data.currentCalls").value(3))
+            .andExpect(jsonPath("$.data.previousTokens").value(0))
+            .andExpect(jsonPath("$.data.previousCalls").value(0))
+            // 上一周期为 0 → 增长率 null（前端显示「—」）
+            .andExpect(jsonPath("$.data.tokenGrowthRate").value(nullValue()))
+            .andExpect(jsonPath("$.data.callGrowthRate").value(nullValue()));
     }
 }

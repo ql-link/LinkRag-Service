@@ -41,9 +41,11 @@ public class UsageController {
             @Parameter(description = "开始日期，格式yyyy-MM-dd", example = "2026-04-01")
             @RequestParam String startDate,
             @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
-            @RequestParam String endDate) {
+            @RequestParam String endDate,
+            @Parameter(description = "阶段过滤：缺省仅统计对话(chat)，all 统计全链路，或指定 parse/recall", example = "chat")
+            @RequestParam(defaultValue = "chat") String stage) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(usageQueryService.getSummary(userId, startDate, endDate));
+        return Result.success(usageQueryService.getSummary(userId, startDate, endDate, stage));
     }
 
     /**
@@ -60,9 +62,11 @@ public class UsageController {
             @Parameter(description = "开始日期，格式yyyy-MM-dd", example = "2026-04-01")
             @RequestParam String startDate,
             @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
-            @RequestParam String endDate) {
+            @RequestParam String endDate,
+            @Parameter(description = "阶段过滤：缺省仅统计对话(chat)，all 统计全链路，或指定 parse/recall", example = "chat")
+            @RequestParam(defaultValue = "chat") String stage) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(usageQueryService.getDailyUsage(userId, startDate, endDate));
+        return Result.success(usageQueryService.getDailyUsage(userId, startDate, endDate, stage));
     }
 
     /**
@@ -82,9 +86,49 @@ public class UsageController {
             @RequestParam String startDate,
             @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
             @RequestParam String endDate,
+            @Parameter(description = "阶段过滤：缺省仅统计对话(chat)，all 统计全链路，或指定 parse/recall", example = "chat")
+            @RequestParam(defaultValue = "chat") String stage,
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") int pageSize) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(usageQueryService.getUsageLogs(userId, startDate, endDate, page, pageSize));
+        return Result.success(usageQueryService.getUsageLogs(userId, startDate, endDate, stage, page, pageSize));
+    }
+
+    /**
+     * 按模型聚合用量
+     *
+     * @param startDate 开始日期（yyyy-MM-dd）
+     * @param endDate   结束日期（yyyy-MM-dd）
+     * @return 按「厂商+模型」聚合的用量列表，按总 Token 降序
+     */
+    @GetMapping("/by-model")
+    @SaCheckLogin
+    @Operation(summary = "按模型聚合用量", description = "按厂商+模型聚合调用次数与 Token，按总 Token 降序（全链路口径）")
+    public Result<List<ModelUsageDTO>> getUsageByModel(
+            @Parameter(description = "开始日期，格式yyyy-MM-dd", example = "2026-04-01")
+            @RequestParam String startDate,
+            @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
+            @RequestParam String endDate) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(usageQueryService.getUsageByModel(userId, startDate, endDate));
+    }
+
+    /**
+     * 用量环比趋势
+     *
+     * @param startDate 开始日期（yyyy-MM-dd）
+     * @param endDate   结束日期（yyyy-MM-dd）
+     * @return 当前周期 vs 等长上一周期的环比增长率
+     */
+    @GetMapping("/trend")
+    @SaCheckLogin
+    @Operation(summary = "用量环比趋势", description = "当前周期与等长上一周期对比的 Token / 调用次数环比增长率（全链路口径）")
+    public Result<UsageTrendDTO> getUsageTrend(
+            @Parameter(description = "开始日期，格式yyyy-MM-dd", example = "2026-04-01")
+            @RequestParam String startDate,
+            @Parameter(description = "结束日期，格式yyyy-MM-dd", example = "2026-04-15")
+            @RequestParam String endDate) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(usageQueryService.getUsageTrend(userId, startDate, endDate));
     }
 }

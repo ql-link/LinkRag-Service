@@ -26,11 +26,20 @@
 | PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |
 | PATCH | `/api/v1/admin/feedback/{id}/priority` | 更新反馈优先级：`1` 高 / `2` 中 / `3` 低 |
 | PATCH | `/api/v1/admin/feedback/{id}/reply` | 写入管理员回复，不自动修改反馈状态 |
+| GET | `/api/v1/admin/providers` | 管理端厂商列表（分页，按优先级倒序） |
+| POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol`） |
+| PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，变更后双删缓存 |
+| DELETE | `/api/v1/admin/providers/{id}` | 删除系统厂商 |
+| PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数） |
+| GET | `/api/v1/admin/provider-models` | 管理端模型能力目录分页（可按 `providerId` / `capability` / `isActive` 过滤，含下架项） |
 | POST | `/api/v1/admin/providers/{providerId}/models` | 新增厂商模型能力目录项 |
+| PATCH | `/api/v1/admin/provider-models/{id}` | 部分更新模型能力目录项（模型名、能力、协议、入口、上下架状态） |
 | DELETE | `/api/v1/admin/provider-models/{id}` | 删除模型能力目录项 |
 | PATCH | `/api/v1/admin/provider-models/{id}/active` | 上/下架模型能力目录项 |
 | GET | `/api/v1/admin/system-presets` | 系统预设列表（平台 Key 脱敏） |
 | POST | `/api/v1/admin/system-presets` | 新增系统预设（平台 Key 加密入库） |
+| PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（变更厂商/模型/能力时复制模型能力层协议与入口） |
+| PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（控制是否下发给新用户） |
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 ## LLM
@@ -48,8 +57,20 @@
 | GET | `/api/v1/llm/usage/summary` | 用量汇总 |
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
+| GET | `/api/v1/llm/usage/by-model` | 按厂商+模型聚合 |
+| GET | `/api/v1/llm/usage/trend` | 用量环比趋势 |
 
-> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。
+> 用量查询（`UsageController`）口径：`llm_usage_log` 自 LINK-184 起为全链路账本，含对话生成（chat 通道）与解析/召回系统侧调用（usage_report 通道）。`summary`/`daily`/`logs` 新增可选入参 `stage`（默认 `chat`）：缺省/`chat` 仅统计对话用量（与改造前口径一致），`all` 统计全链路，传具体阶段名（`parse`/`recall`）只统计该阶段。`summary`/`daily` 的计数、token、平均延迟均随该过滤生效。`logs` 明细 `UsageLogDTO` 新增 `stage` / `operation` 两字段，供前端区分用量来源。
+>
+> `summary`（`UsageSummaryDTO`）扩展（LINK-182）：新增 `successCalls` / `failedCalls` / `successRate`（0~1，无调用为 0）；`averageLatencyMs` 口径改为**仅成功调用**（`status='success'`，大小写不敏感），避免失败/超时拉偏均值。
+>
+> `GET /by-model`（`List<ModelUsageDTO>`，LINK-182）：按「`provider_type` + `model_name`」SQL 聚合（`COUNT`/`SUM`），按 `totalTokens` 降序，无数据返回 `[]`。字段：`providerType`/`modelName`/`calls`/`promptTokens`/`completionTokens`/`totalTokens`。
+>
+> `GET /trend`（`UsageTrendDTO`，LINK-182）：当前周期 vs 紧邻的等长上一周期环比。字段：`currentTokens`/`previousTokens`/`currentCalls`/`previousCalls`/`tokenGrowthRate`/`callGrowthRate`。增长率为小数（`0.18`=+18%），**上一周期为 0（无可比基数）时为 `null`**（前端显示「—」，非 +∞）。
+>
+> `by-model` 与 `trend` 为**全链路口径**（不按 stage 过滤，反映全部模型/总体趋势），与 `summary`/`daily`/`logs` 默认仅 `chat` 的口径不同——展示侧若需对齐，对 `summary` 传 `stage=all`。入参 `startDate`/`endDate` 同为 `yyyy-MM-dd`（含端）；均 `@SaCheckLogin` 且按登录用户隔离。
+>
+> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
 >
@@ -77,13 +98,13 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 | protocol | capability | api_base_url（完整端点，`google` 除外） |
 | --- | --- | --- |
-| `openai` | CHAT / VISION / OCR | `{base}/chat/completions`，如 `https://api.openai.com/v1/chat/completions` |
-| `openai` | EMBEDDING | `{base}/embeddings` |
+| `openai` | CHAT / VISION | `{base}/chat/completions`，如 `https://api.openai.com/v1/chat/completions` |
+| `openai` | EMBEDDING / SPARSE_EMBEDDING | `{base}/embeddings` |
 | `openai` | ASR | `{base}/audio/transcriptions`（whisper 同步） |
 | `anthropic` | CHAT / VISION | `https://api.anthropic.com/v1/messages` |
-| `google` | CHAT / EMBEDDING / VISION | **例外**：base `https://generativelanguage.googleapis.com/v1beta`，由 Python 补全 |
+| `google` | CHAT / EMBEDDING / SPARSE_EMBEDDING / VISION | **例外**：base `https://generativelanguage.googleapis.com/v1beta`，由 Python 补全 |
 | `jina` | RERANK | `https://api.jina.ai/v1/rerank` |
-| `jina` | EMBEDDING | `https://api.jina.ai/v1/embeddings` |
+| `jina` | EMBEDDING / SPARSE_EMBEDDING | `https://api.jina.ai/v1/embeddings` |
 | `dashscope` | RERANK | `https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank`（千问原生嵌套） |
 | `dashscope` | ASR | 本期不做，暂存 base `https://dashscope.aliyuncs.com/api/v1` |
 
@@ -91,19 +112,22 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 - 执行端按 `(protocol, capability)` 二维选 adapter，**不依据 `provider_type`**；`provider_type` 仅作厂商身份、展示、审计保留。
 - adapter 职责 = 3 件套：① 拼鉴权头 ② 构建请求体 ③ 解析回包；**URL 直接用 `api_base_url`，不再拼后缀**（`google` 例外按协议补全）。
-- 未知 `(protocol, capability)` 组合返回明确错误，不回退猜测。本期 Python 实际落地组合：`openai`+CHAT/EMBEDDING、`anthropic`+CHAT、`google`+CHAT、`jina`+RERANK/EMBEDDING、`dashscope`+RERANK；VISION/OCR/ASR schema 与 seed 已支持、Python 后续批次接入。
+- 未知 `(protocol, capability)` 组合返回明确错误，不回退猜测。本期 Python 实际落地组合：`openai`+CHAT/EMBEDDING、`anthropic`+CHAT、`google`+CHAT、`jina`+RERANK/EMBEDDING、`dashscope`+RERANK；VISION/SPARSE_EMBEDDING/ASR schema 与 seed 已支持，Python 端需后续对接具体 adapter 与请求/响应协议。
 - 职责边界：完整端点 URL（多变的「去哪」）= 数据，Java 管；鉴权 + 请求体 + 回包解析（稳定的「怎么调」）= 代码，adapter 管。新增同协议厂商 Java 加一行数据即可，adapter 零改动。
 
 ## Chat
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/v1/chat/conversations` | 创建会话 |
+| POST | `/api/v1/chat/conversations` | 创建会话（前端在发起 `/rag/stream` 问答前先建会话取 `conversation_id`） |
 | GET | `/api/v1/chat/conversations` | 会话列表 |
-| GET | `/api/v1/chat/conversations/{id}/messages` | 消息列表 |
+| GET | `/api/v1/chat/conversations/{id}/messages` | 消息列表（一行一轮：`query` / `answer` / `references` / `status`） |
 | PATCH | `/api/v1/chat/conversations/{id}` | 更新会话 |
-| POST | `/api/v1/chat/conversations/{id}/messages` | 保存消息 |
 | DELETE | `/api/v1/chat/conversations/{id}` | 删除会话 |
+
+> 写入消息接口 `POST /api/v1/chat/conversations/{id}/messages` 已下线：对话轮次改由 Python 问答执行器经 `tolink.rag.chat_turn` 上报、Java 单事务落库 `chat_message` / `llm_usage_log` / `chat_conversation`（见 `docs/api/mq_contracts.md`）。前端职责简化为先创建会话拿到 `conversation_id`，随 `/api/v1/rag/stream` 请求带上。
+>
+> 会话标题由首轮 `query` 生成（超长按 30 字符截断加省略号；命中标题唯一约束 `(user_id, dataset_id, title)` 冲突时保留默认标题），不再依赖已下线的写消息接口。
 
 ## Dataset / Document File
 
@@ -114,7 +138,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | GET | `/api/v1/datasets/{datasetId}` | 数据集详情 |
 | PATCH | `/api/v1/datasets/{datasetId}` | 更新数据集 |
 | DELETE | `/api/v1/datasets/{datasetId}` | 删除数据集 |
-| GET | `/api/v1/datasets/{datasetId}/parse-config` | 读取数据集解析/检索配置（回显已存；无配置返回四类空对象 `{}`） |
+| GET | `/api/v1/datasets/{datasetId}/parse-config` | 读取数据集解析/检索配置（回显已存；`recall` 新增项缺失时补默认） |
 | PUT | `/api/v1/datasets/{datasetId}/parse-config` | 全量保存数据集解析/检索配置（整页保存，整行四类覆盖） |
 | POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件（异步：立即返回 `uploadStatus=UPLOADING`） |
 | GET | `/api/v1/datasets/{datasetId}/files` | 文件列表（支持按 `uploadStatus` 过滤，前端据此轮询上传终态） |
@@ -122,12 +146,11 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | GET | `/api/v1/files/{fileId}` | 文件详情 |
 | DELETE | `/api/v1/files/{fileId}` | 删除文件 |
 | POST | `/api/v1/files/{fileId}/parse` | 提交解析 |
-| GET | `/api/v1/datasets/{datasetId}/files/parse-events` | SSE 解析事件 |
 | GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 解析结果列表 |
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
 
-> 解析/检索配置（`/parse-config`，LINK-149）：请求/响应为四类嵌套结构 `{chunking, enhancement, pdf, recall}`，字段名 snake_case，与 Python `dataset_config` Pydantic 模型对齐（12 项：chunking 3 / enhancement 2 开关 / pdf 1 / recall 6）。Java 只做存/改/回显，**PUT 为整行全量覆盖**（前端整页保存），不持有默认值——缺字段/缺类不补默认（缺类列存 `{}`），默认值与生效读取由 Python 消费时负责。关键校验即时拦截 400：`overlap_tokens` 0–64、`min_candidate_chunk_tokens` 128–256、`pdf_parser_backend` ∈ {`auto`,`mineru`,`opendataloader`,`naive`}；recall 各项范围不在 Java 拦截（Python 无 validator）。增强仅两个开关（`enable_table_enhancement`/`enable_image_enhancement`），历史残留的 `table_model`/`vision_model` 落库时丢弃；增强模型由 Python 取发起用户默认 CHAT/VISION（依赖 LINK-148 PR #190）。越权/不存在 404、未登录 401。
+> 解析/检索配置（`/parse-config`，LINK-149/LINK-170）：请求/响应为四类嵌套结构 `{chunking, enhancement, pdf, recall}`，字段名 snake_case，与 Python `dataset_config` Pydantic 模型对齐（15 项：chunking 3 / enhancement 2 开关 / pdf 1 / recall 9）。Java 只做存/改/回显，**PUT 为整行全量覆盖**（前端整页保存）。`recall` 新增 3 项会在读取时补齐默认：`recall_enabled_sources=["bm25","sparse","dense"]`、`rerank_top_n=8`、`recall_strict=false`；创建数据集时同步写入默认配置行。关键校验即时拦截 400：`overlap_tokens` 0–64、`min_candidate_chunk_tokens` 128–256、`pdf_parser_backend` ∈ {`auto`,`mineru`,`opendataloader`,`naive`}；recall 历史 6 项范围不在 Java 拦截，LINK-170 新增项中 `recall_enabled_sources` 仅允许 `bm25`/`sparse`/`dense`（写入去空白、去空项、去重，允许空数组），`rerank_top_n` 必须为正整数，`recall_strict` 为布尔。增强仅两个开关（`enable_table_enhancement`/`enable_image_enhancement`），历史残留的 `table_model`/`vision_model` 落库时丢弃；增强模型由 Python 取发起用户默认 CHAT/VISION（依赖 LINK-148 PR #190）。越权/不存在 404、未登录 401。
 
 ## OSS / Internal
 
@@ -135,7 +158,6 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | --- | --- | --- |
 | POST | `/api/v1/oss-files/{bizType}` | 通用 OSS 上传 |
 | GET | `/api/v1/internal/files/{fileId}/content` | Python 端读取私有文件内容 |
-| POST | `/api/v1/internal/parse-tasks/{taskId}/events` | Python 端推送解析过程事件 |
 
 ## Feedback
 
@@ -172,7 +194,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
 
-解析过程接口只接受 `processing` / `progress`；终态结果通过 `tolink.rag.parse_result` MQ 推送。解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。
+解析终态结果由 Python 写入共享数据库，Java 不再消费 `tolink.rag.parse_result`，也不再提供解析 SSE 事件订阅或过程事件回调入口；解析结果查询读取 `document_parse_file.latest_parse_task_id` 所指向的日志状态。
 
 ## Recall
 

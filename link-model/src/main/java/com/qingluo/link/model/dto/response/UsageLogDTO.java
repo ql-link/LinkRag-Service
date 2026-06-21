@@ -27,6 +27,12 @@ public class UsageLogDTO {
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
 
+    @Schema(description = "调用阶段：parse/recall/chat", example = "chat")
+    private String stage;
+
+    @Schema(description = "调用操作：embed/rerank/vision/table/generate", example = "generate")
+    private String operation;
+
     @Schema(description = "提示词Token数", example = "100")
     private Integer promptTokens;
 

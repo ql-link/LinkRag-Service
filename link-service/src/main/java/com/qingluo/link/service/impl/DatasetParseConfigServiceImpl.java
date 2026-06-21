@@ -1,6 +1,7 @@
 package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.model.dto.config.ChunkingConfig;
 import com.qingluo.link.model.dto.config.EnhancementConfig;
@@ -11,17 +12,26 @@ import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
 import com.qingluo.link.service.DatasetParseConfigService;
 import com.qingluo.link.service.DatasetService;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 数据集解析/检索配置管理实现：Java 纯管理，不持有默认值、不做消费式读取与兜底。
+ * 数据集解析/检索配置管理实现：Java 管理配置行，并为前端回显补齐召回新增项默认值。
  */
 @Service
 @RequiredArgsConstructor
 public class DatasetParseConfigServiceImpl implements DatasetParseConfigService {
+
+    private static final List<String> DEFAULT_RECALL_ENABLED_SOURCES = List.of("bm25", "sparse", "dense");
+    private static final int DEFAULT_RERANK_TOP_N = 8;
+    private static final boolean DEFAULT_RECALL_STRICT = false;
+    private static final Set<String> ALLOWED_RECALL_SOURCES = Set.of("bm25", "sparse", "dense");
 
     private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final DatasetService datasetService;
@@ -85,7 +95,7 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         entity.setChunkingConfig(req.getChunking() != null ? req.getChunking() : new ChunkingConfig());
         entity.setEnhancementConfig(req.getEnhancement() != null ? req.getEnhancement() : new EnhancementConfig());
         entity.setPdfConfig(req.getPdf() != null ? req.getPdf() : new PdfConfig());
-        entity.setRecallConfig(req.getRecall() != null ? req.getRecall() : new RecallConfig());
+        entity.setRecallConfig(normalizeForStorage(req.getRecall()));
     }
 
     private DatasetParseConfigResponse assembleResponse(DatasetParseConfig entity) {
@@ -94,7 +104,7 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         resp.setEnhancement(entity.getEnhancementConfig() != null
             ? entity.getEnhancementConfig() : new EnhancementConfig());
         resp.setPdf(entity.getPdfConfig() != null ? entity.getPdfConfig() : new PdfConfig());
-        resp.setRecall(entity.getRecallConfig() != null ? entity.getRecallConfig() : new RecallConfig());
+        resp.setRecall(fillRecallDefaults(entity.getRecallConfig()));
         return resp;
     }
 
@@ -103,7 +113,72 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         resp.setChunking(new ChunkingConfig());
         resp.setEnhancement(new EnhancementConfig());
         resp.setPdf(new PdfConfig());
-        resp.setRecall(new RecallConfig());
+        resp.setRecall(fillRecallDefaults(new RecallConfig()));
         return resp;
+    }
+
+    private RecallConfig normalizeForStorage(RecallConfig source) {
+        if (source == null) {
+            return new RecallConfig();
+        }
+        RecallConfig normalized = copyRecall(source);
+        normalized.setRecallEnabledSources(normalizeRecallSources(source.getRecallEnabledSources()));
+        validateRerankTopN(source.getRerankTopN());
+        return normalized;
+    }
+
+    private List<String> normalizeRecallSources(List<String> sources) {
+        if (sources == null) {
+            return null;
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String source : sources) {
+            if (source == null) {
+                continue;
+            }
+            String trimmed = source.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (!ALLOWED_RECALL_SOURCES.contains(trimmed)) {
+                throw new BusinessException(400, "recall_enabled_sources 仅支持 bm25/sparse/dense", 400);
+            }
+            normalized.add(trimmed);
+        }
+        return new ArrayList<>(normalized);
+    }
+
+    private void validateRerankTopN(Integer rerankTopN) {
+        if (rerankTopN != null && rerankTopN <= 0) {
+            throw new BusinessException(400, "rerank_top_n 必须为正整数", 400);
+        }
+    }
+
+    private RecallConfig fillRecallDefaults(RecallConfig source) {
+        RecallConfig filled = source != null ? copyRecall(source) : new RecallConfig();
+        if (filled.getRecallEnabledSources() == null) {
+            filled.setRecallEnabledSources(DEFAULT_RECALL_ENABLED_SOURCES);
+        }
+        if (filled.getRerankTopN() == null) {
+            filled.setRerankTopN(DEFAULT_RERANK_TOP_N);
+        }
+        if (filled.getRecallStrict() == null) {
+            filled.setRecallStrict(DEFAULT_RECALL_STRICT);
+        }
+        return filled;
+    }
+
+    private RecallConfig copyRecall(RecallConfig source) {
+        RecallConfig copy = new RecallConfig();
+        copy.setRecallResultLimit(source.getRecallResultLimit());
+        copy.setRecallContextTokenBudget(source.getRecallContextTokenBudget());
+        copy.setSparseTopK(source.getSparseTopK());
+        copy.setSparseScoreThreshold(source.getSparseScoreThreshold());
+        copy.setDenseTopK(source.getDenseTopK());
+        copy.setDenseScoreThreshold(source.getDenseScoreThreshold());
+        copy.setRecallEnabledSources(source.getRecallEnabledSources());
+        copy.setRerankTopN(source.getRerankTopN());
+        copy.setRecallStrict(source.getRecallStrict());
+        return copy;
     }
 }

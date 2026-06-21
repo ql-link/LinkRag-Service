@@ -2,14 +2,17 @@
 
 ## 职责
 
-Redis 能力由 `link-components/toLink-components-redis` 提供，业务缓存封装位于 `link-service/src/main/java/com/qingluo/link/service/cache`。
+Redis 基础能力由 `link-components/toLink-components-redis` 提供，业务缓存封装位于 `link-service/src/main/java/com/qingluo/link/service/cache`。
 
 ## 当前能力
+
+通用缓存基础设施在 `link-components/toLink-components-redis/.../service`：
 
 - `CacheReadProtectionService`：缓存读保护、空值缓存、TTL 抖动。
 - `CacheConsistencyService`：同步删缓存与补偿删除。
 - `CacheKeyRouter` / `CacheEvictTarget`：统一缓存 key 路由。
-- 业务封装：`UserCacheService`、`UserLLMConfigCacheService`、`DocumentFileConfigCacheService`、`ProviderCatalogCacheService`。
+
+业务缓存封装在 `link-service/.../service/cache`：`UserCacheService`、`DocumentFileConfigCacheService`、`ProviderCatalogCacheService`。
 
 ## 约定
 

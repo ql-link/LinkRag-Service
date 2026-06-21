@@ -11,9 +11,9 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `llm_provider_model` | `ProviderModel` | 厂商→模型→能力目录（取代 `supported_models` JSON） |
 | `llm_system_preset` | `SystemPreset` | 系统预设模板（自带加密平台 Key） |
 | `llm_user_config` | `UserLLMConfig` | 用户 LLM 配置（下游唯一生效源；预设与自配统一汇入） |
-| `llm_usage_log` | `UsageLog` | LLM 用量记录 |
+| `llm_usage_log` | `UsageLog` | 全链路模型调用账本（含 `stage` / `operation` / `conversation_id` / `message_id` / `request_id`，由对话轮次落库与用量上报两通道写入） |
 | `chat_conversation` | `ChatConversation` | 对话 |
-| `chat_message` | `ChatMessage` | 消息 |
+| `chat_message` | `ChatMessage` | 对话消息（一行一轮：`query` + `answer` 同行；含 `references`(JSON) / `request_id` / `status`） |
 | `dataset` | `Dataset` | 数据集 |
 | `document_original_file` | `DocumentOriginalFile` | 原始文件 |
 | `document_parse_file` | `DocumentParseFile` | 文件级解析聚合及最新任务指针 |
@@ -22,13 +22,16 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `blog_post` | `BlogPost` | 博客文章元数据、发布状态和 Markdown 对象指针 |
 | `blog_asset` | `BlogAsset` | 博客封面资源和正文图片资源元数据 |
 | `user_feedback` | `UserFeedback` | 匿名反馈、私有附件对象键、管理员处理状态与回复 |
-| `dataset_parse_config` | `DatasetParseConfig`（LINK-149 待建） | 数据集级解析/检索参数配置（4 类 JSON：chunking / enhancement / pdf / recall）；跨端共享，Java 读写、Python 直读 |
+| `dataset_parse_config` | `DatasetParseConfig` | 数据集级解析/检索参数配置（4 类 JSON：chunking / enhancement / pdf / recall）；跨端共享，Java 读写、Python 直读 |
 
 ## 约定
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
+- `chat_message` 为「一行一轮」结构（对应 Python 仓库迁移 0021）：删 `role` / `token_count`，加 `query` / `answer`（原 `content` 改名）/ `references`(JSON，`JacksonTypeHandler`，列名为 MySQL 保留字需反引号包裹) / `request_id` / `status`(success/partial/failed)。行数据由 Java 消费 `tolink.rag.chat_turn` 后落库（见 `docs/api/mq_contracts.md`），Python 不直接写本表；存量库迁移脚本见 `scripts/db/add_chat_message_persistence.sql`。
+- `llm_usage_log` 增补 `message_id`（关联 `chat_message.id`）/ `request_id`（与 `chat_message.request_id` 一致），并由对话轮次落库真正写入既有 `conversation_id`。
+- `llm_usage_log` 升级为「全链路模型调用账本」（LINK-184）：增补 `stage`(VARCHAR(16) NOT NULL，`parse`/`recall`/`chat`) / `operation`(VARCHAR(16) NOT NULL，`embed`/`rerank`/`vision`/`table`/`generate`)，并放开 `config_id` 的 NOT NULL（系统配置调用如召回 query 编码落 NULL）。两条写入通道：① 对话最终生成走 `tolink.rag.chat_turn`，Java 补 `stage='chat'`/`operation='generate'`；② 非对话调用走 `tolink.rag.usage_report`（`UsageReportMQ` → `UsageReportPersistenceService`，见 `docs/api/mq_contracts.md`）。新增索引 `idx_usage_stage_operation (stage, operation)`。存量库迁移脚本见 `scripts/db/add_usage_report_stage_operation.sql`。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
-- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `OCR` / `VISION` / `REASONING` / `CODE` / `TOOL_CALLING` / `RERANK`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。
+- `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。`OCR` 已移除，不再作为独立模型能力；存量环境可执行 `scripts/db/remove_ocr_capability.sql` 清理 `llm_provider_model` / `llm_system_preset` / `llm_user_config` 中的 OCR 行。
 - 厂商→模型→能力目录迁至 `llm_provider_model`（一个模型多能力=多行，唯一键 `uk_provider_model_cap (provider_id, model_name, capability)`），`llm_system_provider` 已去掉 `supported_models` / `config_schema` JSON。用户「配置厂商」即按该表展开整厂商 (模型, 能力) 写入 `llm_user_config`。
 - `llm_system_preset`（自带加密平台 Key，唯一键 `uk_preset_provider_model_cap`）在用户注册时复制进 `llm_user_config`（`is_system_preset=true`、`is_default=true`），作为常备只读备选；预设已自带 `provider_type` / `protocol` / `api_base_url` 事实字段（见下「协议与入口三层语义」），注册镜像时直接平移这三列，不再 join 厂商表补全。
 - `llm_user_config` 一条配置按 (模型, 能力) 展开为多行，唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability, is_system_preset)`（含 `is_system_preset`，使同 (厂商,模型,能力) 的平台预设行与用户自配行可并存）。`is_active` 兼表「模型启停」与「生效过滤」，`is_default` 表按能力生效（单用户单能力唯一），`is_system_preset` 标记只读预设行；`api_base_url`（原 `custom_api_base_url`）由展开时复制自模型能力层事实值（不再灌厂商默认，见下「协议与入口三层语义」）。已删字段：`provider_name` / `config_name` / `priority` / `timeout_ms` / `max_retries` / `stream_enabled` / `extra_config`。按能力切换查询由 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑。
@@ -51,7 +54,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 >
 > **base 形态（2026-06 对齐 Python PR #192）**：`api_base_url` 语义在两层不同——**厂商层** `llm_system_provider.api_base_url` 存「协议基地址」（仅作新增模型时表单预填模板，不参与运行）；**模型能力层 / 用户配置层** 存「完整端点 URL」（Python 直打、不再拼后缀）。完整 URL = 基地址 + `(protocol, capability)` 端点后缀，后缀知识在 Java seed 生成器（`scripts/import_ragflow_configs.py`），唯一例外 `google` 仍下发 base 到 `/v1beta`。详见 `docs/api/api_contracts.md`「LLM 协议与入口契约」的完整端点对照表。
 
-**`protocol` 枚举（5 个，按 API 家族收敛，小写）**：`openai` / `anthropic` / `google` / `jina` / `dashscope`。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准，大小写敏感（`OPENAI` 等大写视为非法）。`openai` 吃掉所有 OpenAI 兼容厂商；`dashscope` 仅承载千问 rerank / ASR；`jina` 承载 Jina rerank / embedding。非法值由服务层抛 `INVALID_PROTOCOL(10015/400)`，缺协议或缺入口抛 `MODEL_CONFIG_INCOMPLETE(10014/400)`。
+**`protocol` 枚举（5 个，按 API 家族收敛，小写）**：`openai` / `anthropic` / `google` / `jina` / `dashscope`。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准，大小写敏感（`OPENAI` 等大写视为非法）。`openai` 吃掉所有 OpenAI 兼容厂商；`dashscope` 仅承载千问 rerank / ASR；`jina` 承载 Jina rerank / embedding / sparse embedding。非法值由服务层抛 `INVALID_PROTOCOL(10015/400)`，缺协议或缺入口抛 `MODEL_CONFIG_INCOMPLETE(10014/400)`。
 
 **协议与入口三层语义**：同一份 `protocol` / `api_base_url` 在三张表里语义不同，分清才能避免「用厂商默认值跑线上」的隐患。
 
@@ -67,20 +70,20 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - `document_parse_file.latest_parse_task_id` 指向 `document_parsed_log.task_id`；Markdown 产物定位由 Python 写入 `document_parsed_log`。
 - **端到端终态权威源 = `document_parse_pipeline.pipeline_status`（大写 `PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`）。** `document_parsed_log` 已不含 `task_status` / `failure_reason`（Python migration 0007 移除）；Java 判定首次 / 重试 / 已成功以 `document_parsed_log.parsed_object_key` + `pipeline_status` 为准，运行中扫描与结果消费的终态判定亦改用 `pipeline_status`。
 - 重试链双向：`document_parsed_log.retry_of_task_id`（本轮→上一轮）与 `document_parse_pipeline.superseded_by_task_id`（旧→新），均由 Python 写、Java 只读；`document_parse_pipeline` 不含 `retry_count` / `last_retry_at`。
-- parse_result 消息体的 `task_status`（小写 `success` / `failed`）与库侧 `pipeline_status`（大写）是两套取值，禁止混用。
+- Java 不再消费 `tolink.rag.parse_result`；解析终态以库侧 `document_parse_pipeline.pipeline_status`（大写）为准。
 - Document file upload config is resolved from Redis key `document:file-upload:config`, with `tolink.document-file.*` as the default fallback.
 - `blog_post.slug + deleted_seq` 唯一：`slug` 由后端生成去掉连字符的 32 位小写 UUID；活跃文章 `deleted_seq=0`，软删时写自身 ID。
 - `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。
 - `blog_asset.object_key` / `public_url` 指向公开封面或正文图片对象；`asset_type` 支持 `COVER` 和 `CONTENT_IMAGE`。正文图片可由编辑器上传，也可由 Markdown 导入/保存流程自动写入 PUBLIC OSS，并记录 `blog_asset`。
 - `user_feedback` 首版为纯匿名反馈，不保存 `user_id`、`contact`、`is_anonymous`、`is_deleted`、`is_resolved`。`attachment_object_key` 只保存私有 MinIO object key，不保存 URL 或 bucket。合法值：`type` = `BUG` / `FEATURE` / `EXPERIENCE` / `OTHER`，`status` = `PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED`，`priority` = `1` 高 / `2` 中 / `3` 低。Java 本地 schema 与 Python migration 必须保持字段名、默认值、索引一致。
-- `dataset_parse_config`（LINK-149）跨端共享：Java 端读写、Python 端直读，DDL 真值在 Python migration 0017，Java 本地 schema（`scripts/db/init.sql` 与 H2 运行时 `link-api/src/main/resources/schema.sql`）与之保持字段名、默认值、索引一致。唯一键 `uk_user_dataset (user_id, dataset_id)`，索引 `idx_dataset_parse_config_dataset (dataset_id)`。四个 JSON 列内字段以 Python `src/core/dataset_config/models.py` 的 Pydantic 模型为准：`chunking_config`（3 项：`heading_break_level` / `min_candidate_chunk_tokens` / `overlap_tokens`）、`enhancement_config`（2 项开关：`enable_table_enhancement` / `enable_image_enhancement`，不含模型名，增强模型统一取发起用户 CHAT/VISION 默认模型）、`pdf_config`（1 项：`pdf_parser_backend`）、`recall_config`（6 项：`recall_result_limit` / `recall_context_token_budget` / `sparse_top_k` / `sparse_score_threshold` / `dense_top_k` / `dense_score_threshold`）。`(user_id, dataset_id)` 无行时由 Python 降级系统默认。
+- `dataset_parse_config`（LINK-149/LINK-170）跨端共享：Java 端读写、Python 端直读，DDL 真值在 Python migration 0017，Java 本地 schema（`scripts/db/init.sql` 与 H2 运行时 `link-api/src/main/resources/schema.sql`）与之保持字段名、默认值、索引一致。唯一键 `uk_user_dataset (user_id, dataset_id)`，索引 `idx_dataset_parse_config_dataset (dataset_id)`。四个 JSON 列内字段以 Python `src/core/dataset_config/models.py` 的 Pydantic 模型为准：`chunking_config`（3 项：`heading_break_level` / `min_candidate_chunk_tokens` / `overlap_tokens`）、`enhancement_config`（2 项开关：`enable_table_enhancement` / `enable_image_enhancement`，不含模型名，增强模型统一取发起用户 CHAT/VISION 默认模型）、`pdf_config`（1 项：`pdf_parser_backend`）、`recall_config`（9 项：`recall_result_limit` / `recall_context_token_budget` / `sparse_top_k` / `sparse_score_threshold` / `dense_top_k` / `dense_score_threshold` / `recall_enabled_sources` / `rerank_top_n` / `recall_strict`）。`recall_enabled_sources` 默认 `["bm25","sparse","dense"]`，`rerank_top_n` 默认 `8`，`recall_strict` 默认 `false`；旧 JSON 缺失这 3 项时 Java 读取回落默认，创建数据集时写入默认配置行。`(user_id, dataset_id)` 无行时由 Python 降级系统默认。
 
 ## 删除语义（隐性删除）
 
 删除「数据集 / 文档文件」采用隐性删除（软删保留原文件），不物理删 OSS 原文件对象：
 
 - `dataset`、`document_original_file`：软删（实体 `@TableLogic is_deleted`），删除转 `UPDATE`、读自动过滤；新增判别列 `deleted_seq`（活行=0、软删时=自身 id）并纳入唯一键（`dataset` 的 `uk_dataset_user_name_seq`、`document_original_file` 的 `uk_dof_name_suffix_seq`），使软删死行退出唯一键“活名额”，支持删后同名重建 / 重传（删除走显式 `UPDATE set is_deleted=1, deleted_seq=id`，`@TableLogic` 仅保留读过滤）。
-- `chat_conversation`、`chat_message`：一律物理删；`chat_conversation` 已移除 `is_deleted` / `@TableLogic`（索引 `idx_chat_conversation_user_active_list` 不再含 `is_deleted`）；因物理删不存在软删占名额问题，唯一键 `uk_conversation_user_dataset_title (user_id, dataset_id, title)` 无需 `deleted_seq`。
+- `chat_conversation`、`chat_message`：一律物理删；`chat_conversation` 已移除 `is_deleted` / `@TableLogic`（索引 `idx_chat_conversation_user_active_list` 不再含 `is_deleted`）。对话标题允许重复，不设置 `(user_id, dataset_id, title)` 唯一键。
 - `document_parse_file`、`document_parsed_log`：删除时 Java 端不再触碰，交 Python 随删除通知清理（MQ 占位、未实现）。
 - 删除事务提交后（afterCommit）预留通知 Python 删除其侧衍生产物（OSS 清洗文件 / 向量等）的发送点（占位，不落 producer / topic / 消息体）。
 - `blog_post`：软删并写 `deleted_seq=id`，不删除 Markdown 私有对象，也不批量删除图片对象。

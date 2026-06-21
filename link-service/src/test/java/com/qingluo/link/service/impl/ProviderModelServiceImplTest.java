@@ -8,10 +8,13 @@ import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
+import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.LLMProtocolService;
 import com.qingluo.link.service.impl.llm.ProviderModelServiceImpl;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,6 +62,20 @@ class ProviderModelServiceImplTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getModelName()).isEqualTo("gpt-4o");
+    }
+
+    @Test
+    @DisplayName("管理端分页查询模型目录可包含下架行")
+    void listModels_returnsPagedCatalogRows() {
+        Page<ProviderModel> page = new Page<>(1, 10);
+        page.setRecords(List.of(pm(1L, "gpt-4o", "CHAT")));
+        page.setTotal(1L);
+        given(providerModelMapper.selectPage(any(), any())).willReturn(page);
+
+        PageResult<ProviderModel> result = service.listModels(1, 10, 5L, "CHAT", false);
+
+        assertThat(result.getTotal()).isEqualTo(1L);
+        assertThat(result.getItems()).extracting(ProviderModel::getModelName).containsExactly("gpt-4o");
     }
 
     @Test
@@ -142,6 +159,29 @@ class ProviderModelServiceImplTest {
         service.deleteModelCapability(9L);
 
         verify(providerModelMapper).deleteById(9L);
+    }
+
+    @Test
+    @DisplayName("更新模型能力目录项：校验协议并刷新厂商缓存")
+    void updateModelCapability_updatesFactsAndEvictsCache() {
+        ProviderModel existing = pm(9L, "gpt-4o", "CHAT");
+        given(providerModelMapper.selectById(9L)).willReturn(existing);
+        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "openai"));
+
+        UpdateProviderModelRequest request = new UpdateProviderModelRequest();
+        request.setModelName("gpt-4o-mini");
+        request.setCapability("vision");
+        request.setProtocol("openai");
+        request.setApiBaseUrl("https://api.openai.com/v1/chat/completions");
+        request.setIsActive(false);
+
+        ProviderModel result = service.updateModelCapability(9L, request);
+
+        assertThat(result.getModelName()).isEqualTo("gpt-4o-mini");
+        assertThat(result.getCapability()).isEqualTo("VISION");
+        assertThat(result.getIsActive()).isFalse();
+        verify(providerModelMapper).updateById(existing);
+        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
