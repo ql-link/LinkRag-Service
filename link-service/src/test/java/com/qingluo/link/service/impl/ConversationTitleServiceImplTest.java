@@ -15,7 +15,7 @@ import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.service.config.ConversationTitleProperties;
-import com.qingluo.link.service.impl.llm.ChatTitleGenerator;
+import com.qingluo.link.service.llm.ChatTitleGenerator;
 import java.util.concurrent.Executor;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;

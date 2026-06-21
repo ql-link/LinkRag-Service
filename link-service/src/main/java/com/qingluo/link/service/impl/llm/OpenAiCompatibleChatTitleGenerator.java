@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.service.config.ConversationTitleProperties;
+import com.qingluo.link.service.llm.ChatTitleGenerator;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;

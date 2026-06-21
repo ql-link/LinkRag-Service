@@ -1,4 +1,4 @@
-package com.qingluo.link.service.impl.llm;
+package com.qingluo.link.service.llm;
 
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 

@@ -8,7 +8,7 @@ import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.service.ConversationTitleService;
 import com.qingluo.link.service.config.ConversationTitleProperties;
-import com.qingluo.link.service.impl.llm.ChatTitleGenerator;
+import com.qingluo.link.service.llm.ChatTitleGenerator;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
