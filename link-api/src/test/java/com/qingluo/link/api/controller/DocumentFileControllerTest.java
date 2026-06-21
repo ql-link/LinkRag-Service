@@ -199,9 +199,28 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectDocumentFileUpload_When_FileNameContainsIllegalCharacters() throws Exception {
+    void Should_AcceptDocumentFileUpload_When_FileNameContainsCommonBusinessCharacters() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "bad#name.md", "text/markdown", "# bad".getBytes(StandardCharsets.UTF_8));
+            "file", "需求文档(第1版)#A+B=1&owner.md", "text/markdown", "# ok".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(file)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.originalFilename").value("需求文档(第1版)#A+B=1&owner.md"));
+
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM document_original_file
+                WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
+                """, Integer.class, datasetId, userId, "需求文档(第1版)#A+B=1&owner.md");
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void Should_RejectDocumentFileUpload_When_FileNameContainsControlCharacter() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "bad\nname.md", "text/markdown", "# bad".getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
