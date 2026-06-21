@@ -5,11 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.qingluo.link.components.mq.MQSend;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
+import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.mapper.DocumentParseFileMapper;
 import com.qingluo.link.mapper.DocumentParsePipelineMapper;
 import com.qingluo.link.mapper.DocumentParsedLogMapper;
+import com.qingluo.link.model.dto.config.PdfConfig;
 import com.qingluo.link.model.dto.entity.Dataset;
+import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.model.dto.entity.DocumentParseFile;
 import com.qingluo.link.model.dto.entity.DocumentParsePipeline;
@@ -24,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -55,8 +59,10 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
 
     private static final String UPLOAD_SUCCESS = "success";
     private static final String MD_BUCKET = "rag-md";
+    private static final Set<String> PDF_PARSER_BACKENDS = Set.of("auto", "mineru", "opendataloader", "naive");
 
     private final DatasetMapper datasetMapper;
+    private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentParseFileMapper documentParseFileMapper;
     private final DocumentParsedLogMapper documentParsedLogMapper;
@@ -200,6 +206,7 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
         String mdBucket = isRetry ? retry.mdBucket() : MD_BUCKET;
         String mdObjectKey = isRetry ? retry.mdObjectKey() : buildMdObjectKey(file, taskId);
         String previousTaskId = isRetry ? retry.previousTaskId() : null;
+        String pdfParserBackend = resolvePdfParserBackend(file);
         return new DocumentParseTaskMQ.MsgPayload(
             taskId,
             file.getId(),
@@ -213,9 +220,29 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
             file.getOriginalFilename(),
             mdBucket,
             mdObjectKey,
+            pdfParserBackend,
             isRetry,
             previousTaskId
         );
+    }
+
+    private String resolvePdfParserBackend(DocumentOriginalFile file) {
+        if (!"pdf".equalsIgnoreCase(file.getFileSuffix())) {
+            return null;
+        }
+        DatasetParseConfig config = datasetParseConfigMapper.selectOne(new LambdaQueryWrapper<DatasetParseConfig>()
+            .eq(DatasetParseConfig::getUserId, file.getUserId())
+            .eq(DatasetParseConfig::getDatasetId, file.getDatasetId())
+            .last("LIMIT 1"));
+        if (config == null) {
+            return null;
+        }
+        PdfConfig pdfConfig = config.getPdfConfig();
+        if (pdfConfig == null || !StringUtils.hasText(pdfConfig.getPdfParserBackend())) {
+            return null;
+        }
+        String backend = pdfConfig.getPdfParserBackend().trim();
+        return PDF_PARSER_BACKENDS.contains(backend) ? backend : null;
     }
 
     private String buildMdObjectKey(DocumentOriginalFile file, String taskId) {

@@ -44,8 +44,11 @@ MQ 实现事实来源：
 - `trigger_mode`：`upload_auto` 或 `manual_retry`
 - `file_type`、`source_bucket`、`source_object_key`、`source_filename`
 - `md_bucket`、`md_object_key`
+- `pdf_parser_backend`（可选，仅 PDF 且数据集级 `pdf_config.pdf_parser_backend` 非空时由 Java 透传）：`auto` / `mineru` / `opendataloader` / `naive`
 - `is_retry`（bool，默认 `false`/省略）：Python 据此分流首次解析与阶段恢复重试
 - `previous_task_id`（重试时填上一轮失败任务 `task_id`，首次解析为空）
+
+`pdf_parser_backend` 不在 Java MQ 层补默认值；未传时应由 Python 按「数据集配置 → 环境默认 → 系统内置默认」继续兜底，避免把缺省字段伪装成显式指定。
 
 阶段恢复重试约定：`is_retry=true` 时复用上一轮 `document_parsed_log` 的 `parsed_bucket_name` / `parsed_object_key` 作为本次 `md_bucket` / `md_object_key`，让 Python 从失败的后处理阶段（含稀疏向量）续跑，不重新解析原文件。Java 发送前完整性校验：`is_retry=true` 时 `previous_task_id`、`md_bucket`、`md_object_key` 必须非空，缺字段不发送。`is_retry` 由 DB 状态（`document_parse_pipeline.pipeline_status=FAILED` 且已产出 Markdown）推导，与 `trigger_mode` 解耦。
 

@@ -18,6 +18,7 @@
 ## 联调关注点
 
 - MQ topic 名称和消息字段一致。
+- PDF 解析任务的 `parse_task` 可携带 `pdf_parser_backend`，值来自数据集级 `pdf_config.pdf_parser_backend`；Java 仅透传明确配置，不补默认值，Python 未收到该字段时应继续按数据集配置、环境默认、系统默认兜底。
 - Python 访问 Java 内部文件接口时携带约定鉴权信息。
 - OSS object key 和数据库文件记录一致。
 - 文档上传文件名由 Java 端做安全归一化：浏览器本地路径会被裁剪为 basename，常见业务符号（如括号、`#`、`&`、`+`、`=`）允许保留；控制字符、空名和超长名称会被拒绝。Python 端读取内部文件接口时应按数据库中的 `original_filename` 展示或记录，不要重新套更窄的文件名白名单。
@@ -29,6 +30,6 @@
 ## 解析数据契约
 
 - Java 写入原文件与 `document_parse_file.latest_parse_task_id`；Python 写入 `document_parsed_log`（Markdown 产物 + `retry_of_task_id`）与 `document_parse_pipeline`（端到端终态 `pipeline_status` + `superseded_by_task_id`）。
-- `parse_task` 传递 `document_parse_file_id` 和 `trigger_mode`，便于 Python 创建日志记录；重试再带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标（`md_bucket`/`md_object_key`）做阶段恢复，已成功文件 Java 侧友好拒绝、不投递。
+- `parse_task` 传递 `document_parse_file_id` 和 `trigger_mode`，便于 Python 创建日志记录；PDF 文件在数据集配置明确指定解析后端时额外带 `pdf_parser_backend`；重试再带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标（`md_bucket`/`md_object_key`）做阶段恢复，已成功文件 Java 侧友好拒绝、不投递。
 - `success` / `failed` 终态由 Python 写入 `document_parse_pipeline.pipeline_status`，前端通过 Java `parse-results` 查询接口轮询读取；Java 不再提供解析过程事件回调或 SSE 推送。
 - Java 侧已下线 `tolink.rag.parse_result` 消费方；Python 停发该 topic 需与 Java 发布窗口协调。

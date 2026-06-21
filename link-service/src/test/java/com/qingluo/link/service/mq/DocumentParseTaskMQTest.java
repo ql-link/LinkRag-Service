@@ -19,6 +19,7 @@ class DocumentParseTaskMQTest {
         assertThat(json).doesNotContainKeys("payload", "mq_name", "mq_type");
         assertThat(json.getLong("document_parse_file_id")).isEqualTo(301L);
         assertThat(json.getString("trigger_mode")).isEqualTo("manual_retry");
+        assertThat(json.getString("pdf_parser_backend")).isEqualTo("opendataloader");
     }
 
     @Test
@@ -90,7 +91,7 @@ class DocumentParseTaskMQTest {
     private DocumentParseTaskMQ.MsgPayload firstParse() {
         return new DocumentParseTaskMQ.MsgPayload(
             "task-1", 101L, 301L, 401L, 201L, "manual_retry", "pdf",
-            "rag-raw", "raw/first.pdf", "first.pdf", "rag-md", "parsed/first.md",
+            "rag-raw", "raw/first.pdf", "first.pdf", "rag-md", "parsed/first.md", "opendataloader",
             false, null);
     }
 }
