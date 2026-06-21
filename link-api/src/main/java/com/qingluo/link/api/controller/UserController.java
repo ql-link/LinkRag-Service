@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 用户控制器
@@ -53,5 +54,19 @@ public class UserController {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         authService.updateProfile(userId, request);
         return Result.success(null);
+    }
+
+    /**
+     * 上传并修改当前用户头像。
+     *
+     * @param file 头像图片文件
+     * @return 更新后的用户资料
+     */
+    @PostMapping("/avatar")
+    @SaCheckLogin
+    @Operation(summary = "上传用户头像", description = "上传头像图片到公开 OSS，并更新当前用户头像地址")
+    public Result<UserProfileDTO> uploadAvatar(@RequestParam("file") MultipartFile file) {
+        Long userId = AuthContext.getLoginUserIdOrThrow();
+        return Result.success(authService.uploadAvatar(userId, file));
     }
 }

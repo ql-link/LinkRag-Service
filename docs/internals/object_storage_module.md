@@ -16,7 +16,7 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 - `MinioFileService`：MinIO 实现（`File` 重载用 `putObject` + 本地文件流 + `localFile.length()` + `contentType`）。
 - `PrivateFileResolver`：私有对象本地解析与缓存。
 - `OssObjectKeyGenerator`、`OssUploadRuleRegistry`：业务对象 key 与上传规则。
-- `OssApplicationService`：业务上传门面。`upload(bizType, file)` 返回 preview 值（公开桶=URL、私有桶=key）；`uploadAndDescribe(bizType, file)` 返回 `UploadResult{objectKey, previewUrl}`，供需要持有 object key 的调用方使用。
+- `OssApplicationService`：业务上传门面。`upload(bizType, file)` 返回 preview 值（公开桶=URL、私有桶=key）；`uploadAndDescribe(bizType, file)` 返回 `UploadResult{objectKey, previewUrl}`，供需要持有 object key 的调用方使用；`uploadAndDescribe(bizType, file, objectKey)` 允许调用方在复用同一套 bizType 校验规则时指定对象 key，用于 key 需要携带业务归属信息的场景。
 
 ## 约定
 
@@ -44,7 +44,7 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 | 桶名 | 用途 | 访问策略 |
 | --- | --- | --- |
 | `tolink-rag-docs` | RAG 知识库原始文档（私有） | 无匿名访问 |
-| `tolink-public` | 所有不敏感资源：博客图片/Markdown 正文 + 反馈附件 | 匿名读（anonymous download） |
+| `tolink-public` | 所有不敏感资源：用户头像 + 博客图片/Markdown 正文 + 反馈附件 | 匿名读（anonymous download） |
 
 > 原博客专用桶 `tolink-blog` 与从未落地的 `PUBLIC` 占位桶已合并为单一公开桶 `tolink-public`；存量博客对象不迁移，旧桶 `tolink-blog` 待服务稳定后由运维删除。
 
@@ -54,6 +54,18 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 | --- | --- | --- |
 | `PRIVATE` | `tolink-rag-docs` | 对象 key（字符串路径，私有桶不可匿名访问） |
 | `PUBLIC` | `tolink-public` | 完整公开 URL（匿名可读） |
+
+## 用户头像对象规则
+
+用户头像写入公开桶 `tolink-public`（`OssSavePlaceEnum.PUBLIC`），上传成功后将完整公开 URL 写入 `sys_user.avatar_url`。对象 key 按用户分目录，便于后续按用户排查和清理历史头像。
+
+| 对象 | Key | 枚举值 | 说明 |
+| --- | --- | --- | --- |
+| 用户头像 | `avatar/{userId}/{uuid}.{suffix}` | `PUBLIC` | 当前用户上传头像，允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB |
+
+- 头像上传接口通过 `OssApplicationService.uploadAndDescribe("avatar", file, objectKey)` 指定带 `userId` 的 object key，同时复用 `avatar` 上传规则。
+- MinIO 返回的公开 URL 形如 `{endpoint}/{publicBucket}/avatar/{userId}/{uuid}.{suffix}`，该值直接写入 `sys_user.avatar_url`。
+- 当前实现只更新用户头像地址，不物理删除旧头像；如需清理历史头像，可按 `avatar/{userId}/` 前缀对账删除。
 
 ## 博客对象规则
 

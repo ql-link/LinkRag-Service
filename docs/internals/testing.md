@@ -32,6 +32,7 @@ mvn -pl link-service test
 - `acceptance.feature` 中的每个 Scenario 必须在 TD 中映射到测试。
 - Java 测试不必逐字使用 Gherkin 名称，但测试方法、注释或 TD 映射必须能追溯。
 - 外部 MySQL、Redis、Kafka、MinIO、第三方 API 在单元测试中默认 Mock。
+- 用户资料类 multipart 上传接口在 `UserControllerTest` 用 local OSS 测试配置承接端到端回写断言；对应 Service 单测用 `OssApplicationService` mock 覆盖 OSS 返回值、数据库更新和用户缓存失效。
 - 全局最近文档等跨数据集查询应在 Controller/集成测试中覆盖当前用户权限隔离、稳定排序、分页和空列表返回。
 - 数据集解析/检索配置测试：`DatasetParseConfigControllerTest` 覆盖 GET/PUT 往返、旧 `recall_config` 新增项回落默认、创建数据集写默认配置行、`recall_enabled_sources` 清洗去重与非法值拒绝、`rerank_top_n` 正整数校验；`DatasetParseConfigServiceImplTest` 覆盖无行/旧行默认补齐、写入归一化和 Mapper insert/update 分支。
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。

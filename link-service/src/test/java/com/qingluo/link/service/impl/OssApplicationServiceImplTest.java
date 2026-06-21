@@ -65,6 +65,19 @@ class OssApplicationServiceImplTest {
     }
 
     @Test
+    void Should_Upload_To_Custom_Object_Key_When_ObjectKey_Provided() {
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", "hello".getBytes());
+
+        com.qingluo.link.service.oss.UploadResult result =
+            service.uploadAndDescribe("avatar", file, "avatar/10001/custom.png");
+
+        assertThat(result.objectKey()).isEqualTo("avatar/10001/custom.png");
+        assertThat(result.previewUrl()).isEqualTo("/preview/avatar/10001/custom.png");
+        assertThat(ossService.lastSavePlace).isEqualTo(OssSavePlaceEnum.PUBLIC);
+        assertThat(ossService.lastObjectKey).isEqualTo("avatar/10001/custom.png");
+    }
+
+    @Test
     void Should_Reject_File_When_BizType_Is_Unknown() {
         MockMultipartFile file = new MockMultipartFile("file", "note.txt", "text/plain", "hello".getBytes());
 

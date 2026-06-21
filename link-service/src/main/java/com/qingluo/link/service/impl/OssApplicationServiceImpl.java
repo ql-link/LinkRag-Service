@@ -50,6 +50,24 @@ public class OssApplicationServiceImpl implements OssApplicationService {
      */
     @Override
     public UploadResult uploadAndDescribe(String bizType, MultipartFile file) {
+        String suffix = validateAndGetSuffix(bizType, file);
+        String objectKey = objectKeyGenerator.generate(bizType, suffix);
+        return uploadWithObjectKey(bizType, file, objectKey);
+    }
+
+    /**
+     * 按业务规则校验，并上传到调用方指定的 object key。
+     */
+    @Override
+    public UploadResult uploadAndDescribe(String bizType, MultipartFile file, String objectKey) {
+        validateAndGetSuffix(bizType, file);
+        if (!StringUtils.hasText(objectKey)) {
+            throw badRequest("上传对象路径不能为空");
+        }
+        return uploadWithObjectKey(bizType, file, objectKey);
+    }
+
+    private String validateAndGetSuffix(String bizType, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw badRequest("请选择要上传的文件");
         }
@@ -68,7 +86,11 @@ public class OssApplicationServiceImpl implements OssApplicationService {
             throw badRequest("上传大小请限制在 " + rule.maxSizeBytes() / 1024 / 1024 + "M 以内");
         }
 
-        String objectKey = objectKeyGenerator.generate(bizType, suffix);
+        return suffix;
+    }
+
+    private UploadResult uploadWithObjectKey(String bizType, MultipartFile file, String objectKey) {
+        OssUploadRule rule = ruleRegistry.getRule(bizType);
         String uploadResult = ossService.upload2PreviewUrl(rule.savePlace(), file, objectKey);
         if (!StringUtils.hasText(uploadResult)) {
             throw new BusinessException(50002, "文件上传失败", 500);
