@@ -20,6 +20,7 @@
 - MQ topic 名称和消息字段一致。
 - Python 访问 Java 内部文件接口时携带约定鉴权信息。
 - OSS object key 和数据库文件记录一致。
+- 文档上传文件名由 Java 端做安全归一化：浏览器本地路径会被裁剪为 basename，常见业务符号（如括号、`#`、`&`、`+`、`=`）允许保留；控制字符、空名和超长名称会被拒绝。Python 端读取内部文件接口时应按数据库中的 `original_filename` 展示或记录，不要重新套更窄的文件名白名单。
 - 解析终态结果由 Python 写入共享数据库，Java 通过查询接口读取，不再依赖终态回传 MQ。
 - **链路追踪**：Java 端日志已接入 traceId（HTTP 入口复用/新建 `X-Trace-Id` 头，异步线程与 MQ 消费/定时任务各自串联）。当前 traceId **不随 MQ 消息或内部 HTTP 跨端传递**；若后续需 Java↔Python 全链路串联，可约定透传 `X-Trace-Id`（属增量协调项，暂未实现）。
 - **上传异步化**：上传接口立即返回 `uploadStatus=UPLOADING`，OSS 上传/终态回写在 Java 侧线程池异步完成；`parseImmediately=true` 的解析任务**只在 OSS 上传成功后**才投递（不会对尚未落 OSS 的文件触发解析）。Python 侧无需改动，仍以收到 `parse_task` 为准；前端需改为按 `uploadStatus` 轮询获取上传终态。

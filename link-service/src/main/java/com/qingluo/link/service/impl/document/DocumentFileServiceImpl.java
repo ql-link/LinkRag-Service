@@ -46,6 +46,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     private static final String UPLOADING = "uploading";
     private static final String UPLOAD_SUCCESS = "success";
     private static final String UPLOAD_FAILED = "failed";
+    private static final int ORIGINAL_FILENAME_MAX_LENGTH = 255;
     private final DatasetMapper datasetMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentDeleteNotifier deleteNotifier;
@@ -64,9 +65,10 @@ public class DocumentFileServiceImpl implements DocumentFileService {
      */
     public DocumentFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately) {
         assertOwnedDataset(userId, datasetId);
-        validateFile(file);
+        assertFilePresent(file);
 
         String originalFilename = normalizeOriginalFilename(file.getOriginalFilename());
+        validateFile(file, originalFilename);
         String suffix = extractSuffix(originalFilename);
 
         // 同名分流：撞 failed 复用旧行重置 uploading；撞 uploading/success 拦截 400；无同名则新建。
@@ -302,12 +304,18 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     /**
      * 校验上传文件是否存在、格式合法且大小符合限制。
      */
-    private void validateFile(MultipartFile file) {
+    private void assertFilePresent(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(400, "请选择要上传的文件", 400);
         }
+    }
+
+    /**
+     * 校验上传文件格式和大小是否符合限制。
+     */
+    private void validateFile(MultipartFile file, String originalFilename) {
         DocumentFileRuntimeConfig runtimeConfig = documentFileRuntimeConfigService.getCurrent();
-        String suffix = extractSuffix(file.getOriginalFilename());
+        String suffix = extractSuffix(originalFilename);
         if (!runtimeConfig.getAllowedSuffixes().contains(suffix)) {
             throw new BusinessException(400, "当前文件格式暂不支持", 400);
         }
@@ -354,10 +362,26 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         if (!StringUtils.hasText(normalized)) {
             throw new BusinessException(400, "请选择要上传的文件", 400);
         }
-        if (!normalized.matches("[\\p{L}\\p{N} ._\\-]+")) {
+        normalized = normalized.trim();
+        if (!StringUtils.hasText(normalized)) {
+            throw new BusinessException(400, "请选择要上传的文件", 400);
+        }
+        if (normalized.length() > ORIGINAL_FILENAME_MAX_LENGTH) {
+            throw new BusinessException(400, "文件名长度不能超过255个字符", 400);
+        }
+        if (containsControlCharacter(normalized) || ".".equals(normalized) || "..".equals(normalized)) {
             throw new BusinessException(400, "文件名包含非法字符", 400);
         }
         return normalized;
+    }
+
+    private boolean containsControlCharacter(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isISOControl(value.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

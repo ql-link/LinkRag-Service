@@ -37,6 +37,7 @@ mvn -pl link-service test
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。
 - 缓存一致性组件改造优先在 `link-service/src/test/java/com/qingluo/link/service/cache/CacheConsistencyServiceTest.java` 承接，至少覆盖：事务提交后首删、事务回滚不删、无事务立即删、首删失败不改请求结果、补偿第二删强失败语义，以及同事务多次触发下的 key 去重结果。
 - 文档文件上传配置运行时来源为 Redis；Controller 测试应 Mock 或重置 `DocumentFileConfigCacheService`，不再依赖数据库配置表。
+- 文档文件名校验测试需同时覆盖“常见业务符号允许”和“安全边界拒绝”：`DocumentFileServiceImplTest` 承接归一化、长度/控制字符等快速失败分支，`DocumentFileControllerTest` 承接 HTTP 上传后 `original_filename` 落库与返回值。
 - 解析链路测试需覆盖 schema 初始化、扁平任务 MQ 契约、上传初始化 `document_parse_file`、解析投递事务回滚、重复提交拦截和 `parse-results` 结果查询；文档解析 SSE 与过程事件回调已下线，不再新增实时推送测试；Java 端不消费 Python 解析终态 MQ，也不回写 Python 负责的终态字段。
 - 解析重试链路测试：入口分类（首次/重试/已成功/运行中）与重试消息构造用 `DocumentParseTaskServiceImplTest`，消息完整性校验用 `DocumentParseTaskMQTest`，重试链回溯边界（链长 1 / 链断 / 深度上限 / 防环）用 `DocumentParseRetryChainServiceImplTest`。终态判定已从 `document_parsed_log.task_status`（已删）迁到 `document_parse_pipeline.pipeline_status`，相关 Mockito/集成测试以 pipeline 行驱动；`DocumentParseTaskServiceImplTest` 因走 `LambdaUpdateWrapper.set` 需 `@BeforeAll` 调 `TableInfoHelper.initTableInfo` 预热 TableInfo 缓存。
 - 文档上传异步化测试：同步快速失败/同名复用用 `DocumentFileServiceImplTest`，终态守卫回写与解析投递时机用 `DocumentUploadStatusWriterTest`，OSS 失败/池满拒绝/孤儿用 `DocumentUploadAsyncExecutorTest`，超时扫描用 `DocumentUploadStuckScannerTest`，临时文件物化/启动清理用 `DocumentUploadTempStorageTest`，线程池多池就绪/校验用 `ThreadPoolConfigTest`（`ApplicationContextRunner`）。
