@@ -9,6 +9,8 @@ import com.qingluo.link.model.dto.request.AddProviderModelRequest;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest;
+import com.qingluo.link.model.dto.request.UpdatePresetRequest;
+import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateUserRoleRequest;
 import com.qingluo.link.model.dto.request.UpdateUserStatusRequest;
@@ -190,6 +192,20 @@ public class AdminController {
     // ---- 厂商模型能力目录管理 ----
 
     /**
+     * 分页查询厂商模型能力目录，管理端可查看上架与下架项。
+     */
+    @GetMapping("/provider-models")
+    @Operation(summary = "查询厂商模型能力目录", description = "分页查询模型能力目录，支持按厂商、能力、上架状态过滤")
+    public Result<PageResult<ProviderModel>> listProviderModels(
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "厂商ID") @RequestParam(required = false) Long providerId,
+            @Parameter(description = "模型能力") @RequestParam(required = false) String capability,
+            @Parameter(description = "是否上架") @RequestParam(required = false) Boolean isActive) {
+        return Result.success(providerModelService.listModels(page, size, providerId, capability, isActive));
+    }
+
+    /**
      * 向厂商模型能力目录新增一条模型能力（已存在则确保上架）。
      */
     @PostMapping("/providers/{providerId}/models")
@@ -210,6 +226,17 @@ public class AdminController {
     public Result<Void> deleteProviderModel(@Parameter(description = "目录项ID") @PathVariable Long id) {
         providerModelService.deleteModelCapability(id);
         return Result.success(null);
+    }
+
+    /**
+     * 更新一条厂商模型能力目录项。
+     */
+    @PatchMapping("/provider-models/{id}")
+    @Operation(summary = "更新厂商模型能力", description = "部分更新模型能力目录项字段")
+    public Result<ProviderModel> updateProviderModel(
+            @Parameter(description = "目录项ID") @PathVariable Long id,
+            @RequestBody @Validated UpdateProviderModelRequest request) {
+        return Result.success(providerModelService.updateModelCapability(id, request));
     }
 
     /**
@@ -242,6 +269,29 @@ public class AdminController {
     @Operation(summary = "新增系统预设", description = "预配一条整套可用配置，平台 Key 入库前加密")
     public Result<Void> createSystemPreset(@RequestBody @Validated CreatePresetRequest request) {
         systemPresetService.createPreset(request);
+        return Result.success(null);
+    }
+
+    /**
+     * 更新系统预设。
+     */
+    @PatchMapping("/system-presets/{id}")
+    @Operation(summary = "更新系统预设", description = "部分更新系统预设，变更厂商/模型/能力时从模型能力目录重新复制协议与入口")
+    public Result<SystemPreset> updateSystemPreset(
+            @Parameter(description = "预设ID") @PathVariable Long id,
+            @RequestBody @Validated UpdatePresetRequest request) {
+        return Result.success(systemPresetService.updatePreset(id, request));
+    }
+
+    /**
+     * 启用/禁用系统预设。
+     */
+    @PatchMapping("/system-presets/{id}/active")
+    @Operation(summary = "启用/禁用系统预设", description = "控制该预设是否下发给新用户")
+    public Result<Void> toggleSystemPreset(
+            @Parameter(description = "预设ID") @PathVariable Long id,
+            @Parameter(description = "是否启用") @RequestParam boolean isActive) {
+        systemPresetService.togglePreset(id, isActive);
         return Result.success(null);
     }
 

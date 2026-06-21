@@ -31,11 +31,15 @@
 | PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，变更后双删缓存 |
 | DELETE | `/api/v1/admin/providers/{id}` | 删除系统厂商 |
 | PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数） |
+| GET | `/api/v1/admin/provider-models` | 管理端模型能力目录分页（可按 `providerId` / `capability` / `isActive` 过滤，含下架项） |
 | POST | `/api/v1/admin/providers/{providerId}/models` | 新增厂商模型能力目录项 |
+| PATCH | `/api/v1/admin/provider-models/{id}` | 部分更新模型能力目录项（模型名、能力、协议、入口、上下架状态） |
 | DELETE | `/api/v1/admin/provider-models/{id}` | 删除模型能力目录项 |
 | PATCH | `/api/v1/admin/provider-models/{id}/active` | 上/下架模型能力目录项 |
 | GET | `/api/v1/admin/system-presets` | 系统预设列表（平台 Key 脱敏） |
 | POST | `/api/v1/admin/system-presets` | 新增系统预设（平台 Key 加密入库） |
+| PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（变更厂商/模型/能力时复制模型能力层协议与入口） |
+| PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（控制是否下发给新用户） |
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 ## LLM

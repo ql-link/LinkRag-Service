@@ -15,6 +15,7 @@ import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.AdminProviderService;
+import com.qingluo.link.service.LLMProtocolService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -28,6 +29,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
     private final SystemProviderMapper systemProviderMapper;
     private final CacheConsistencyService cacheConsistencyService;
+    private final LLMProtocolService llmProtocolService;
 
     @Override
     /**
@@ -46,6 +48,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
      * 创建新的系统厂商配置并清理相关缓存。
      */
     public void createProvider(CreateProviderRequest request) {
+        llmProtocolService.validateProtocol(request.getDefaultProtocol());
         long count = systemProviderMapper.selectCount(
                 new LambdaQueryWrapper<SystemProvider>()
                         .eq(SystemProvider::getProviderType, request.getProviderType()));
@@ -83,6 +86,10 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
         if (StringUtils.hasText(request.getApiBaseUrl())) {
             provider.setApiBaseUrl(request.getApiBaseUrl());
+        }
+        if (StringUtils.hasText(request.getDefaultProtocol())) {
+            llmProtocolService.validateProtocol(request.getDefaultProtocol());
+            provider.setDefaultProtocol(request.getDefaultProtocol());
         }
         if (request.getIsActive() != null) {
             provider.setIsActive(request.getIsActive());
