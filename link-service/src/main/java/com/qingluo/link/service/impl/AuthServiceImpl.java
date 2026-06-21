@@ -14,15 +14,20 @@ import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
+import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.SystemPresetService;
 import com.qingluo.link.service.cache.UserCacheService;
+import com.qingluo.link.service.oss.UploadResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -36,6 +41,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final UserCacheService userCacheService;
     private final SystemPresetService systemPresetService;
+    private final OssApplicationService ossApplicationService;
 
     /**
      * 校验账号密码并创建登录态，成功后同步刷新最后登录时间。
@@ -160,6 +166,44 @@ public class AuthServiceImpl implements AuthService {
 
         sysUserMapper.updateById(user);
         userCacheService.evict(userId);
+    }
+
+    /**
+     * 上传用户头像到公开 OSS，并将公开访问地址写回当前用户资料。
+     */
+    @Override
+    @Transactional
+    public UserProfileDTO uploadAvatar(Long userId, MultipartFile file) {
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw AuthException.userNotFound();
+        }
+
+        UploadResult uploadResult = ossApplicationService.uploadAndDescribe("avatar", file, buildAvatarObjectKey(userId, file));
+        user.setAvatarUrl(uploadResult.previewUrl());
+        sysUserMapper.updateById(user);
+        userCacheService.evict(userId);
+        return toDTO(user);
+    }
+
+    private String buildAvatarObjectKey(Long userId, MultipartFile file) {
+        String suffix = getFileSuffix(file == null ? null : file.getOriginalFilename());
+        String uuid = UUID.randomUUID().toString().replace("-", "");
+        if (StringUtils.hasText(suffix)) {
+            return "avatar/" + userId + "/" + uuid + "." + suffix;
+        }
+        return "avatar/" + userId + "/" + uuid;
+    }
+
+    private String getFileSuffix(String fileName) {
+        if (!StringUtils.hasText(fileName)) {
+            return "";
+        }
+        int lastDotIndex = fileName.lastIndexOf('.');
+        if (lastDotIndex < 0 || lastDotIndex == fileName.length() - 1) {
+            return "";
+        }
+        return fileName.substring(lastDotIndex + 1).toLowerCase(Locale.ROOT);
     }
 
     /**

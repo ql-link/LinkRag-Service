@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import com.qingluo.link.service.cache.UserCacheService;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -51,7 +53,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @author Claude Code
  * @since 2026-04-14
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+    "tolink.oss.service-type=local",
+    "tolink.oss.file-root-path=/tmp/tolink-user-avatar-test",
+    "tolink.oss.public-base-url=/api/v1/oss-files/public"
+})
 @AutoConfigureMockMvc
 @Import(TestSecurityConfig.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -271,5 +277,43 @@ class UserControllerTest {
                 .content(requestJson))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.code").value(20007));
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("上传头像成功并更新资料 - POST /api/v1/user/avatar")
+    void Should_UploadAvatarAndUpdateProfile_When_FileValid() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "avatar.png", MediaType.IMAGE_PNG_VALUE, "avatar-content".getBytes());
+
+        mockMvc.perform(multipart("/api/v1/user/avatar")
+                .file(file)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.avatarUrl").value(org.hamcrest.Matchers.startsWith(
+                "/api/v1/oss-files/public/avatar/" + TEST_USER_ID + "/")))
+            .andExpect(jsonPath("$.data.username").value(TEST_USERNAME));
+
+        mockMvc.perform(get("/api/v1/user/profile")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.avatarUrl").value(org.hamcrest.Matchers.startsWith(
+                "/api/v1/oss-files/public/avatar/" + TEST_USER_ID + "/")));
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("上传非图片头像应返回 400 - POST /api/v1/user/avatar")
+    void Should_ReturnBadRequest_When_AvatarSuffixUnsupported() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "avatar.txt", MediaType.TEXT_PLAIN_VALUE, "not-image".getBytes());
+
+        mockMvc.perform(multipart("/api/v1/user/avatar")
+                .file(file)
+                .header("satoken", token))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(40001))
+            .andExpect(jsonPath("$.message").value("上传文件格式不支持"));
     }
 }

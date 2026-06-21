@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | GET | `/api/v1/user/profile` | 当前用户资料 |
 | PATCH | `/api/v1/user/profile` | 更新当前用户资料 |
+| POST | `/api/v1/user/avatar` | 上传并更新当前用户头像 |
 | GET | `/api/v1/admin/users` | 管理员用户列表 |
 | PATCH | `/api/v1/admin/users/{id}/status` | 启用/禁用用户 |
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
@@ -41,6 +42,8 @@
 | PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（变更厂商/模型/能力时复制模型能力层协议与入口） |
 | PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（控制是否下发给新用户） |
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
+
+`POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
 
 ## LLM
 

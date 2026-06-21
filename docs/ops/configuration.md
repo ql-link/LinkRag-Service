@@ -118,12 +118,12 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `MINIO_ACCESS_KEY` | MinIO 访问密钥 | 是* | 无 | `your-minio-access-key-here` |
 | `MINIO_SECRET_KEY` | MinIO 密钥 | 是* | 无 | `your-minio-secret-key-here` |
 | `MINIO_PRIVATE_BUCKET` | MinIO 私有存储桶名（RAG 知识库文档） | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
-| `MINIO_PUBLIC_BUCKET` | MinIO 公开桶名（博客图片/Markdown 正文 + 反馈附件，需配置匿名读） | 否 | `tolink-public` | `tolink-public` |
+| `MINIO_PUBLIC_BUCKET` | MinIO 公开桶名（用户头像 + 博客图片/Markdown 正文 + 反馈附件，需配置匿名读） | 否 | `tolink-public` | `tolink-public` |
 
 > \* MinIO 变量在 `OSS_SERVICE_TYPE=minio` 时必需
 >
 > 三桶已收敛为两桶：私有桶 `tolink-rag-docs`（RAG 文档）+ 公开桶 `tolink-public`（所有不敏感资源）。原博客专用桶 `tolink-blog` 已合并入公开桶，`MINIO_BLOG_BUCKET` 配置项废弃，部署侧待服务稳定后删除旧桶。
-> 反馈附件不新增独立桶配置，复用 `MINIO_PUBLIC_BUCKET` 公开桶；对象 key 由 Java 生成，格式为 `feedback/yyyy/MM/{uuid}.{suffix}`（精度到月），数据库只存 object key，可访问 URL 由后端按公开桶拼装。
+> 头像与反馈附件不新增独立桶配置，复用 `MINIO_PUBLIC_BUCKET` 公开桶。头像对象 key 格式为 `avatar/{userId}/{uuid}.{suffix}`，完整公开 URL 写入 `sys_user.avatar_url`；反馈附件对象 key 由 Java 生成，格式为 `feedback/yyyy/MM/{uuid}.{suffix}`（精度到月），数据库只存 object key，可访问 URL 由后端按公开桶拼装。
 
 ### 4.8 阿里云 OSS（ALIYUN_OSS_*）
 
