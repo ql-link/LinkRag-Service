@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * 线程池多池配置根：{@code thread-pool.<池名>.*}。
  *
- * <p>每个业务一个专用池，互不共用。本次仅 {@code document-upload}；未来加池 =
+ * <p>每个业务一个专用池，互不共用。新增业务池 =
  * 在此新增一个 {@link PoolProperties} 字段 + 在 {@link ThreadPoolConfig} 新增一个 {@code @Bean}。</p>
  */
 @ConfigurationProperties(prefix = "thread-pool")
@@ -13,6 +13,8 @@ public class ThreadPoolProperties {
 
     /** 文档上传专用池：thread-pool.document-upload.* */
     private PoolProperties documentUpload = new PoolProperties();
+    /** 对话标题生成专用池：thread-pool.conversation-title.* */
+    private PoolProperties conversationTitle = new PoolProperties();
 
     public PoolProperties getDocumentUpload() {
         return documentUpload;
@@ -20,5 +22,13 @@ public class ThreadPoolProperties {
 
     public void setDocumentUpload(PoolProperties documentUpload) {
         this.documentUpload = documentUpload;
+    }
+
+    public PoolProperties getConversationTitle() {
+        return conversationTitle;
+    }
+
+    public void setConversationTitle(PoolProperties conversationTitle) {
+        this.conversationTitle = conversationTitle;
     }
 }

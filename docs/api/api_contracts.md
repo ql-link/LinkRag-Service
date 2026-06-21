@@ -130,7 +130,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 > 写入消息接口 `POST /api/v1/chat/conversations/{id}/messages` 已下线：对话轮次改由 Python 问答执行器经 `tolink.rag.chat_turn` 上报、Java 单事务落库 `chat_message` / `llm_usage_log` / `chat_conversation`（见 `docs/api/mq_contracts.md`）。前端职责简化为先创建会话拿到 `conversation_id`，随 `/api/v1/rag/stream` 请求带上。
 >
-> 会话标题由首轮 `query` 生成（超长按 30 字符截断加省略号；命中标题唯一约束 `(user_id, dataset_id, title)` 冲突时保留默认标题），不再依赖已下线的写消息接口。
+> 会话创建时默认标题为“新对话”；首轮 `chat_turn` 落库时先用首问清洗截断为临时标题，随后 Java 在事务提交后异步调用用户本轮 Chat 配置（不可用则回退用户默认 CHAT 配置）的 OpenAI-compatible chat completions 生成自然短标题。标题生成失败、线程池拒绝或配置不可用时保留临时标题；异步回写前若用户已改成其它标题则跳过，不覆盖用户手动标题。
 
 ## Dataset / Document File
 

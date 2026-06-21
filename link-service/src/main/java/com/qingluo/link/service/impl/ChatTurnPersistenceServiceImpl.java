@@ -12,6 +12,7 @@ import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
 import com.qingluo.link.model.dto.entity.UsageLog;
 import com.qingluo.link.service.ChatTurnPersistenceService;
+import com.qingluo.link.service.ConversationTitleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,11 +38,10 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
     private final ChatConversationMapper conversationMapper;
     private final ChatMessageMapper messageMapper;
     private final UsageLogMapper usageLogMapper;
+    private final ConversationTitleService conversationTitleService;
 
     /** 创建对话时的默认标题，首轮落库时用提问替换。 */
     private static final String DEFAULT_TITLE = "新对话";
-    /** 由提问生成标题的最大长度。 */
-    private static final int TITLE_MAX_LENGTH = 30;
 
     @Override
     @Transactional
@@ -97,43 +97,54 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
         // 5. 更新对话元信息：last_config_id / last_model_name / updated_at；首轮由提问生成标题。
         conversation.setLastConfigId(payload.getConfigId());
         conversation.setLastModelName(payload.getModelName());
-        applyTitleFromFirstTurn(conversation, payload.getQuery());
+        String fallbackTitle = applyTitleFromFirstTurn(conversation, payload.getQuery());
         conversationMapper.updateById(conversation);
+        if (StringUtils.hasText(fallbackTitle)) {
+            log.info("chat_turn schedule conversation title generation. conversation_id={}, request_id={}, fallback_title={}",
+                    conversation.getId(), payload.getRequestId(), fallbackTitle);
+            conversationTitleService.generateAfterCommit(
+                    conversation.getId(), payload.getUserId(), payload.getConfigId(),
+                    payload.getQuery(), payload.getAnswer(), fallbackTitle);
+        }
     }
 
     /**
-     * 首轮落库时用提问生成标题：仅当当前标题为空或仍是默认标题；
-     * 为避免触碰对话标题的唯一约束 (user_id, dataset_id, title)，生成标题若与同库其它对话冲突则保留原标题。
+     * 首轮落库时用提问生成临时标题：仅当当前标题为空或仍是默认标题。
      */
-    private void applyTitleFromFirstTurn(ChatConversation conversation, String query) {
+    private String applyTitleFromFirstTurn(ChatConversation conversation, String query) {
         String current = conversation.getTitle();
-        boolean needTitle = !StringUtils.hasText(current) || DEFAULT_TITLE.equals(current.trim());
-        if (!needTitle || !StringUtils.hasText(query)) {
-            return;
+        if (!StringUtils.hasText(query)) {
+            return null;
         }
-        String title = buildTitle(query);
-        if (title.equals(current)) {
-            return;
+        String title = conversationTitleService.buildFallbackTitle(query);
+        if (!StringUtils.hasText(title)) {
+            return null;
         }
-        long conflict = conversationMapper.selectCount(new LambdaQueryWrapper<ChatConversation>()
-                .eq(ChatConversation::getUserId, conversation.getUserId())
-                .eq(ChatConversation::getDatasetId, conversation.getDatasetId())
-                .eq(ChatConversation::getTitle, title)
-                .ne(ChatConversation::getId, conversation.getId()));
-        if (conflict > 0) {
-            log.info("chat_turn title collision, keep default. conversation_id={}, title={}",
-                    conversation.getId(), title);
-            return;
+        boolean needTitle = !StringUtils.hasText(current)
+                || DEFAULT_TITLE.equals(current.trim())
+                || title.equals(current.trim())
+                || isQuestionPrefixTitle(query, current);
+        if (!needTitle) {
+            return null;
+        }
+        if (StringUtils.hasText(current)
+                && !DEFAULT_TITLE.equals(current.trim())
+                && isQuestionPrefixTitle(query, current)) {
+            return current.trim();
         }
         conversation.setTitle(title);
+        return title;
     }
 
-    private String buildTitle(String query) {
-        String trimmed = query.trim();
-        if (trimmed.length() <= TITLE_MAX_LENGTH) {
-            return trimmed;
+    private boolean isQuestionPrefixTitle(String query, String currentTitle) {
+        if (!StringUtils.hasText(query) || !StringUtils.hasText(currentTitle)) {
+            return false;
         }
-        return trimmed.substring(0, TITLE_MAX_LENGTH) + "…";
+        String normalizedQuery = conversationTitleService.buildFallbackTitle(query);
+        String normalizedTitle = currentTitle.trim();
+        return StringUtils.hasText(normalizedQuery)
+                && normalizedTitle.length() >= 8
+                && normalizedQuery.startsWith(normalizedTitle);
     }
 
     private String nullToEmpty(String value) {

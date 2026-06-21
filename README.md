@@ -16,7 +16,7 @@ ToLink 采用「Java 管理端 + Python RAG 执行端」协作模式：
             └──────────────────────┘     内部 HTTP (文件内容/召回)  └─────────────────────┘
 ```
 
-- **Java 端**：管理入口、用户态资源、配置、文件上传、对象存储定位、解析任务投递、结果查询（前端轮询，不再 SSE 推送）。
+- **Java 端**：管理入口、用户态资源、配置、文件上传、对象存储定位、解析任务投递、结果查询（前端轮询，不再 SSE 推送），以及首轮对话后的轻量 Chat 标题生成。
 - **Python 端**：文档解析、RAG 执行、LLM 调用、解析产物生成与部分状态推进。
 - 两端通过 MySQL、MQ、OSS/MinIO 与必要的内部 HTTP 接口协作。
 
@@ -56,7 +56,7 @@ link-api/src/main/java/com/qingluo/link/api/LinkApplication.java
 
 - 用户与权限：注册、登录、退出、用户资料、管理员用户管理，基于 sa-token 与 `ADMIN/USER` 角色。
 - LLM 配置：系统厂商、用户 API Key 配置、默认配置、模型能力展示，API Key 使用 AES-256-GCM 加密。
-- 对话与用量：会话、消息、用量汇总、日度统计、明细查询。
+- 对话与用量：会话、消息、首轮临时标题与异步模型标题生成、用量汇总、日度统计、明细查询。
 - 数据集与文档文件：数据集管理、原始文件上传、解析提交、解析状态查询（前端轮询 `parse-results`，不再 SSE 推送）。
 - OSS：本地存储和 MinIO 文件服务，区分 public/private 对象。
 - MQ：解析任务 `tolink.rag.parse_task` 投递，删除通知 `tolink.rag.document_delete` 投递，缓存补偿 `tolink.cache.evict`；Java 不再消费 `tolink.rag.parse_result`，解析终态以 Python 写入的共享数据库为准，由前端轮询 `parse-results` 查询。
@@ -90,6 +90,7 @@ mysql -h <DB_HOST> -u root -p tolink_rag_db < scripts/db/init.sql
 | `OSS_MINIO_*` | MinIO 配置 |
 | `DOCUMENT_FILE_*` | 文档文件上传与内部访问配置 |
 | `LLM_SECRET` | API Key 加密密钥，64 位十六进制字符串 |
+| `tolink.chat.title-generation.*` | 对话标题生成开关、长度、超时与模型输出参数 |
 
 ### 3. 启动服务
 
