@@ -13,9 +13,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * 线程池配置（多池就绪）。
  *
  * <p>每个业务一个专用池，按 {@code thread-pool.<池名>.*} 配置，经 {@link #buildExecutor} 统一构建、
- * 各带独立拒绝策略与线程名。本次仅 {@code document-upload} 池；未来加池 = 新增一个 {@code @Bean}
- * 调用 {@link #buildExecutor}。原 {@code customThreadPool} 通用兜底池已移除，避免不同业务共用一个池
- * 互相拖累。</p>
+ * 各带独立拒绝策略与线程名。原 {@code customThreadPool} 通用兜底池已移除，避免不同业务共用一个池互相拖累。</p>
  */
 @Configuration
 @EnableConfigurationProperties(ThreadPoolProperties.class)
@@ -38,6 +36,21 @@ public class ThreadPoolConfig {
     @Bean("documentUploadExecutor")
     public Executor documentUploadExecutor() {
         return buildExecutor(properties.getDocumentUpload(), new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    /**
+     * 对话标题生成专用线程池。
+     *
+     * <p>拒绝策略用 {@link ThreadPoolExecutor.AbortPolicy}：池+队列满时由提交方吞掉并保留临时标题，
+     * 避免标题生成反压主对话链路。</p>
+     */
+    @Bean("conversationTitleExecutor")
+    public Executor conversationTitleExecutor() {
+        PoolProperties props = properties.getConversationTitle();
+        if ("pool-".equals(props.getThreadNamePrefix())) {
+            props.setThreadNamePrefix("conversation-title-");
+        }
+        return buildExecutor(props, new ThreadPoolExecutor.AbortPolicy());
     }
 
     /**

@@ -72,7 +72,7 @@ MQ 实现事实来源：
 - `status`（string，必填）：`success` / `partial`（客户端断连）/ `failed`（生成异常）。
 - 信封基类自带 `message_id` / `timestamp`（仅追踪用途，不入库）。
 
-Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内：① `INSERT chat_message`（一行一轮）；② `INSERT llm_usage_log`（关联 `conversation_id` / `message_id` / `request_id`）；③ `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`，并在首轮由 `query` 生成标题。两条必做约束：
+Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内：① `INSERT chat_message`（一行一轮）；② `INSERT llm_usage_log`（关联 `conversation_id` / `message_id` / `request_id`）；③ `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`，并在首轮由 `query` 生成临时标题。事务提交后，Java 异步调用用户 Chat 模型生成自然短标题；失败、拒绝或配置不可用时保留临时标题。两条必做约束：
 
 - **幂等去重**：以 `request_id` 在落库前做存在性校验，命中则跳过，应对 MQ 重投（同对话单分区有序，重投为顺序到达，存在性校验即可去重；不依赖 DB 唯一索引，避免与 Python 侧迁移产生 schema 漂移）。
 - **归属校验**：`conversation_id` 来自前端请求体、`user_id` 取自 token，Python 仅透传不校验；Java 落库前必须校验 `conversation` 属于该 `user_id`，不匹配直接丢弃并告警，防止跨用户写入。
