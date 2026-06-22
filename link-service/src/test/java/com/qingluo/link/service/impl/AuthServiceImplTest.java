@@ -17,8 +17,10 @@ import com.qingluo.link.model.dto.request.RegisterRequest;
 import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
+import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.SystemPresetService;
 import com.qingluo.link.service.cache.UserCacheService;
+import com.qingluo.link.service.oss.UploadResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +30,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.HashMap;
@@ -52,6 +55,9 @@ class AuthServiceImplTest {
 
     @Mock
     private SystemPresetService systemPresetService;
+
+    @Mock
+    private OssApplicationService ossApplicationService;
 
     @InjectMocks
     private AuthServiceImpl authService;
@@ -231,6 +237,26 @@ class AuthServiceImplTest {
 
         verify(sysUserMapper, never()).updateById(any(SysUser.class));
         verify(userCacheService, never()).evict(anyLong());
+    }
+
+    @Test
+    @DisplayName("Should_UploadAvatarAndEvictCache_When_UserExists")
+    void Should_UploadAvatarAndEvictCache_When_UserExists() {
+        SysUser user = buildUser(1L, "alice", UserRole.USER);
+        given(sysUserMapper.selectById(1L)).willReturn(user);
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", "avatar".getBytes());
+        given(ossApplicationService.uploadAndDescribe(eq("avatar"), eq(file), matches("avatar/1/[a-f0-9]{32}\\.png")))
+            .willReturn(new UploadResult(
+                "avatar/1/abc.png",
+                "https://minio.example/tolink-public/avatar/1/abc.png"));
+
+        UserProfileDTO result = authService.uploadAvatar(1L, file);
+
+        assertThat(result.getAvatarUrl()).isEqualTo("https://minio.example/tolink-public/avatar/1/abc.png");
+        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
+        verify(sysUserMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getAvatarUrl()).isEqualTo("https://minio.example/tolink-public/avatar/1/abc.png");
+        verify(userCacheService).evict(1L);
     }
 
     // ---- helpers ----

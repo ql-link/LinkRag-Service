@@ -23,6 +23,7 @@
 
 - **失败可见性**：OSS 失败/池满拒绝/`uploading` 超时都落 `failed` + `failureReason`，由轮询发现，不以上传接口 HTTP 错误暴露。
 - **同名重试**：受唯一约束 `uk_dataset_user_name_suffix` 约束，撞到的同名记录为 `failed` 则复用该行重置为 `uploading`（不插新行），为 `uploading`/`success` 则 400 拦截。
+- **文件名校验**：上传前会裁剪浏览器可能带上的本地路径，只保留 basename；文件名不再使用严格字符白名单，允许括号、`#`、`&`、`+`、`=` 等常见业务命名字符，但仍拒绝空文件名、控制字符、`.`/`..` 和超过 `document_original_file.original_filename` 长度上限的名称。后缀校验基于归一化后的文件名执行。
 - **终态写入方**：请求线程只产出 `uploading`；`success`/`failed` 仅由异步任务或超时扫描经状态守卫更新写入。
 - **持久性兜底**：`DocumentUploadStuckScanner` 定时把超时仍 `uploading` 的记录置 `failed`；启动时清理残留临时文件。
 - **孤儿对象**：OSS 成功但 DB 回写失败时打告警日志（含 `objectKey`）留痕，记录仍 `uploading` 由超时扫描兜底，首版不做 OSS 对象补偿删除。
@@ -40,7 +41,7 @@
 
 ## 链路摘要
 
-Java 端保存原文件与 `document_parse_file` 聚合记录，触发解析时先按 `document_parsed_log.parsed_object_key` + `document_parse_pipeline.pipeline_status` 分类首次/重试/已成功/运行中（已成功友好拒绝、不发 MQ；失败重试携带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标做阶段恢复），更新最新任务指针并发送扁平任务 MQ。Python 端执行解析与后处理流水线（含稀疏向量），将 Markdown 产物写入 `document_parsed_log`、端到端终态写入 `document_parse_pipeline.pipeline_status`。Java 不再消费 `tolink.rag.parse_result`，前端通过 `parse-results` 查询接口读取终态，并可沿 `retry_of_task_id` 回溯重试链（`DocumentParseRetryChainService`）。
+Java 端保存原文件与 `document_parse_file` 聚合记录，触发解析时先按 `document_parsed_log.parsed_object_key` + `document_parse_pipeline.pipeline_status` 分类首次/重试/已成功/运行中（已成功友好拒绝、不发 MQ；失败重试携带 `is_retry`+`previous_task_id` 并复用上一轮 Markdown 坐标做阶段恢复），更新最新任务指针并发送扁平任务 MQ。PDF 文件会读取数据集级 `pdf_config.pdf_parser_backend`，配置非空且合法时以 `pdf_parser_backend` 透传给 Python；Java 不在 MQ 层补默认值，未配置时由 Python 继续兜底。Python 端执行解析与后处理流水线（含稀疏向量），将 Markdown 产物写入 `document_parsed_log`、端到端终态写入 `document_parse_pipeline.pipeline_status`。Java 不再消费 `tolink.rag.parse_result`，前端通过 `parse-results` 查询接口读取终态，并可沿 `retry_of_task_id` 回溯重试链（`DocumentParseRetryChainService`）。
 
 ## 解析终态查询
 

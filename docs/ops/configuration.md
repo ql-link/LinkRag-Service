@@ -56,7 +56,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 ### 示例
 
-`application.yml` 中定义了 `thread-pool.document-upload.core-pool-size: 5`（线程池按池名嵌套，多池就绪，本次仅 `document-upload` 池）。在 `application-dev.yml` 中引用为 `${THREAD_POOL_CORE_SIZE:5}`。如果环境变量 `THREAD_POOL_CORE_SIZE=10`，则最终生效值为 `10`。
+`application.yml` 中定义了 `thread-pool.document-upload.core-pool-size: 5`（线程池按池名嵌套，每业务一个专用池）。在 `application-dev.yml` 中引用为 `${THREAD_POOL_CORE_SIZE:5}` 时，如果环境变量 `THREAD_POOL_CORE_SIZE=10`，则最终生效值为 `10`。
 
 ## 4. 环境变量完整列表
 
@@ -118,12 +118,12 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `MINIO_ACCESS_KEY` | MinIO 访问密钥 | 是* | 无 | `your-minio-access-key-here` |
 | `MINIO_SECRET_KEY` | MinIO 密钥 | 是* | 无 | `your-minio-secret-key-here` |
 | `MINIO_PRIVATE_BUCKET` | MinIO 私有存储桶名（RAG 知识库文档） | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
-| `MINIO_PUBLIC_BUCKET` | MinIO 公开桶名（博客图片/Markdown 正文 + 反馈附件，需配置匿名读） | 否 | `tolink-public` | `tolink-public` |
+| `MINIO_PUBLIC_BUCKET` | MinIO 公开桶名（用户头像 + 博客图片/Markdown 正文 + 反馈附件，需配置匿名读） | 否 | `tolink-public` | `tolink-public` |
 
 > \* MinIO 变量在 `OSS_SERVICE_TYPE=minio` 时必需
 >
 > 三桶已收敛为两桶：私有桶 `tolink-rag-docs`（RAG 文档）+ 公开桶 `tolink-public`（所有不敏感资源）。原博客专用桶 `tolink-blog` 已合并入公开桶，`MINIO_BLOG_BUCKET` 配置项废弃，部署侧待服务稳定后删除旧桶。
-> 反馈附件不新增独立桶配置，复用 `MINIO_PUBLIC_BUCKET` 公开桶；对象 key 由 Java 生成，格式为 `feedback/yyyy/MM/{uuid}.{suffix}`（精度到月），数据库只存 object key，可访问 URL 由后端按公开桶拼装。
+> 头像与反馈附件不新增独立桶配置，复用 `MINIO_PUBLIC_BUCKET` 公开桶。头像对象 key 格式为 `avatar/{userId}/{uuid}.{suffix}`，完整公开 URL 写入 `sys_user.avatar_url`；反馈附件对象 key 由 Java 生成，格式为 `feedback/yyyy/MM/{uuid}.{suffix}`（精度到月），数据库只存 object key，可访问 URL 由后端按公开桶拼装。
 
 ### 4.8 阿里云 OSS（ALIYUN_OSS_*）
 
@@ -156,7 +156,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 ### 4.12 线程池（THREAD_POOL_*）
 
-线程池按池名嵌套配置 `thread-pool.<池名>.*`（多池就绪：每业务一个专用池，互不共用）。本次仅 `document-upload` 池（bean `documentUploadExecutor`，拒绝策略 AbortPolicy——池满拒绝并把上传记录置 `failed`，不退回请求线程同步执行）。以下环境变量映射到 `thread-pool.document-upload.*`：
+线程池按池名嵌套配置 `thread-pool.<池名>.*`（每业务一个专用池，互不共用）。`document-upload` 池（bean `documentUploadExecutor`）拒绝时把上传记录置 `failed`，不退回请求线程同步执行；`conversation-title` 池（bean `conversationTitleExecutor`）拒绝时保留首问临时标题，不影响主对话落库。以下环境变量映射到 `thread-pool.document-upload.*`：
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
@@ -166,7 +166,22 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `THREAD_POOL_KEEP_ALIVE_SECONDS` | 线程空闲存活秒数 | 否 | `60` | `60` |
 | `THREAD_POOL_THREAD_NAME_PREFIX` | 线程名前缀 | 否 | `document-file-upload-` | `document-file-upload-` |
 
-### 4.12.1 文档上传异步化（tolink.document-file.upload-async.*）
+`conversation-title` 默认值：`core-pool-size=1`、`max-pool-size=2`、`queue-capacity=50`、`keep-alive-seconds=60`、`thread-name-prefix=conversation-title-`；如需调整，在 yml 中覆盖 `thread-pool.conversation-title.*`。
+
+### 4.12.1 对话标题生成（tolink.chat.title-generation.*）
+
+首轮 `chat_turn` 落库时先写入首问临时标题；事务提交后，Java 使用用户本轮 Chat 配置（不可用则回退默认 CHAT 配置）的 OpenAI-compatible chat completions 异步生成自然短标题。失败、池满拒绝、配置不可用或用户已手动改成其它标题时保留当前标题。
+
+| 配置项 | 用途 | 默认值 |
+|------|------|--------|
+| `tolink.chat.title-generation.enabled` | 是否启用模型标题生成；关闭时仅使用首问临时标题 | `true` |
+| `tolink.chat.title-generation.max-length` | 标题清洗后的最大字符数 | `30` |
+| `tolink.chat.title-generation.timeout-ms` | 模型 HTTP 调用连接/读/写超时 | `3000` |
+| `tolink.chat.title-generation.max-tokens` | 标题生成最大输出 token | `32` |
+| `tolink.chat.title-generation.temperature` | 标题生成温度 | `0.2` |
+| `tolink.chat.title-generation.max-answer-chars` | 标题生成时最多携带的首轮回答字符数 | `800` |
+
+### 4.12.2 文档上传异步化（tolink.document-file.upload-async.*）
 
 文档上传异步化的兜底配置（无对应 `THREAD_POOL_*` 环境变量，按需在 yml 覆盖）：
 

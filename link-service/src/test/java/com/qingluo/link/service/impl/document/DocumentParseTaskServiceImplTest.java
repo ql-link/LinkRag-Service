@@ -15,10 +15,13 @@ import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
+import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.mapper.DocumentParseFileMapper;
 import com.qingluo.link.mapper.DocumentParsePipelineMapper;
 import com.qingluo.link.mapper.DocumentParsedLogMapper;
+import com.qingluo.link.model.dto.config.PdfConfig;
+import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.model.dto.entity.DocumentParseFile;
 import com.qingluo.link.model.dto.entity.DocumentParsePipeline;
@@ -38,6 +41,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DocumentParseTaskServiceImplTest {
 
     @Mock private DatasetMapper datasetMapper;
+    @Mock private DatasetParseConfigMapper datasetParseConfigMapper;
     @Mock private DocumentOriginalFileMapper documentOriginalFileMapper;
     @Mock private DocumentParseFileMapper documentParseFileMapper;
     @Mock private DocumentParsedLogMapper documentParsedLogMapper;
@@ -66,8 +70,37 @@ class DocumentParseTaskServiceImplTest {
         JSONObject msg = capturedTask();
         assertThat(msg.getBooleanValue("is_retry")).isFalse();
         assertThat(msg.getString("previous_task_id")).isNull();
+        assertThat(msg.getString("pdf_parser_backend")).isNull();
         assertThat(msg.getString("md_object_key")).startsWith("parsed/user-401/dataset-201");
         verify(documentParseFileMapper).update(any(), any());
+    }
+
+    @Test
+    void Should_IncludePdfParserBackend_When_DatasetConfigSpecifiedForPdf() {
+        givenOwnedUploadedFile();
+        given(documentParseFileMapper.selectOne(any())).willReturn(parseFile(null));
+        givenPdfParserBackend("opendataloader");
+        given(mqSendProvider.getIfAvailable()).willReturn(mqSend);
+
+        service.submitManualParse(401L, 101L);
+
+        JSONObject msg = capturedTask();
+        assertThat(msg.getString("pdf_parser_backend")).isEqualTo("opendataloader");
+    }
+
+    @Test
+    void Should_NotIncludePdfParserBackend_When_FileIsNotPdf() {
+        DocumentOriginalFile file = ownedFile();
+        file.setFileSuffix("txt");
+        given(documentOriginalFileMapper.selectOne(any())).willReturn(file);
+        given(documentParseFileMapper.selectOne(any())).willReturn(parseFile(null));
+        given(mqSendProvider.getIfAvailable()).willReturn(mqSend);
+
+        service.submitManualParse(401L, 101L);
+
+        JSONObject msg = capturedTask();
+        assertThat(msg.getString("pdf_parser_backend")).isNull();
+        verify(datasetParseConfigMapper, never()).selectOne(any());
     }
 
     @Test
@@ -171,6 +204,14 @@ class DocumentParseTaskServiceImplTest {
 
     private void givenOwnedUploadedFile() {
         given(documentOriginalFileMapper.selectOne(any())).willReturn(ownedFile());
+    }
+
+    private void givenPdfParserBackend(String backend) {
+        PdfConfig pdfConfig = new PdfConfig();
+        pdfConfig.setPdfParserBackend(backend);
+        DatasetParseConfig config = new DatasetParseConfig();
+        config.setPdfConfig(pdfConfig);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(config);
     }
 
     private JSONObject capturedTask() {

@@ -70,6 +70,9 @@ public class DocumentParseTaskMQ implements AbstractMQ {
         private String mdBucket;
         @JSONField(name = "md_object_key")
         private String mdObjectKey;
+        // PDF 解析后端：仅在数据集明确配置时透传，不在 Java MQ 层补默认值。
+        @JSONField(name = "pdf_parser_backend")
+        private String pdfParserBackend;
         // 重试标识：Python 以 is_retry 分流（首次解析为 false/省略）。
         @JSONField(name = "is_retry")
         private Boolean isRetry;

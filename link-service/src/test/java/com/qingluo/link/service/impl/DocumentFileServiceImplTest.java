@@ -34,14 +34,15 @@ import java.nio.file.Path;
 import java.util.Set;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
-import org.springframework.mock.web.MockMultipartFile;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentFileServiceImplTest {
@@ -163,6 +164,41 @@ class DocumentFileServiceImplTest {
         assertThatThrownBy(() -> documentFileService.upload(100L, 200L, exe, false))
             .isInstanceOf(BusinessException.class);
 
+        verify(tempStorage, never()).materialize(any());
+        verify(asyncExecutor, never()).submit(any());
+    }
+
+    @Test
+    @DisplayName("S3 常见业务文件名符号 → 允许上传并保留文件名")
+    void upload_allowsCommonBusinessFilenameCharacters() throws Exception {
+        givenOwnedDatasetAndTxtAllowed();
+        given(documentOriginalFileMapper.selectOne(any())).willReturn(null);
+        given(documentOriginalFileMapper.insert(any())).willReturn(1);
+        given(tempStorage.materialize(any())).willReturn(Path.of("/tmp/doc-upload-x.tmp"));
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "需求文档(第1版)#A+B=1&owner.txt", "text/plain", "hello".getBytes());
+
+        DocumentFileDTO dto = documentFileService.upload(100L, 200L, file, false);
+
+        assertThat(dto.getOriginalFilename()).isEqualTo("需求文档(第1版)#A+B=1&owner.txt");
+        ArgumentCaptor<DocumentOriginalFile> captor = ArgumentCaptor.forClass(DocumentOriginalFile.class);
+        verify(documentOriginalFileMapper).insert(captor.capture());
+        assertThat(captor.getValue().getOriginalFilename()).isEqualTo("需求文档(第1版)#A+B=1&owner.txt");
+        verify(asyncExecutor).submit(any());
+    }
+
+    @Test
+    @DisplayName("S3 控制字符文件名 → 同步 400，不物化")
+    void upload_rejectsControlCharacterInFilename() throws Exception {
+        given(datasetMapper.selectOne(any())).willReturn(new Dataset());
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "bad\nname.txt", "text/plain", "hello".getBytes());
+
+        assertThatThrownBy(() -> documentFileService.upload(100L, 200L, file, false))
+            .isInstanceOf(BusinessException.class)
+            .hasMessage("文件名包含非法字符");
+
+        verify(documentFileRuntimeConfigService, never()).getCurrent();
         verify(tempStorage, never()).materialize(any());
         verify(asyncExecutor, never()).submit(any());
     }

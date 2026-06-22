@@ -5,6 +5,7 @@ import com.qingluo.link.model.dto.request.RegisterRequest;
 import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.AuthResult;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 认证服务接口
@@ -35,4 +36,9 @@ public interface AuthService {
      * 更新个人资料
      */
     void updateProfile(Long userId, UpdateProfileRequest request);
+
+    /**
+     * 上传并更新用户头像
+     */
+    UserProfileDTO uploadAvatar(Long userId, MultipartFile file);
 }

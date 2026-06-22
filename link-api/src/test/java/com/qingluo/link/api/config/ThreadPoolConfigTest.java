@@ -18,21 +18,30 @@ class ThreadPoolConfigTest {
         .withUserConfiguration(ThreadPoolConfig.class);
 
     @Test
-    @DisplayName("S17/S18 加载 documentUploadExecutor 专用池（前缀 document-file-upload-），且无通用 customThreadPool")
+    @DisplayName("S17/S18 加载业务专用池，且无通用 customThreadPool")
     void loadsDedicatedDocumentUploadExecutor() {
         runner.withPropertyValues(
                 "thread-pool.document-upload.core-pool-size=5",
                 "thread-pool.document-upload.max-pool-size=10",
                 "thread-pool.document-upload.queue-capacity=50",
                 "thread-pool.document-upload.keep-alive-seconds=60",
-                "thread-pool.document-upload.thread-name-prefix=document-file-upload-")
+                "thread-pool.document-upload.thread-name-prefix=document-file-upload-",
+                "thread-pool.conversation-title.core-pool-size=1",
+                "thread-pool.conversation-title.max-pool-size=2",
+                "thread-pool.conversation-title.queue-capacity=10",
+                "thread-pool.conversation-title.thread-name-prefix=conversation-title-")
             .run(ctx -> {
                 assertThat(ctx).hasBean("documentUploadExecutor");
+                assertThat(ctx).hasBean("conversationTitleExecutor");
                 assertThat(ctx).doesNotHaveBean("customThreadPool");
                 Executor executor = (Executor) ctx.getBean("documentUploadExecutor");
                 assertThat(executor).isInstanceOf(ThreadPoolTaskExecutor.class);
                 assertThat(((ThreadPoolTaskExecutor) executor).getThreadNamePrefix())
                     .isEqualTo("document-file-upload-");
+                Executor titleExecutor = (Executor) ctx.getBean("conversationTitleExecutor");
+                assertThat(titleExecutor).isInstanceOf(ThreadPoolTaskExecutor.class);
+                assertThat(((ThreadPoolTaskExecutor) titleExecutor).getThreadNamePrefix())
+                    .isEqualTo("conversation-title-");
             });
     }
 

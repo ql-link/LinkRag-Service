@@ -15,6 +15,7 @@ import com.qingluo.link.mapper.UsageLogMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
 import com.qingluo.link.model.dto.entity.UsageLog;
+import com.qingluo.link.service.ConversationTitleService;
 import java.util.List;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -40,6 +41,9 @@ class ChatTurnPersistenceServiceImplTest {
 
     @Mock
     private UsageLogMapper usageLogMapper;
+
+    @Mock
+    private ConversationTitleService conversationTitleService;
 
     @InjectMocks
     private ChatTurnPersistenceServiceImpl service;
@@ -86,8 +90,7 @@ class ChatTurnPersistenceServiceImplTest {
     void Should_PersistAll_When_Success() {
         given(messageMapper.selectCount(any())).willReturn(0L);
         given(conversationMapper.selectOne(any())).willReturn(conversation(100L, 42L));
-        // 标题冲突预检：无冲突
-        given(conversationMapper.selectCount(any())).willReturn(0L);
+        given(conversationTitleService.buildFallbackTitle("什么是RAG")).willReturn("什么是RAG");
 
         service.persist(payload("success"));
 
@@ -117,6 +120,7 @@ class ChatTurnPersistenceServiceImplTest {
         assertThat(conv.getLastConfigId()).isEqualTo(7L);
         assertThat(conv.getLastModelName()).isEqualTo("gpt-4");
         assertThat(conv.getTitle()).isEqualTo("什么是RAG");
+        verify(conversationTitleService).generateAfterCommit(100L, 42L, 7L, "什么是RAG", "RAG 是检索增强生成", "什么是RAG");
     }
 
     @Test
@@ -124,7 +128,7 @@ class ChatTurnPersistenceServiceImplTest {
     void Should_Persist_When_Failed() {
         given(messageMapper.selectCount(any())).willReturn(0L);
         given(conversationMapper.selectOne(any())).willReturn(conversation(100L, 42L));
-        given(conversationMapper.selectCount(any())).willReturn(0L);
+        given(conversationTitleService.buildFallbackTitle("什么是RAG")).willReturn("什么是RAG");
 
         ChatTurnMQ.MsgPayload p = payload("failed");
         p.setAnswer("");
@@ -181,17 +185,70 @@ class ChatTurnPersistenceServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_KeepDefaultTitle_When_TitleCollision")
-    void Should_KeepTitle_When_Collision() {
+    @DisplayName("Should_UseFallbackTitle_When_FirstTurn")
+    void Should_UseFallbackTitle_When_FirstTurn() {
         given(messageMapper.selectCount(any())).willReturn(0L);
         given(conversationMapper.selectOne(any())).willReturn(conversation(100L, 42L));
-        // 标题预检命中冲突
-        given(conversationMapper.selectCount(any())).willReturn(1L);
+        given(conversationTitleService.buildFallbackTitle("什么是RAG")).willReturn("什么是RAG");
 
         service.persist(payload("success"));
 
         ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
         verify(conversationMapper).updateById(convCaptor.capture());
-        assertThat(convCaptor.getValue().getTitle()).isEqualTo("新对话");
+        assertThat(convCaptor.getValue().getTitle()).isEqualTo("什么是RAG");
+    }
+
+    @Test
+    @DisplayName("Should_NotScheduleTitleGeneration_When_TitleAlreadyManual")
+    void Should_NotScheduleTitleGeneration_When_TitleAlreadyManual() {
+        ChatConversation manual = conversation(100L, 42L);
+        manual.setTitle("用户手动标题");
+        given(messageMapper.selectCount(any())).willReturn(0L);
+        given(conversationMapper.selectOne(any())).willReturn(manual);
+        given(conversationTitleService.buildFallbackTitle("什么是RAG")).willReturn("什么是RAG");
+
+        service.persist(payload("success"));
+
+        ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
+        verify(conversationMapper).updateById(convCaptor.capture());
+        assertThat(convCaptor.getValue().getTitle()).isEqualTo("用户手动标题");
+        verify(conversationTitleService, never()).generateAfterCommit(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Should_ScheduleTitleGeneration_When_CurrentTitleEqualsFallback")
+    void Should_ScheduleTitleGeneration_When_CurrentTitleEqualsFallback() {
+        ChatConversation autoTitle = conversation(100L, 42L);
+        autoTitle.setTitle("什么是RAG");
+        given(messageMapper.selectCount(any())).willReturn(0L);
+        given(conversationMapper.selectOne(any())).willReturn(autoTitle);
+        given(conversationTitleService.buildFallbackTitle("什么是RAG")).willReturn("什么是RAG");
+
+        service.persist(payload("success"));
+
+        verify(conversationTitleService).generateAfterCommit(100L, 42L, 7L, "什么是RAG", "RAG 是检索增强生成", "什么是RAG");
+    }
+
+    @Test
+    @DisplayName("Should_ScheduleTitleGeneration_When_CurrentTitleIsQuestionPrefix")
+    void Should_ScheduleTitleGeneration_When_CurrentTitleIsQuestionPrefix() {
+        String query = "现在给我讲一讲这个知识库中有哪些知识点，分别讲了什么，重点是什么";
+        String frontendTitle = "现在给我讲一讲这个知识库中有哪些知识点，分别讲了什么，重";
+        String backendFallback = "现在给我讲一讲这个知识库中有哪些知识点，分别讲了什么，重点是";
+        ChatConversation autoTitle = conversation(100L, 42L);
+        autoTitle.setTitle(frontendTitle);
+        ChatTurnMQ.MsgPayload p = payload("success");
+        p.setQuery(query);
+
+        given(messageMapper.selectCount(any())).willReturn(0L);
+        given(conversationMapper.selectOne(any())).willReturn(autoTitle);
+        given(conversationTitleService.buildFallbackTitle(query)).willReturn(backendFallback);
+
+        service.persist(p);
+
+        ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
+        verify(conversationMapper).updateById(convCaptor.capture());
+        assertThat(convCaptor.getValue().getTitle()).isEqualTo(frontendTitle);
+        verify(conversationTitleService).generateAfterCommit(100L, 42L, 7L, query, "RAG 是检索增强生成", frontendTitle);
     }
 }

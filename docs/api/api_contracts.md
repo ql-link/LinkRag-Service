@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | GET | `/api/v1/user/profile` | 当前用户资料 |
 | PATCH | `/api/v1/user/profile` | 更新当前用户资料 |
+| POST | `/api/v1/user/avatar` | 上传并更新当前用户头像 |
 | GET | `/api/v1/admin/users` | 管理员用户列表 |
 | PATCH | `/api/v1/admin/users/{id}/status` | 启用/禁用用户 |
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
@@ -41,6 +42,8 @@
 | PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（变更厂商/模型/能力时复制模型能力层协议与入口） |
 | PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（控制是否下发给新用户） |
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
+
+`POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
 
 ## LLM
 
@@ -127,7 +130,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 > 写入消息接口 `POST /api/v1/chat/conversations/{id}/messages` 已下线：对话轮次改由 Python 问答执行器经 `tolink.rag.chat_turn` 上报、Java 单事务落库 `chat_message` / `llm_usage_log` / `chat_conversation`（见 `docs/api/mq_contracts.md`）。前端职责简化为先创建会话拿到 `conversation_id`，随 `/api/v1/rag/stream` 请求带上。
 >
-> 会话标题由首轮 `query` 生成（超长按 30 字符截断加省略号；命中标题唯一约束 `(user_id, dataset_id, title)` 冲突时保留默认标题），不再依赖已下线的写消息接口。
+> 会话创建时默认标题为“新对话”；首轮 `chat_turn` 落库时先用首问清洗截断为临时标题，随后 Java 在事务提交后异步调用用户本轮 Chat 配置（不可用则回退用户默认 CHAT 配置）的 OpenAI-compatible chat completions 生成自然短标题。标题生成失败、线程池拒绝或配置不可用时保留临时标题；异步回写前若用户已改成其它标题则跳过，不覆盖用户手动标题。
 
 ## Dataset / Document File
 
