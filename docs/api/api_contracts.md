@@ -124,13 +124,16 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | --- | --- | --- |
 | POST | `/api/v1/chat/conversations` | 创建会话（前端在发起 `/rag/stream` 问答前先建会话取 `conversation_id`） |
 | GET | `/api/v1/chat/conversations` | 会话列表 |
-| GET | `/api/v1/chat/conversations/{id}/messages` | 消息列表（一行一轮：`query` / `answer` / `references` / `status`） |
+| GET | `/api/v1/chat/conversations/{id}/messages` | 消息列表（一行一轮：`query` / `answer` / `references` / `requestId` / `status`，按 `createdAt` 正序分页） |
 | PATCH | `/api/v1/chat/conversations/{id}` | 更新会话 |
 | DELETE | `/api/v1/chat/conversations/{id}` | 删除会话 |
+| POST | `/api/v1/knowledge/chunks/batch` | 批量查询当前用户可访问的 ACTIVE Chunk 详情，用于历史消息按 `references` 恢复召回片段卡片 |
 
 > 写入消息接口 `POST /api/v1/chat/conversations/{id}/messages` 已下线：对话轮次改由 Python 问答执行器经 `tolink.rag.chat_turn` 上报、Java 单事务落库 `chat_message` / `llm_usage_log` / `chat_conversation`（见 `docs/api/mq_contracts.md`）。前端职责简化为先创建会话拿到 `conversation_id`，随 `/api/v1/rag/stream` 请求带上。
 >
 > 会话创建时默认标题为“新对话”；首轮 `chat_turn` 落库时先用首问清洗截断为临时标题，随后 Java 在事务提交后异步调用用户本轮 Chat 配置（不可用则回退用户默认 CHAT 配置）的 OpenAI-compatible chat completions 生成自然短标题。标题生成失败、线程池拒绝或配置不可用时保留临时标题；异步回写前若用户已改成其它标题则跳过，不覆盖用户手动标题。
+>
+> `POST /api/v1/knowledge/chunks/batch` 请求体为 `{"chunkIds":["chunk-1","chunk-2"]}`，单次最多 100 个。响应 `data` 数组元素含 `chunkId` / `documentId` / `fileName` / `content` / `score`；当前历史现查不保存召回分数，`score` 为 `null`。接口按当前登录用户过滤 `kb_document_chunk.user_id` 且只返回 `lifecycle_status='ACTIVE'`、正文非空的片段；不存在、越权或已移除的 chunk 会被跳过，返回顺序与请求中的可返回 chunk 顺序一致。
 
 ## Dataset / Document File
 
