@@ -38,6 +38,9 @@ public class MessageDTO {
     @Schema(description = "召回片段 chunk_id 列表")
     private List<String> references;
 
+    @Schema(description = "请求追踪ID/幂等键", example = "req-20260619-001")
+    private String requestId;
+
     @Schema(description = "轮次状态：success/partial/failed", example = "success")
     private String status;
 
