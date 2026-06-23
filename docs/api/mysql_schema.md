@@ -13,7 +13,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `llm_user_config` | `UserLLMConfig` | 用户 LLM 配置（下游唯一生效源；预设与自配统一汇入） |
 | `llm_usage_log` | `UsageLog` | 全链路模型调用账本（含 `stage` / `operation` / `conversation_id` / `message_id` / `request_id`，由对话轮次落库与用量上报两通道写入） |
 | `chat_conversation` | `ChatConversation` | 对话 |
-| `chat_message` | `ChatMessage` | 对话消息（一行一轮：`query` + `answer` 同行；含 `references`(JSON) / `request_id` / `status`） |
+| `chat_message` | `ChatMessage` | 对话消息（一行一轮：`query` + `answer` 同行；含 `turn_id`(幂等键，唯一索引) / `references`(JSON) / `request_id` / `status` / `error_code` / `error_message`） |
 | `dataset` | `Dataset` | 数据集 |
 | `document_original_file` | `DocumentOriginalFile` | 原始文件 |
 | `document_parse_file` | `DocumentParseFile` | 文件级解析聚合及最新任务指针 |
@@ -28,7 +28,8 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 ## 约定
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
-- `chat_message` 为「一行一轮」结构（对应 Python 仓库迁移 0021）：删 `role` / `token_count`，加 `query` / `answer`（原 `content` 改名）/ `references`(JSON，`JacksonTypeHandler`，列名为 MySQL 保留字需反引号包裹) / `request_id` / `status`(success/partial/failed)。行数据由 Java 消费 `tolink.rag.chat_turn` 后落库（见 `docs/api/mq_contracts.md`），Python 不直接写本表；存量库迁移脚本见 `scripts/db/add_chat_message_persistence.sql`。
+- `chat_message` 为「一行一轮」结构（对应 Python 仓库迁移 0021）：删 `role` / `token_count`，加 `query` / `answer`（原 `content` 改名）/ `references`(JSON，`JacksonTypeHandler`，列名为 MySQL 保留字需反引号包裹) / `request_id` / `status`。行数据由 Java 消费 `tolink.rag.chat_turn` 后落库（见 `docs/api/mq_contracts.md`），Python 不直接写本表；存量库迁移脚本见 `scripts/db/add_chat_message_persistence.sql`。
+- `chat_message`「后台续跑 + 可靠落库」（chat-stream-resilient-persist，列结构归 **Python migration 0023**，Java 只读写行）：加 `turn_id`(VARCHAR(64)，唯一索引 `uk_chat_message_turn_id`，历史行 NULL，唯一索引允许多 NULL) / `error_code`(VARCHAR(64) nullable) / `error_message`(VARCHAR(512) nullable)；`status` 复用既有 `VARCHAR(16)`，值语义由 `success/partial/failed` 改为 `GENERATING/COMPLETED/FAILED`（列结构不变，旧历史行保留 `success`）。Java 按 `turn_id` upsert：`GENERATING` 起点插「生成中」行、终态更新同行，状态不回退、按 `turn_id` 幂等。Java 不自行改共享库 DDL，本仓 `scripts/db/init.sql` 与 H2 schema 仅本地/测试用并与 0023 保持字段名、索引一致。
 - `llm_usage_log` 增补 `message_id`（关联 `chat_message.id`）/ `request_id`（与 `chat_message.request_id` 一致），并由对话轮次落库真正写入既有 `conversation_id`。
 - `llm_usage_log` 升级为「全链路模型调用账本」（LINK-184）：增补 `stage`(VARCHAR(16) NOT NULL，`parse`/`recall`/`chat`) / `operation`(VARCHAR(16) NOT NULL，`embed`/`rerank`/`vision`/`table`/`generate`)，并放开 `config_id` 的 NOT NULL（系统配置调用如召回 query 编码落 NULL）。两条写入通道：① 对话最终生成走 `tolink.rag.chat_turn`，Java 补 `stage='chat'`/`operation='generate'`；② 非对话调用走 `tolink.rag.usage_report`（`UsageReportMQ` → `UsageReportPersistenceService`，见 `docs/api/mq_contracts.md`）。新增索引 `idx_usage_stage_operation (stage, operation)`。存量库迁移脚本见 `scripts/db/add_usage_report_stage_operation.sql`。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。

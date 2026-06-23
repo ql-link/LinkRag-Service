@@ -132,18 +132,22 @@ CREATE TABLE IF NOT EXISTS chat_conversation (
 CREATE TABLE IF NOT EXISTS chat_message (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '消息唯一标识',
     conversation_id     BIGINT UNSIGNED NOT NULL COMMENT '所属对话 ID',
+    turn_id             VARCHAR(64)     COMMENT '轮次幂等键（前端每轮稳定 UUID）；列结构归 Python migration 0023',
     config_id           BIGINT UNSIGNED COMMENT '本轮所用 LLM 配置 ID',
     model_name          VARCHAR(128)    COMMENT '模型名快照',
     `query`             MEDIUMTEXT      COMMENT '用户提问',
-    answer              MEDIUMTEXT      COMMENT 'LLM 回答（partial 为半截，failed 可空）',
+    answer              MEDIUMTEXT      COMMENT 'LLM 回答（GENERATING/FAILED 可空或半截）',
     `references`        JSON            COMMENT '召回片段 chunk_id 列表（仅标识，不含正文）',
-    request_id          VARCHAR(64)     COMMENT '请求追踪 ID / 幂等键',
-    status              VARCHAR(16)     NOT NULL DEFAULT 'success' COMMENT '轮次状态：success/partial/failed',
+    request_id          VARCHAR(64)     COMMENT '请求追踪 ID（每 HTTP 请求级，不再充当幂等键）',
+    status              VARCHAR(16)     NOT NULL DEFAULT 'GENERATING' COMMENT '轮次状态：GENERATING/COMPLETED/FAILED',
+    error_code          VARCHAR(64)     COMMENT '失败错误码（仅 FAILED）：RECALL_* 或 GENERATION_TIMEOUT',
+    error_message       VARCHAR(512)    COMMENT '失败错误信息（仅 FAILED，不含堆栈）',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
+    UNIQUE KEY uk_chat_message_turn_id (turn_id),
     INDEX idx_conversation_created (conversation_id, created_at),
     INDEX idx_chat_message_request_id (request_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话消息表（一行一轮）';
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '对话消息表（一行一轮，按 turn_id upsert）';
 
 -- 7. LLM 调用用量日志表
 CREATE TABLE IF NOT EXISTS llm_usage_log (

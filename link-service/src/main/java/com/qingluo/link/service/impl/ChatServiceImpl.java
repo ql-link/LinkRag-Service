@@ -164,6 +164,7 @@ public class ChatServiceImpl implements ChatService {
         MessageDTO dto = new MessageDTO();
         dto.setId(message.getId());
         dto.setConversationId(message.getConversationId());
+        dto.setTurnId(message.getTurnId());
         dto.setQuery(message.getQuery());
         dto.setAnswer(message.getAnswer());
         dto.setConfigId(message.getConfigId());
@@ -171,6 +172,8 @@ public class ChatServiceImpl implements ChatService {
         dto.setReferences(message.getReferences());
         dto.setRequestId(message.getRequestId());
         dto.setStatus(message.getStatus());
+        dto.setErrorCode(message.getErrorCode());
+        dto.setErrorMessage(message.getErrorMessage());
         dto.setCreatedAt(message.getCreatedAt());
         return dto;
     }
