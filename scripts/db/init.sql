@@ -266,7 +266,39 @@ CREATE TABLE IF NOT EXISTS document_parse_pipeline (
     INDEX idx_parse_pipeline_superseded (superseded_by_task_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '文件后处理流水线表';
 
--- 12. 博客文章表
+-- 12. 文档 Chunk 真值记录表（Python 写，Java 只读，用于历史召回片段恢复）
+CREATE TABLE IF NOT EXISTS kb_document_chunk (
+    id                          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '物理主键ID',
+    chunk_id                    VARCHAR(128) NOT NULL COMMENT 'Chunk业务唯一键，对应Qdrant Point ID',
+    doc_id                      BIGINT UNSIGNED NOT NULL COMMENT '文档ID',
+    set_id                      BIGINT UNSIGNED NOT NULL COMMENT '知识集ID',
+    user_id                     BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+    bucket_id                   INT DEFAULT NULL COMMENT '路由后的Qdrant物理桶编号',
+    content                     TEXT NOT NULL COMMENT 'splitter最终产出的可检索Chunk原文',
+    content_hash                VARCHAR(64) NOT NULL COMMENT '基于最终Chunk内容计算的SHA-256哈希',
+    chunk_type                  VARCHAR(32) NOT NULL DEFAULT 'text' COMMENT '分片类型: paragraph/image/table/code_block/heading/mixed/text',
+    start_line                  INT DEFAULT NULL COMMENT 'Chunk在源文档中的起始行号',
+    end_line                    INT DEFAULT NULL COMMENT 'Chunk在源文档中的结束行号',
+    chunk_index                 INT DEFAULT NULL COMMENT '当前Chunk在文档内的顺序编号',
+    dense_vector_status         VARCHAR(16) NOT NULL DEFAULT 'PENDING' COMMENT '稠密向量状态: PENDING/SUCCESS/FAILED',
+    dense_vector_model          VARCHAR(128) DEFAULT NULL COMMENT '实际使用的稠密向量模型名称',
+    sparse_vector_status        VARCHAR(16) NOT NULL DEFAULT 'PENDING' COMMENT '稀疏向量状态: PENDING/SUCCESS/FAILED',
+    sparse_vector_model         VARCHAR(128) DEFAULT NULL COMMENT '实际使用的稀疏向量模型名称',
+    es_status                   VARCHAR(16) NOT NULL DEFAULT 'PENDING' COMMENT 'ES索引状态: PENDING/SUCCESS/FAILED',
+    lifecycle_status            VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'Chunk业务生命周期状态',
+    create_time                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+    update_time                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间',
+
+    UNIQUE KEY uk_chunk_id (chunk_id),
+    KEY idx_user_set (user_id, set_id),
+    KEY idx_doc_dense_status (doc_id, dense_vector_status),
+    KEY idx_doc_sparse_status (doc_id, sparse_vector_status),
+    KEY idx_doc_es_status (doc_id, es_status),
+    KEY idx_doc_lifecycle_status (doc_id, lifecycle_status),
+    KEY idx_lifecycle_update_time (lifecycle_status, update_time)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000 COMMENT '文档Chunk真值记录表';
+
+-- 13. 博客文章表
 CREATE TABLE IF NOT EXISTS blog_post (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '博客文章唯一标识',
     title               VARCHAR(255)    NOT NULL COMMENT '文章标题',
@@ -287,7 +319,7 @@ CREATE TABLE IF NOT EXISTS blog_post (
     INDEX idx_blog_post_admin_list (is_deleted, updated_at, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '博客文章表';
 
--- 13. 博客文章资源表
+-- 14. 博客文章资源表
 CREATE TABLE IF NOT EXISTS blog_asset (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '博客资源唯一标识',
     post_id             BIGINT UNSIGNED NOT NULL COMMENT '所属博客文章 ID',
@@ -306,7 +338,7 @@ CREATE TABLE IF NOT EXISTS blog_asset (
     INDEX idx_blog_asset_post_type (post_id, asset_type, is_deleted, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '博客文章资源表';
 
--- 14. 匿名用户反馈表
+-- 15. 匿名用户反馈表
 CREATE TABLE IF NOT EXISTS user_feedback (
     id                    BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '反馈 ID',
     type                  VARCHAR(32)  NOT NULL DEFAULT 'OTHER' COMMENT '反馈类型：BUG 问题反馈，FEATURE 功能建议，EXPERIENCE 体验反馈，OTHER 其他',
@@ -326,7 +358,7 @@ CREATE TABLE IF NOT EXISTS user_feedback (
     INDEX idx_feedback_type_created (type, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '匿名用户反馈表';
 
--- 15. 数据集解析/检索参数配置表（跨端共享：Java 读写、Python 直读；与 Python migration 0017 对齐，字段名/默认值/索引保持一致）
+-- 16. 数据集解析/检索参数配置表（跨端共享：Java 读写、Python 直读；与 Python migration 0017 对齐，字段名/默认值/索引保持一致）
 CREATE TABLE IF NOT EXISTS dataset_parse_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',
@@ -357,6 +389,7 @@ ALTER TABLE document_original_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_file AUTO_INCREMENT = 10000;
 ALTER TABLE document_parsed_log AUTO_INCREMENT = 10000;
 ALTER TABLE document_parse_pipeline AUTO_INCREMENT = 10000;
+ALTER TABLE kb_document_chunk AUTO_INCREMENT = 10000;
 ALTER TABLE blog_post AUTO_INCREMENT = 10000;
 ALTER TABLE blog_asset AUTO_INCREMENT = 10000;
 ALTER TABLE user_feedback AUTO_INCREMENT = 10000;

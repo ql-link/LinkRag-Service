@@ -19,6 +19,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `document_parse_file` | `DocumentParseFile` | 文件级解析聚合及最新任务指针 |
 | `document_parsed_log` | `DocumentParsedLog` | Python 写入的解析（Markdown）产物日志；含重试链向前指针 `retry_of_task_id` |
 | `document_parse_pipeline` | `DocumentParsePipeline` | Python 写入的后处理流水线（含稀疏向量阶段）终态 `pipeline_status` 与重试 CAS 列 `superseded_by_task_id`；Java 只读 |
+| `kb_document_chunk` | `KbDocumentChunk` | Python 写入的 Chunk 真值记录；Java 只读，用于历史消息按 `references` 批量恢复召回片段详情 |
 | `blog_post` | `BlogPost` | 博客文章元数据、发布状态和 Markdown 对象指针 |
 | `blog_asset` | `BlogAsset` | 博客封面资源和正文图片资源元数据 |
 | `user_feedback` | `UserFeedback` | 匿名反馈、私有附件对象键、管理员处理状态与回复 |
@@ -71,6 +72,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - **端到端终态权威源 = `document_parse_pipeline.pipeline_status`（大写 `PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`）。** `document_parsed_log` 已不含 `task_status` / `failure_reason`（Python migration 0007 移除）；Java 判定首次 / 重试 / 已成功以 `document_parsed_log.parsed_object_key` + `pipeline_status` 为准，运行中扫描与结果消费的终态判定亦改用 `pipeline_status`。
 - 重试链双向：`document_parsed_log.retry_of_task_id`（本轮→上一轮）与 `document_parse_pipeline.superseded_by_task_id`（旧→新），均由 Python 写、Java 只读；`document_parse_pipeline` 不含 `retry_count` / `last_retry_at`。
 - Java 不再消费 `tolink.rag.parse_result`；解析终态以库侧 `document_parse_pipeline.pipeline_status`（大写）为准。
+- `kb_document_chunk` 由 Python RAG 端写入和维护，`chunk_id` 为业务唯一键，对应 `chat_message.references` 中保存的 chunk id。Java 仅通过批量详情接口按当前用户读取 `lifecycle_status='ACTIVE'` 且正文非空的记录，并用 `doc_id` 关联 `document_original_file.id` 回填文件名；历史现查不含召回分数，`score` 返回 `null`。
 - Document file upload config is resolved from Redis key `document:file-upload:config`, with `tolink.document-file.*` as the default fallback.
 - `blog_post.slug + deleted_seq` 唯一：`slug` 由后端生成去掉连字符的 32 位小写 UUID；活跃文章 `deleted_seq=0`，软删时写自身 ID。
 - `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。
