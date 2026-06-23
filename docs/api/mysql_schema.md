@@ -13,12 +13,13 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `llm_user_config` | `UserLLMConfig` | 用户 LLM 配置（下游唯一生效源；预设与自配统一汇入） |
 | `llm_usage_log` | `UsageLog` | 全链路模型调用账本（含 `stage` / `operation` / `conversation_id` / `message_id` / `request_id`，由对话轮次落库与用量上报两通道写入） |
 | `chat_conversation` | `ChatConversation` | 对话 |
-| `chat_message` | `ChatMessage` | 对话消息（一行一轮：`query` + `answer` 同行；含 `references`(JSON) / `request_id` / `status`） |
+| `chat_message` | `ChatMessage` | 对话消息（一行一轮：`query` + `answer` 同行；含 `turn_id`(幂等键，唯一索引) / `references`(JSON) / `request_id` / `status` / `error_code` / `error_message`） |
 | `dataset` | `Dataset` | 数据集 |
 | `document_original_file` | `DocumentOriginalFile` | 原始文件 |
 | `document_parse_file` | `DocumentParseFile` | 文件级解析聚合及最新任务指针 |
 | `document_parsed_log` | `DocumentParsedLog` | Python 写入的解析（Markdown）产物日志；含重试链向前指针 `retry_of_task_id` |
 | `document_parse_pipeline` | `DocumentParsePipeline` | Python 写入的后处理流水线（含稀疏向量阶段）终态 `pipeline_status` 与重试 CAS 列 `superseded_by_task_id`；Java 只读 |
+| `kb_document_chunk` | `KbDocumentChunk` | Python 写入的 Chunk 真值记录；Java 只读，用于历史消息按 `references` 批量恢复召回片段详情 |
 | `blog_post` | `BlogPost` | 博客文章元数据、发布状态和 Markdown 对象指针 |
 | `blog_asset` | `BlogAsset` | 博客封面资源和正文图片资源元数据 |
 | `user_feedback` | `UserFeedback` | 匿名反馈、私有附件对象键、管理员处理状态与回复 |
@@ -27,7 +28,8 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 ## 约定
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
-- `chat_message` 为「一行一轮」结构（对应 Python 仓库迁移 0021）：删 `role` / `token_count`，加 `query` / `answer`（原 `content` 改名）/ `references`(JSON，`JacksonTypeHandler`，列名为 MySQL 保留字需反引号包裹) / `request_id` / `status`(success/partial/failed)。行数据由 Java 消费 `tolink.rag.chat_turn` 后落库（见 `docs/api/mq_contracts.md`），Python 不直接写本表；存量库迁移脚本见 `scripts/db/add_chat_message_persistence.sql`。
+- `chat_message` 为「一行一轮」结构（对应 Python 仓库迁移 0021）：删 `role` / `token_count`，加 `query` / `answer`（原 `content` 改名）/ `references`(JSON，`JacksonTypeHandler`，列名为 MySQL 保留字需反引号包裹) / `request_id` / `status`。行数据由 Java 消费 `tolink.rag.chat_turn` 后落库（见 `docs/api/mq_contracts.md`），Python 不直接写本表；存量库迁移脚本见 `scripts/db/add_chat_message_persistence.sql`。
+- `chat_message`「后台续跑 + 可靠落库」（chat-stream-resilient-persist，列结构归 **Python migration 0023**，Java 只读写行）：加 `turn_id`(VARCHAR(64)，唯一索引 `uk_chat_message_turn_id`，历史行 NULL，唯一索引允许多 NULL) / `error_code`(VARCHAR(64) nullable) / `error_message`(VARCHAR(512) nullable)；`status` 复用既有 `VARCHAR(16)`，值语义由 `success/partial/failed` 改为 `GENERATING/COMPLETED/FAILED`（列结构不变，旧历史行保留 `success`）。Java 按 `turn_id` upsert：`GENERATING` 起点插「生成中」行、终态更新同行，状态不回退、按 `turn_id` 幂等。Java 不自行改共享库 DDL，本仓 `scripts/db/init.sql` 与 H2 schema 仅本地/测试用并与 0023 保持字段名、索引一致。
 - `llm_usage_log` 增补 `message_id`（关联 `chat_message.id`）/ `request_id`（与 `chat_message.request_id` 一致），并由对话轮次落库真正写入既有 `conversation_id`。
 - `llm_usage_log` 升级为「全链路模型调用账本」（LINK-184）：增补 `stage`(VARCHAR(16) NOT NULL，`parse`/`recall`/`chat`) / `operation`(VARCHAR(16) NOT NULL，`embed`/`rerank`/`vision`/`table`/`generate`)，并放开 `config_id` 的 NOT NULL（系统配置调用如召回 query 编码落 NULL）。两条写入通道：① 对话最终生成走 `tolink.rag.chat_turn`，Java 补 `stage='chat'`/`operation='generate'`；② 非对话调用走 `tolink.rag.usage_report`（`UsageReportMQ` → `UsageReportPersistenceService`，见 `docs/api/mq_contracts.md`）。新增索引 `idx_usage_stage_operation (stage, operation)`。存量库迁移脚本见 `scripts/db/add_usage_report_stage_operation.sql`。
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
@@ -71,6 +73,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - **端到端终态权威源 = `document_parse_pipeline.pipeline_status`（大写 `PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`）。** `document_parsed_log` 已不含 `task_status` / `failure_reason`（Python migration 0007 移除）；Java 判定首次 / 重试 / 已成功以 `document_parsed_log.parsed_object_key` + `pipeline_status` 为准，运行中扫描与结果消费的终态判定亦改用 `pipeline_status`。
 - 重试链双向：`document_parsed_log.retry_of_task_id`（本轮→上一轮）与 `document_parse_pipeline.superseded_by_task_id`（旧→新），均由 Python 写、Java 只读；`document_parse_pipeline` 不含 `retry_count` / `last_retry_at`。
 - Java 不再消费 `tolink.rag.parse_result`；解析终态以库侧 `document_parse_pipeline.pipeline_status`（大写）为准。
+- `kb_document_chunk` 由 Python RAG 端写入和维护，`chunk_id` 为业务唯一键，对应 `chat_message.references` 中保存的 chunk id。Java 仅通过批量详情接口按当前用户读取 `lifecycle_status='ACTIVE'` 且正文非空的记录，并用 `doc_id` 关联 `document_original_file.id` 回填文件名；历史现查不含召回分数，`score` 返回 `null`。
 - Document file upload config is resolved from Redis key `document:file-upload:config`, with `tolink.document-file.*` as the default fallback.
 - `blog_post.slug + deleted_seq` 唯一：`slug` 由后端生成去掉连字符的 32 位小写 UUID；活跃文章 `deleted_seq=0`，软删时写自身 ID。
 - `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。

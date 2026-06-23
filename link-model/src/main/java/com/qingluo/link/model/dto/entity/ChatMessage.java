@@ -35,6 +35,10 @@ public class ChatMessage {
     @TableField("conversation_id")
     private Long conversationId;
 
+    @Schema(description = "轮次幂等键（前端每轮稳定 UUID）；唯一索引 uk_chat_message_turn_id", example = "turn-20260623-001")
+    @TableField("turn_id")
+    private String turnId;
+
     @Schema(description = "本轮所用 LLM 配置ID")
     @TableField("config_id")
     private Long configId;
@@ -46,19 +50,27 @@ public class ChatMessage {
     @Schema(description = "用户提问", example = "什么是RAG")
     private String query;
 
-    @Schema(description = "LLM回答（partial 为半截，failed 可空）")
+    @Schema(description = "LLM回答（GENERATING/FAILED 可为空或半截）")
     private String answer;
 
     @Schema(description = "召回片段 chunk_id 列表（仅标识，不含正文）")
     @TableField(value = "`references`", typeHandler = JacksonTypeHandler.class)
     private List<String> references;
 
-    @Schema(description = "请求追踪ID/幂等键", example = "req-20260619-001")
+    @Schema(description = "请求追踪ID（每 HTTP 请求级，不再充当幂等键）", example = "req-20260619-001")
     @TableField("request_id")
     private String requestId;
 
-    @Schema(description = "轮次状态：success/partial/failed", example = "success")
+    @Schema(description = "轮次状态：GENERATING/COMPLETED/FAILED", example = "COMPLETED")
     private String status;
+
+    @Schema(description = "失败错误码（仅 FAILED）：RECALL_* 或 GENERATION_TIMEOUT")
+    @TableField("error_code")
+    private String errorCode;
+
+    @Schema(description = "失败错误信息（仅 FAILED，不含堆栈）")
+    @TableField("error_message")
+    private String errorMessage;
 
     @Schema(description = "创建时间")
     @TableField("created_at")

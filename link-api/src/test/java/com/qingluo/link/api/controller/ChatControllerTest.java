@@ -247,14 +247,54 @@ class ChatControllerTest {
     @Order(3)
     @DisplayName("获取对话消息 - GET /api/v1/chat/conversations/{id}/messages")
     void Should_ReturnMessages_When_ConversationExists() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO chat_message (
+                    conversation_id, config_id, model_name, `query`, answer, `references`, request_id, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATEADD('SECOND', -2, CURRENT_TIMESTAMP))
+                """,
+            createdConversationId,
+            7L,
+            "gpt-4",
+            "什么是RAG？",
+            "RAG 是检索增强生成。",
+            "[\"chunk-1\",\"chunk-2\"]",
+            "req-chat-list-1",
+            "success");
+        jdbcTemplate.update("""
+                INSERT INTO chat_message (
+                    conversation_id, config_id, model_name, `query`, answer, `references`, request_id, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATEADD('SECOND', -1, CURRENT_TIMESTAMP))
+                """,
+            createdConversationId,
+            8L,
+            "gpt-4o-mini",
+            "失败时会返回什么？",
+            null,
+            "[]",
+            "req-chat-list-2",
+            "failed");
+
         mockMvc.perform(get("/api/v1/chat/conversations/" + createdConversationId + "/messages")
                 .header("satoken", token)
                 .param("page", "1")
                 .param("pageSize", "50"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
-            // 刚创建的对话暂无消息，返回空数组
-            .andExpect(jsonPath("$.data.items").isArray());
+            .andExpect(jsonPath("$.data.items").isArray())
+            .andExpect(jsonPath("$.data.total").value(2))
+            .andExpect(jsonPath("$.data.items[0].conversationId").value(createdConversationId))
+            .andExpect(jsonPath("$.data.items[0].query").value("什么是RAG？"))
+            .andExpect(jsonPath("$.data.items[0].answer").value("RAG 是检索增强生成。"))
+            .andExpect(jsonPath("$.data.items[0].configId").value(7))
+            .andExpect(jsonPath("$.data.items[0].modelName").value("gpt-4"))
+            .andExpect(jsonPath("$.data.items[0].references[0]").value("chunk-1"))
+            .andExpect(jsonPath("$.data.items[0].references[1]").value("chunk-2"))
+            .andExpect(jsonPath("$.data.items[0].requestId").value("req-chat-list-1"))
+            .andExpect(jsonPath("$.data.items[0].status").value("success"))
+            .andExpect(jsonPath("$.data.items[1].query").value("失败时会返回什么？"))
+            .andExpect(jsonPath("$.data.items[1].answer").doesNotExist())
+            .andExpect(jsonPath("$.data.items[1].requestId").value("req-chat-list-2"))
+            .andExpect(jsonPath("$.data.items[1].status").value("failed"));
     }
 
     // 发送消息接口已下线：对话轮次改由 Python 通过 tolink.rag.chat_turn 上报、Java 落库（LINK-180）。

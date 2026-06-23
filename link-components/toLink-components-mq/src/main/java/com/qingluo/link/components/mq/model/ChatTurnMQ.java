@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.qingluo.link.components.mq.AbstractMQ;
+import com.qingluo.link.components.mq.constant.ChatTurnStatus;
 import com.qingluo.link.components.mq.constant.MQSendType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -16,7 +17,8 @@ import java.util.List;
  * Python 向 Java 回传的对话轮次完成消息（一轮问答的完整数据，供 Java 落库）。
  *
  * <p>Topic：{@code tolink.rag.chat_turn}，routing_key = conversation_id（同一对话有序）。
- * Python 在问答正常结束 / 生成失败 / 客户端断连时各发一条，空召回不发。</p>
+ * 一轮 = 「起点 {@code GENERATING} + 终态（{@code COMPLETED}/{@code FAILED}）」至少两条同 {@code turn_id} 的消息，
+ * Java 按 {@code turn_id} upsert 同一行；空命中也发 {@code COMPLETED}（answer 空占位）。</p>
  *
  * <p>线格式为统一信封 {@code {"mq_type","mq_name","payload":{...}}}，业务字段在 payload 内，
  * 故 {@link #parseMsg(String)} 需先解包 payload 再反序列化（兼容无信封的扁平结构）。</p>
@@ -84,6 +86,10 @@ public class ChatTurnMQ implements AbstractMQ {
         private Double timestamp;
         @JSONField(name = "conversation_id")
         private Long conversationId;
+        /** 轮次幂等键（前端每轮稳定 UUID）→ chat_message.turn_id，Java 据此 upsert 同一行。 */
+        @JSONField(name = "turn_id")
+        private String turnId;
+        /** 每 HTTP 请求级追踪 ID，不再充当幂等键（幂等键改用 turn_id）。 */
         @JSONField(name = "request_id")
         private String requestId;
         @JSONField(name = "user_id")
@@ -108,8 +114,15 @@ public class ChatTurnMQ implements AbstractMQ {
         private List<String> references;
         @JSONField(name = "latency_ms")
         private Integer latencyMs;
+        /** 轮次状态：GENERATING / COMPLETED / FAILED。 */
         @JSONField(name = "status")
         private String status;
+        /** 仅 FAILED：RECALL_* 或 GENERATION_TIMEOUT → chat_message.error_code。 */
+        @JSONField(name = "error_code")
+        private String errorCode;
+        /** 仅 FAILED，不含堆栈 → chat_message.error_message。 */
+        @JSONField(name = "error_message")
+        private String errorMessage;
     }
 
     /**
@@ -125,12 +138,14 @@ public class ChatTurnMQ implements AbstractMQ {
         if (payload.getUserId() == null) {
             throw new IllegalArgumentException("chat_turn user_id is missing");
         }
+        if (!StringUtils.hasText(payload.getTurnId())) {
+            throw new IllegalArgumentException("chat_turn turn_id is missing");
+        }
         if (!StringUtils.hasText(payload.getRequestId())) {
             throw new IllegalArgumentException("chat_turn request_id is missing");
         }
-        String status = payload.getStatus();
-        if (!"success".equals(status) && !"partial".equals(status) && !"failed".equals(status)) {
-            throw new IllegalArgumentException("chat_turn status is invalid: " + status);
+        if (!ChatTurnStatus.isValid(payload.getStatus())) {
+            throw new IllegalArgumentException("chat_turn status is invalid: " + payload.getStatus());
         }
     }
 }

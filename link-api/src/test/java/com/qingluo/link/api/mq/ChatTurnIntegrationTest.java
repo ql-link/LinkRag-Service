@@ -23,8 +23,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * {@code ChatTurnMQ.parseMsg → ChatTurnConsumer → ChatTurnPersistenceService → Mapper}
  * 真实写入 H2，断言 chat_message / llm_usage_log / chat_conversation 三表数据。</p>
  *
- * <p>覆盖：success / partial / failed 三类落库、references JSON 读写往返、
- * request_id 幂等去重、conversation 归属校验拒绝跨用户写入。</p>
+ * <p>覆盖：GENERATING 起点插行 → COMPLETED 终态按 turn_id upsert 同一行、FAILED 错误字段落库、
+ * references JSON 读写往返、turn_id 幂等去重、状态不回退、conversation 归属校验拒绝跨用户写入。</p>
  */
 @SpringBootTest(properties = {
     "tolink.mq.vender=kafka",
@@ -83,48 +83,56 @@ class ChatTurnIntegrationTest {
     }
 
     @Test
-    @DisplayName("success：三表正确落库，references JSON 读写往返，标题由首条提问生成")
-    void Should_PersistAllThreeTables_When_SuccessTurn() {
-        String raw = envelope(
-                "\"conversation_id\":" + conversationId + ",\"request_id\":\"req-success-1\",\"user_id\":" + userId + ","
+    @DisplayName("GENERATING→COMPLETED：起点插「生成中」行，终态按 turn_id upsert 同一行，用量只入一次")
+    void Should_UpsertSameRow_When_GeneratingThenCompleted() {
+        String turnId = "turn-up-1";
+        // 1) 起点：GENERATING，answer 空、provider_type 空、无 token。
+        receiver.receive(envelope(
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"" + turnId + "\","
+                + "\"request_id\":\"req-gen-1\",\"user_id\":" + userId + ","
+                + "\"query\":\"什么是RAG\",\"answer\":\"\",\"provider_type\":\"\",\"status\":\"GENERATING\""));
+
+        Map<String, Object> generating = jdbcTemplate.queryForMap(
+                "SELECT * FROM chat_message WHERE turn_id = ?", turnId);
+        assertThat(generating.get("status")).isEqualTo("GENERATING");
+        assertThat(generating.get("answer")).isEqualTo("");
+        Long messageId = ((Number) generating.get("id")).longValue();
+        // GENERATING 不入账
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM llm_usage_log WHERE conversation_id = ?", Integer.class, conversationId)).isZero();
+
+        // 2) 终态：COMPLETED，同 turn_id 更新同一行。
+        receiver.receive(envelope(
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"" + turnId + "\","
+                + "\"request_id\":\"req-gen-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"什么是RAG\",\"answer\":\"RAG 是检索增强生成，结合检索与大模型。\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
                 + "\"prompt_tokens\":120,\"completion_tokens\":80,\"total_tokens\":200,"
-                + "\"references\":[\"chunk-1\",\"chunk-2\",\"chunk-3\"],\"latency_ms\":1350,\"status\":\"success\"");
+                + "\"references\":[\"chunk-1\",\"chunk-2\",\"chunk-3\"],\"latency_ms\":1350,\"status\":\"COMPLETED\""));
 
-        receiver.receive(raw);
-
-        // chat_message：一行一轮
-        Map<String, Object> msg = jdbcTemplate.queryForMap(
-                "SELECT * FROM chat_message WHERE request_id = 'req-success-1'");
-        assertThat(msg.get("conversation_id")).isEqualTo(conversationId);
-        assertThat(msg.get("query")).isEqualTo("什么是RAG");
-        assertThat(msg.get("answer")).isEqualTo("RAG 是检索增强生成，结合检索与大模型。");
-        assertThat(msg.get("config_id")).isEqualTo(7L);
-        assertThat(msg.get("model_name")).isEqualTo("gpt-4");
-        assertThat(msg.get("status")).isEqualTo("success");
-
-        Long messageId = ((Number) msg.get("id")).longValue();
+        // 仍是一行，id 不变，状态推进为 COMPLETED，answer 补齐。
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM chat_message WHERE turn_id = ?", Integer.class, turnId)).isEqualTo(1);
+        Map<String, Object> completed = jdbcTemplate.queryForMap(
+                "SELECT * FROM chat_message WHERE turn_id = ?", turnId);
+        assertThat(((Number) completed.get("id")).longValue()).isEqualTo(messageId);
+        assertThat(completed.get("status")).isEqualTo("COMPLETED");
+        assertThat(completed.get("answer")).isEqualTo("RAG 是检索增强生成，结合检索与大模型。");
+        assertThat(completed.get("model_name")).isEqualTo("gpt-4");
 
         // references JSON 读路径往返（autoResultMap + JacksonTypeHandler）
         ChatMessage loaded = chatMessageMapper.selectById(messageId);
         assertThat(loaded.getReferences()).containsExactly("chunk-1", "chunk-2", "chunk-3");
 
-        // llm_usage_log：关联 conversation_id / message_id / request_id
+        // llm_usage_log：只在终态写一次，关联 message_id。
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM llm_usage_log WHERE conversation_id = ?", Integer.class, conversationId)).isEqualTo(1);
         Map<String, Object> usage = jdbcTemplate.queryForMap(
-                "SELECT * FROM llm_usage_log WHERE request_id = 'req-success-1'");
-        assertThat(usage.get("user_id")).isEqualTo(userId);
-        assertThat(usage.get("conversation_id")).isEqualTo(conversationId);
+                "SELECT * FROM llm_usage_log WHERE conversation_id = ?", conversationId);
         assertThat(((Number) usage.get("message_id")).longValue()).isEqualTo(messageId);
-        assertThat(usage.get("provider_type")).isEqualTo("openai");
-        assertThat(usage.get("model_name")).isEqualTo("gpt-4");
-        assertThat(usage.get("prompt_tokens")).isEqualTo(120);
-        assertThat(usage.get("completion_tokens")).isEqualTo(80);
         assertThat(usage.get("total_tokens")).isEqualTo(200);
-        assertThat(usage.get("latency_ms")).isEqualTo(1350);
         assertThat(usage.get("status")).isEqualTo("success");
 
-        // chat_conversation：last_config_id / last_model_name 更新，首轮标题由提问生成
         Map<String, Object> conv = jdbcTemplate.queryForMap(
                 "SELECT * FROM chat_conversation WHERE id = ?", conversationId);
         assertThat(conv.get("last_config_id")).isEqualTo(7L);
@@ -133,64 +141,72 @@ class ChatTurnIntegrationTest {
     }
 
     @Test
-    @DisplayName("partial：客户端断连，半截 answer 落库")
-    void Should_PersistHalfAnswer_When_PartialTurn() {
+    @DisplayName("COMPLETED：终态直达（GENERATING 丢失）也能落库")
+    void Should_PersistAllThreeTables_When_CompletedTurn() {
         String raw = envelope(
-                "\"conversation_id\":" + conversationId + ",\"request_id\":\"req-partial-1\",\"user_id\":" + userId + ","
-                + "\"query\":\"讲讲向量检索\",\"answer\":\"向量检索是\","
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-c-1\","
+                + "\"request_id\":\"req-success-1\",\"user_id\":" + userId + ","
+                + "\"query\":\"什么是RAG\",\"answer\":\"RAG 是检索增强生成，结合检索与大模型。\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-                + "\"prompt_tokens\":50,\"completion_tokens\":5,\"total_tokens\":55,"
-                + "\"references\":[\"chunk-9\"],\"latency_ms\":200,\"status\":\"partial\"");
+                + "\"prompt_tokens\":120,\"completion_tokens\":80,\"total_tokens\":200,"
+                + "\"references\":[\"chunk-1\"],\"latency_ms\":1350,\"status\":\"COMPLETED\"");
 
         receiver.receive(raw);
 
         Map<String, Object> msg = jdbcTemplate.queryForMap(
-                "SELECT * FROM chat_message WHERE request_id = 'req-partial-1'");
-        assertThat(msg.get("status")).isEqualTo("partial");
-        assertThat(msg.get("answer")).isEqualTo("向量检索是");
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT status FROM llm_usage_log WHERE request_id = 'req-partial-1'", String.class))
-                .isEqualTo("partial");
+                "SELECT * FROM chat_message WHERE turn_id = 'turn-c-1'");
+        assertThat(msg.get("status")).isEqualTo("COMPLETED");
+        assertThat(msg.get("answer")).isEqualTo("RAG 是检索增强生成，结合检索与大模型。");
+        Map<String, Object> usage = jdbcTemplate.queryForMap(
+                "SELECT * FROM llm_usage_log WHERE request_id = 'req-success-1'");
+        assertThat(usage.get("status")).isEqualTo("success");
+        assertThat(usage.get("total_tokens")).isEqualTo(200);
     }
 
     @Test
-    @DisplayName("failed：生成异常，answer 空串、token 为 0 仍落库")
-    void Should_PersistEmptyAnswer_When_FailedTurn() {
+    @DisplayName("FAILED：生成异常，answer 空串、error_code/error_message 落库")
+    void Should_PersistErrorFields_When_FailedTurn() {
         String raw = envelope(
-                "\"conversation_id\":" + conversationId + ",\"request_id\":\"req-failed-1\",\"user_id\":" + userId + ","
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-f-1\","
+                + "\"request_id\":\"req-failed-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"会失败的问题\",\"answer\":\"\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
                 + "\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,"
-                + "\"references\":[],\"latency_ms\":null,\"status\":\"failed\"");
+                + "\"references\":[],\"latency_ms\":null,\"status\":\"FAILED\","
+                + "\"error_code\":\"GENERATION_TIMEOUT\",\"error_message\":\"timed out\"");
 
         receiver.receive(raw);
 
         Map<String, Object> msg = jdbcTemplate.queryForMap(
-                "SELECT * FROM chat_message WHERE request_id = 'req-failed-1'");
-        assertThat(msg.get("status")).isEqualTo("failed");
+                "SELECT * FROM chat_message WHERE turn_id = 'turn-f-1'");
+        assertThat(msg.get("status")).isEqualTo("FAILED");
         assertThat(msg.get("answer")).isEqualTo("");
+        assertThat(msg.get("error_code")).isEqualTo("GENERATION_TIMEOUT");
+        assertThat(msg.get("error_message")).isEqualTo("timed out");
         Map<String, Object> usage = jdbcTemplate.queryForMap(
                 "SELECT * FROM llm_usage_log WHERE request_id = 'req-failed-1'");
+        assertThat(usage.get("status")).isEqualTo("failed");
         assertThat(usage.get("total_tokens")).isEqualTo(0);
         assertThat(usage.get("latency_ms")).isNull();
     }
 
     @Test
-    @DisplayName("幂等：相同 request_id 重投，只落一行，不重复")
-    void Should_NotDuplicate_When_SameRequestIdRedelivered() {
+    @DisplayName("幂等：相同 turn_id 终态重投，只落一行，不重复入账")
+    void Should_NotDuplicate_When_SameTurnIdRedelivered() {
         String raw = envelope(
-                "\"conversation_id\":" + conversationId + ",\"request_id\":\"req-idem-1\",\"user_id\":" + userId + ","
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-idem-1\","
+                + "\"request_id\":\"req-idem-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"重复消息\",\"answer\":\"回答\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
                 + "\"prompt_tokens\":10,\"completion_tokens\":10,\"total_tokens\":20,"
-                + "\"references\":[],\"latency_ms\":100,\"status\":\"success\"");
+                + "\"references\":[],\"latency_ms\":100,\"status\":\"COMPLETED\"");
 
         receiver.receive(raw);
         receiver.receive(raw);
         receiver.receive(raw);
 
         Integer msgCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM chat_message WHERE request_id = 'req-idem-1'", Integer.class);
+                "SELECT COUNT(*) FROM chat_message WHERE turn_id = 'turn-idem-1'", Integer.class);
         Integer usageCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM llm_usage_log WHERE request_id = 'req-idem-1'", Integer.class);
         assertThat(msgCount).isEqualTo(1);
@@ -198,20 +214,47 @@ class ChatTurnIntegrationTest {
     }
 
     @Test
+    @DisplayName("状态不回退：终态后迟到的 GENERATING 不覆盖")
+    void Should_NotRegress_When_LateGeneratingAfterTerminal() {
+        String turnId = "turn-noreg-1";
+        receiver.receive(envelope(
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"" + turnId + "\","
+                + "\"request_id\":\"req-noreg-1\",\"user_id\":" + userId + ","
+                + "\"query\":\"问题\",\"answer\":\"完整回答\","
+                + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
+                + "\"prompt_tokens\":10,\"completion_tokens\":10,\"total_tokens\":20,"
+                + "\"references\":[],\"latency_ms\":100,\"status\":\"COMPLETED\""));
+
+        // 迟到的 GENERATING（同 turn_id）应被忽略，不回退状态、不清空 answer。
+        receiver.receive(envelope(
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"" + turnId + "\","
+                + "\"request_id\":\"req-noreg-1\",\"user_id\":" + userId + ","
+                + "\"query\":\"问题\",\"answer\":\"\",\"provider_type\":\"\",\"status\":\"GENERATING\""));
+
+        Map<String, Object> msg = jdbcTemplate.queryForMap(
+                "SELECT * FROM chat_message WHERE turn_id = ?", turnId);
+        assertThat(msg.get("status")).isEqualTo("COMPLETED");
+        assertThat(msg.get("answer")).isEqualTo("完整回答");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM llm_usage_log WHERE request_id = 'req-noreg-1'", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("归属校验：conversation 不属于该 user，丢弃不落库")
     void Should_DropAndNotPersist_When_ConversationNotOwnedByUser() {
         // user_id 为他人，但 conversation 属于 userId → 跨用户写入应被拒绝
         String raw = envelope(
-                "\"conversation_id\":" + conversationId + ",\"request_id\":\"req-cross-1\",\"user_id\":" + otherUserId + ","
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-cross-1\","
+                + "\"request_id\":\"req-cross-1\",\"user_id\":" + otherUserId + ","
                 + "\"query\":\"越权写入\",\"answer\":\"不该落库\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
                 + "\"prompt_tokens\":10,\"completion_tokens\":10,\"total_tokens\":20,"
-                + "\"references\":[],\"latency_ms\":100,\"status\":\"success\"");
+                + "\"references\":[],\"latency_ms\":100,\"status\":\"COMPLETED\"");
 
         receiver.receive(raw);
 
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM chat_message WHERE request_id = 'req-cross-1'", Integer.class)).isZero();
+                "SELECT COUNT(*) FROM chat_message WHERE turn_id = 'turn-cross-1'", Integer.class)).isZero();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM llm_usage_log WHERE request_id = 'req-cross-1'", Integer.class)).isZero();
         // 对话标题保持默认，未被越权消息改写

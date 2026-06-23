@@ -54,30 +54,35 @@ MQ 实现事实来源：
 
 ## 对话轮次落库字段（Python → Java）
 
-`ChatTurnMQ`（topic `tolink.rag.chat_turn`，`QUEUE` 点对点）。Python 问答执行器在一轮问答**正常结束 / 生成失败 / 客户端断连**时各发一条，**空召回不发**；routing_key = `conversation_id`，保证同一对话有序。
+`ChatTurnMQ`（topic `tolink.rag.chat_turn`，`QUEUE` 点对点）。一轮 = 「起点 `GENERATING` + 终态（`COMPLETED`/`FAILED`）」**至少两条同 `turn_id` 的消息**：Python 在生成起点发 `GENERATING`，在正常结束 / 空命中 / 生成失败 / 生成超时等终结时发 `COMPLETED` 或 `FAILED`；**空召回（0 命中）也发 `COMPLETED`**（answer 空占位），不再「不产生轮次」。routing_key = `conversation_id`，保证同一对话有序。
 
 线格式为统一信封 `{"mq_type":"CHAT_TURN","mq_name":"tolink.rag.chat_turn","payload":{...}}`，业务字段在 `payload` 内、**全 snake_case**；Java 端 `ChatTurnMQ.parseMsg` 先解包 `payload` 再反序列化（兼容无信封扁平结构）。
 
 `payload` 字段：
 
 - `conversation_id`（int，必填）：所属对话。
-- `request_id`（string，必填）：幂等键，写入 `chat_message.request_id` 与 `llm_usage_log.request_id`。
+- `turn_id`（string，必填）：**轮次幂等键**（前端每轮稳定 UUID）→ `chat_message.turn_id`，Java 据此 upsert 同一行。
+- `request_id`（string，必填）：每 HTTP 请求级追踪 ID，写入 `chat_message.request_id` 与 `llm_usage_log.request_id`，**不再充当幂等键**（幂等键改用 `turn_id`）。
 - `user_id`（int，必填）：用户 ID（取自 token），Java 用于归属校验。
 - `query`（string）：用户提问 → `chat_message.query`。
-- `answer`（string）：LLM 回答 → `chat_message.answer`（partial 为半截，failed 可空串）。
-- `config_id`（int）、`provider_type`（string）、`model_name`（string）：本轮配置与模型快照。
+- `answer`（string）：LLM 回答 → `chat_message.answer`（`GENERATING`/`FAILED` 可为空或半截）。
+- `config_id`（int）、`model_name`（string）：本轮配置与模型快照（`GENERATING` 起点可能未解析）。
+- `provider_type`（string，**可空**）：`GENERATING` 起点与模型未解析的前置失败时为空串，终态补齐。
 - `prompt_tokens` / `completion_tokens` / `total_tokens`（int，流式未返回时为 0）。
 - `references`（string[]）：召回片段 chunk_id 列表（仅标识、不含正文）→ `chat_message.references`(JSON)。
 - `latency_ms`（int，可空）：生成延迟。
-- `status`（string，必填）：`success` / `partial`（客户端断连）/ `failed`（生成异常）。
+- `status`（string，必填）：`GENERATING` / `COMPLETED` / `FAILED`（旧 `success`/`partial`/`failed` 已退役）。
+- `error_code`（string，可空）：仅 `FAILED`，`RECALL_*` 或 `GENERATION_TIMEOUT` → `chat_message.error_code`。
+- `error_message`（string，可空）：仅 `FAILED`，不含堆栈 → `chat_message.error_message`。
 - 信封基类自带 `message_id` / `timestamp`（仅追踪用途，不入库）。
 
-Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内：① `INSERT chat_message`（一行一轮）；② `INSERT llm_usage_log`（关联 `conversation_id` / `message_id` / `request_id`）；③ `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`，并在首轮由 `query` 生成临时标题。事务提交后，Java 异步调用用户 Chat 模型生成自然短标题；失败、拒绝或配置不可用时保留临时标题。两条必做约束：
+Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内**按 `turn_id` upsert**：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态（`COMPLETED`/`FAILED`）`UPDATE` 同一行并补齐 answer/references/模型快照/错误字段。`INSERT llm_usage_log`（关联 `conversation_id` / `message_id` / `request_id`）**仅在转入终态时写一次**（`GENERATING` 无 token，不入账，避免重复计费；账本 `status` 沿用 `success`/`failed`：`COMPLETED`→`success`、`FAILED`→`failed`）。同时 `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`，并在首轮由 `query` 生成临时标题；终态成功（`COMPLETED`）时异步调用用户 Chat 模型生成自然短标题，失败、拒绝或配置不可用时保留临时标题。三条必做约束：
 
-- **幂等去重**：以 `request_id` 在落库前做存在性校验，命中则跳过，应对 MQ 重投（同对话单分区有序，重投为顺序到达，存在性校验即可去重；不依赖 DB 唯一索引，避免与 Python 侧迁移产生 schema 漂移）。
-- **归属校验**：`conversation_id` 来自前端请求体、`user_id` 取自 token，Python 仅透传不校验；Java 落库前必须校验 `conversation` 属于该 `user_id`，不匹配直接丢弃并告警，防止跨用户写入。
+- **按 `turn_id` upsert + 幂等**：以 `(conversation_id, turn_id)` 定位同一轮的行（`chat_message.turn_id` 已建唯一索引 `uk_chat_message_turn_id`），同一 `turn_id` 多次到达（重发/重试）不重复插入。
+- **状态不回退**：终态写入后不再被迟到/重投的 `GENERATING` 覆盖；重复终态视为重投跳过。
+- **归属校验**：`conversation_id` 来自前端请求体、`user_id` 取自 token，Python 仅透传不校验；Java 按 `(conversation_id, turn_id)` 匹配并校验 `conversation` 属于该 `user_id`，不匹配直接丢弃并告警，防止跨会话/跨用户写入（`turn_id` 由客户端提供且唯一索引为全局）。
 
-topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `ChatTurnMQ` 自动注册创建。发布顺序：Python 迁移 0021 → Python 发送侧 → Java 消费侧 + topic 注册，避免消息长时间堆积无人消费。
+`chat_message` 三个新列（`turn_id` / `error_code` / `error_message`）由 **Python migration 0023** 落库，Java 只读写行、不自行改共享库 DDL；本仓 `scripts/db/init.sql` 与 H2 `link-api/src/main/resources/schema.sql` 仅本地/测试用，与之保持字段名、索引一致。topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `ChatTurnMQ` 自动注册创建。
 
 ## 全链路用量上报字段（Python → Java）
 

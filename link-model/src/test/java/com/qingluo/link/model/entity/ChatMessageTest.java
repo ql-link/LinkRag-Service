@@ -27,6 +27,7 @@ class ChatMessageTest {
     void Should_HaveCorrectFields_When_EntityDefined() throws Exception {
         assertFieldExists("id");
         assertFieldExists("conversationId");
+        assertFieldExists("turnId");
         assertFieldExists("configId");
         assertFieldExists("modelName");
         assertFieldExists("query");
@@ -34,6 +35,8 @@ class ChatMessageTest {
         assertFieldExists("references");
         assertFieldExists("requestId");
         assertFieldExists("status");
+        assertFieldExists("errorCode");
+        assertFieldExists("errorMessage");
         assertFieldExists("createdAt");
     }
 
