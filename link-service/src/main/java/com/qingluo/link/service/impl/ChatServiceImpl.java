@@ -170,6 +170,7 @@ public class ChatServiceImpl implements ChatService {
         dto.setConfigId(message.getConfigId());
         dto.setModelName(message.getModelName());
         dto.setReferences(message.getReferences());
+        dto.setRequestId(message.getRequestId());
         dto.setStatus(message.getStatus());
         dto.setErrorCode(message.getErrorCode());
         dto.setErrorMessage(message.getErrorMessage());
