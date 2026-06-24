@@ -2,6 +2,8 @@
 
 > ToLink 的 Java 管理端后端服务 · 当前版本 `v0.1.0`
 
+**简体中文** · [English](./README_EN.md)
+
 ToLink Service 是 ToLink 的 Java 管理端后端服务，负责用户、LLM 配置、对话、数据集、文档文件、OSS 上传、解析任务投递和解析结果查询。实际文档解析、RAG 执行和 LLM 调用由 Python RAG 执行端承担。
 
 ## 系统边界
