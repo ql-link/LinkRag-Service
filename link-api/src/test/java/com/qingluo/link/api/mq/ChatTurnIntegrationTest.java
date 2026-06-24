@@ -21,10 +21,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * <p>尽可能贴近真实链路：用 Python 端真实线格式（统一信封、snake_case、routing_key=conversation_id）
  * 喂给生产代码的 {@link ChatTurnKafkaReceiver}，经
  * {@code ChatTurnMQ.parseMsg → ChatTurnConsumer → ChatTurnPersistenceService → Mapper}
- * 真实写入 H2，断言 chat_message / llm_usage_log / chat_conversation 三表数据。</p>
+ * 真实写入 H2，断言 chat_message / chat_conversation 两表数据。</p>
  *
  * <p>覆盖：GENERATING 起点插行 → COMPLETED 终态按 turn_id upsert 同一行、FAILED 错误字段落库、
  * references JSON 读写往返、turn_id 幂等去重、状态不回退、conversation 归属校验拒绝跨用户写入。</p>
+ *
+ * <p>LINK-191 起本通道<b>不再写 {@code llm_usage_log}</b>（generate 用量改走 usage_report 通道），
+ * 故每个用例都断言 {@code llm_usage_log} 维持为空。</p>
  */
 @SpringBootTest(properties = {
     "tolink.mq.vender=kafka",
@@ -82,11 +85,16 @@ class ChatTurnIntegrationTest {
                 + payloadBody + "}}";
     }
 
+    /** chat_turn 通道不再写用量账本，全表应始终为空。 */
+    private int usageRowCount() {
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM llm_usage_log", Integer.class);
+    }
+
     @Test
-    @DisplayName("GENERATING→COMPLETED：起点插「生成中」行，终态按 turn_id upsert 同一行，用量只入一次")
+    @DisplayName("GENERATING→COMPLETED：起点插「生成中」行，终态按 turn_id upsert 同一行，不写用量账本")
     void Should_UpsertSameRow_When_GeneratingThenCompleted() {
         String turnId = "turn-up-1";
-        // 1) 起点：GENERATING，answer 空、provider_type 空、无 token。
+        // 1) 起点：GENERATING，answer 空、provider_type 空。
         receiver.receive(envelope(
                 "\"conversation_id\":" + conversationId + ",\"turn_id\":\"" + turnId + "\","
                 + "\"request_id\":\"req-gen-1\",\"user_id\":" + userId + ","
@@ -97,9 +105,8 @@ class ChatTurnIntegrationTest {
         assertThat(generating.get("status")).isEqualTo("GENERATING");
         assertThat(generating.get("answer")).isEqualTo("");
         Long messageId = ((Number) generating.get("id")).longValue();
-        // GENERATING 不入账
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM llm_usage_log WHERE conversation_id = ?", Integer.class, conversationId)).isZero();
+        // chat_turn 不写用量账本
+        assertThat(usageRowCount()).isZero();
 
         // 2) 终态：COMPLETED，同 turn_id 更新同一行。
         receiver.receive(envelope(
@@ -107,7 +114,6 @@ class ChatTurnIntegrationTest {
                 + "\"request_id\":\"req-gen-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"什么是RAG\",\"answer\":\"RAG 是检索增强生成，结合检索与大模型。\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-                + "\"prompt_tokens\":120,\"completion_tokens\":80,\"total_tokens\":200,"
                 + "\"references\":[\"chunk-1\",\"chunk-2\",\"chunk-3\"],\"latency_ms\":1350,\"status\":\"COMPLETED\""));
 
         // 仍是一行，id 不变，状态推进为 COMPLETED，answer 补齐。
@@ -124,14 +130,8 @@ class ChatTurnIntegrationTest {
         ChatMessage loaded = chatMessageMapper.selectById(messageId);
         assertThat(loaded.getReferences()).containsExactly("chunk-1", "chunk-2", "chunk-3");
 
-        // llm_usage_log：只在终态写一次，关联 message_id。
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM llm_usage_log WHERE conversation_id = ?", Integer.class, conversationId)).isEqualTo(1);
-        Map<String, Object> usage = jdbcTemplate.queryForMap(
-                "SELECT * FROM llm_usage_log WHERE conversation_id = ?", conversationId);
-        assertThat(((Number) usage.get("message_id")).longValue()).isEqualTo(messageId);
-        assertThat(usage.get("total_tokens")).isEqualTo(200);
-        assertThat(usage.get("status")).isEqualTo("success");
+        // 终态仍不写用量账本（generate 用量改走 usage_report 通道）。
+        assertThat(usageRowCount()).isZero();
 
         Map<String, Object> conv = jdbcTemplate.queryForMap(
                 "SELECT * FROM chat_conversation WHERE id = ?", conversationId);
@@ -141,14 +141,13 @@ class ChatTurnIntegrationTest {
     }
 
     @Test
-    @DisplayName("COMPLETED：终态直达（GENERATING 丢失）也能落库")
-    void Should_PersistAllThreeTables_When_CompletedTurn() {
+    @DisplayName("COMPLETED：终态直达（GENERATING 丢失）也能落库，且不写用量账本")
+    void Should_PersistChatMessage_When_CompletedTurn() {
         String raw = envelope(
                 "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-c-1\","
                 + "\"request_id\":\"req-success-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"什么是RAG\",\"answer\":\"RAG 是检索增强生成，结合检索与大模型。\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-                + "\"prompt_tokens\":120,\"completion_tokens\":80,\"total_tokens\":200,"
                 + "\"references\":[\"chunk-1\"],\"latency_ms\":1350,\"status\":\"COMPLETED\"");
 
         receiver.receive(raw);
@@ -157,21 +156,17 @@ class ChatTurnIntegrationTest {
                 "SELECT * FROM chat_message WHERE turn_id = 'turn-c-1'");
         assertThat(msg.get("status")).isEqualTo("COMPLETED");
         assertThat(msg.get("answer")).isEqualTo("RAG 是检索增强生成，结合检索与大模型。");
-        Map<String, Object> usage = jdbcTemplate.queryForMap(
-                "SELECT * FROM llm_usage_log WHERE request_id = 'req-success-1'");
-        assertThat(usage.get("status")).isEqualTo("success");
-        assertThat(usage.get("total_tokens")).isEqualTo(200);
+        assertThat(usageRowCount()).isZero();
     }
 
     @Test
-    @DisplayName("FAILED：生成异常，answer 空串、error_code/error_message 落库")
+    @DisplayName("FAILED：生成异常，answer 空串、error_code/error_message 落库，不写用量账本")
     void Should_PersistErrorFields_When_FailedTurn() {
         String raw = envelope(
                 "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-f-1\","
                 + "\"request_id\":\"req-failed-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"会失败的问题\",\"answer\":\"\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-                + "\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0,"
                 + "\"references\":[],\"latency_ms\":null,\"status\":\"FAILED\","
                 + "\"error_code\":\"GENERATION_TIMEOUT\",\"error_message\":\"timed out\"");
 
@@ -183,22 +178,17 @@ class ChatTurnIntegrationTest {
         assertThat(msg.get("answer")).isEqualTo("");
         assertThat(msg.get("error_code")).isEqualTo("GENERATION_TIMEOUT");
         assertThat(msg.get("error_message")).isEqualTo("timed out");
-        Map<String, Object> usage = jdbcTemplate.queryForMap(
-                "SELECT * FROM llm_usage_log WHERE request_id = 'req-failed-1'");
-        assertThat(usage.get("status")).isEqualTo("failed");
-        assertThat(usage.get("total_tokens")).isEqualTo(0);
-        assertThat(usage.get("latency_ms")).isNull();
+        assertThat(usageRowCount()).isZero();
     }
 
     @Test
-    @DisplayName("幂等：相同 turn_id 终态重投，只落一行，不重复入账")
+    @DisplayName("幂等：相同 turn_id 终态重投，只落一行")
     void Should_NotDuplicate_When_SameTurnIdRedelivered() {
         String raw = envelope(
                 "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-idem-1\","
                 + "\"request_id\":\"req-idem-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"重复消息\",\"answer\":\"回答\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-                + "\"prompt_tokens\":10,\"completion_tokens\":10,\"total_tokens\":20,"
                 + "\"references\":[],\"latency_ms\":100,\"status\":\"COMPLETED\"");
 
         receiver.receive(raw);
@@ -207,10 +197,8 @@ class ChatTurnIntegrationTest {
 
         Integer msgCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM chat_message WHERE turn_id = 'turn-idem-1'", Integer.class);
-        Integer usageCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM llm_usage_log WHERE request_id = 'req-idem-1'", Integer.class);
         assertThat(msgCount).isEqualTo(1);
-        assertThat(usageCount).isEqualTo(1);
+        assertThat(usageRowCount()).isZero();
     }
 
     @Test
@@ -222,7 +210,6 @@ class ChatTurnIntegrationTest {
                 + "\"request_id\":\"req-noreg-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"问题\",\"answer\":\"完整回答\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-                + "\"prompt_tokens\":10,\"completion_tokens\":10,\"total_tokens\":20,"
                 + "\"references\":[],\"latency_ms\":100,\"status\":\"COMPLETED\""));
 
         // 迟到的 GENERATING（同 turn_id）应被忽略，不回退状态、不清空 answer。
@@ -235,8 +222,7 @@ class ChatTurnIntegrationTest {
                 "SELECT * FROM chat_message WHERE turn_id = ?", turnId);
         assertThat(msg.get("status")).isEqualTo("COMPLETED");
         assertThat(msg.get("answer")).isEqualTo("完整回答");
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM llm_usage_log WHERE request_id = 'req-noreg-1'", Integer.class)).isEqualTo(1);
+        assertThat(usageRowCount()).isZero();
     }
 
     @Test
@@ -248,15 +234,13 @@ class ChatTurnIntegrationTest {
                 + "\"request_id\":\"req-cross-1\",\"user_id\":" + otherUserId + ","
                 + "\"query\":\"越权写入\",\"answer\":\"不该落库\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-                + "\"prompt_tokens\":10,\"completion_tokens\":10,\"total_tokens\":20,"
                 + "\"references\":[],\"latency_ms\":100,\"status\":\"COMPLETED\"");
 
         receiver.receive(raw);
 
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM chat_message WHERE turn_id = 'turn-cross-1'", Integer.class)).isZero();
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM llm_usage_log WHERE request_id = 'req-cross-1'", Integer.class)).isZero();
+        assertThat(usageRowCount()).isZero();
         // 对话标题保持默认，未被越权消息改写
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT title FROM chat_conversation WHERE id = ?", String.class, conversationId))

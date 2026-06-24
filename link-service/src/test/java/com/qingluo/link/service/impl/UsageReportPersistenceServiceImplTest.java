@@ -69,8 +69,7 @@ class UsageReportPersistenceServiceImplTest {
     void Should_LeaveNull_When_SystemConfig() {
         UsageReportMQ.MsgPayload p = base();
         p.setStage("recall");
-        p.setConversationId(7788L);
-        // config_id / request_id / latency_ms / status 缺省
+        // config_id / latency_ms / status 缺省
 
         service.persist(p);
 
@@ -78,11 +77,39 @@ class UsageReportPersistenceServiceImplTest {
         verify(usageLogMapper).insert(captor.capture());
         UsageLog usage = captor.getValue();
         assertThat(usage.getConfigId()).isNull();
-        assertThat(usage.getRequestId()).isNull();
         assertThat(usage.getLatencyMs()).isNull();
-        assertThat(usage.getConversationId()).isEqualTo(7788L);
         // status 缺省补 success
         assertThat(usage.getStatus()).isEqualTo("success");
+    }
+
+    @Test
+    @DisplayName("Should_PersistGenerateRow_When_ChatGenerate")
+    void Should_PersistGenerateRow_When_ChatGenerate() {
+        // 统一 Token 用量：对话 generate 也走本通道，按 stage/operation 通用落库、无需特判。
+        UsageReportMQ.MsgPayload p = base();
+        p.setProviderType("openai");
+        p.setModelName("gpt-4");
+        p.setStage("chat");
+        p.setOperation("generate");
+        p.setPromptTokens(120);
+        p.setCompletionTokens(80);
+        p.setTotalTokens(200);
+        p.setConfigId(7L);
+        p.setLatencyMs(1350);
+        p.setStatus("failed");
+
+        service.persist(p);
+
+        ArgumentCaptor<UsageLog> captor = ArgumentCaptor.forClass(UsageLog.class);
+        verify(usageLogMapper).insert(captor.capture());
+        UsageLog usage = captor.getValue();
+        assertThat(usage.getStage()).isEqualTo("chat");
+        assertThat(usage.getOperation()).isEqualTo("generate");
+        assertThat(usage.getCompletionTokens()).isEqualTo(80);
+        assertThat(usage.getTotalTokens()).isEqualTo(200);
+        assertThat(usage.getConfigId()).isEqualTo(7L);
+        assertThat(usage.getLatencyMs()).isEqualTo(1350);
+        assertThat(usage.getStatus()).isEqualTo("failed");
     }
 
     @Test

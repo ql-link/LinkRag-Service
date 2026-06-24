@@ -129,7 +129,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | DELETE | `/api/v1/chat/conversations/{id}` | 删除会话 |
 | POST | `/api/v1/knowledge/chunks/batch` | 批量查询当前用户可访问的 ACTIVE Chunk 详情，用于历史消息按 `references` 恢复召回片段卡片 |
 
-> 写入消息接口 `POST /api/v1/chat/conversations/{id}/messages` 已下线：对话轮次改由 Python 问答执行器经 `tolink.rag.chat_turn` 上报、Java 按 `turn_id` upsert 落库 `chat_message` / `llm_usage_log` / `chat_conversation`（见 `docs/api/mq_contracts.md`）。前端职责简化为先创建会话拿到 `conversation_id`，随 `/api/v1/rag/stream` 请求带上。
+> 写入消息接口 `POST /api/v1/chat/conversations/{id}/messages` 已下线：对话轮次改由 Python 问答执行器经 `tolink.rag.chat_turn` 上报、Java 按 `turn_id` upsert 落库 `chat_message` / `chat_conversation`（generate 用量自 LINK-191 起改走 `tolink.rag.usage_report` 落 `llm_usage_log`，见 `docs/api/mq_contracts.md`）。前端职责简化为先创建会话拿到 `conversation_id`，随 `/api/v1/rag/stream` 请求带上。
 >
 > 消息列表（`MessageDTO`）暴露轮次状态供前端重载判定（chat-stream-resilient-persist）：`status` = `GENERATING` / `COMPLETED` / `FAILED`，`errorCode` / `errorMessage` 仅 `FAILED` 非空，`turnId` 为前端每轮稳定 UUID（轮次幂等键）。列表**返回在途 `GENERATING` 消息**（带部分 `answer`），不做状态过滤，按 `createdAt` 升序。
 >

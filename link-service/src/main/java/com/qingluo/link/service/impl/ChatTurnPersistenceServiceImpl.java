@@ -2,16 +2,11 @@ package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.components.mq.constant.ChatTurnStatus;
-import com.qingluo.link.components.mq.constant.UsageOperation;
-import com.qingluo.link.components.mq.constant.UsageStage;
 import com.qingluo.link.components.mq.model.ChatTurnMQ;
-import com.qingluo.link.core.util.NumberUtil;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
-import com.qingluo.link.mapper.UsageLogMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
-import com.qingluo.link.model.dto.entity.UsageLog;
 import com.qingluo.link.service.ChatTurnPersistenceService;
 import com.qingluo.link.service.ConversationTitleService;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +26,10 @@ import org.springframework.util.StringUtils;
  *   <li><b>状态不回退</b>：终态写入后不再被迟到/重投的 {@code GENERATING} 覆盖；重复终态视为重投跳过。</li>
  *   <li><b>归属校验</b>：conversation_id 来自前端请求体、user_id 取自 token，Python 仅透传不校验；
  *       落库前必须校验 conversation 属于该 user，不匹配直接丢弃并告警，防止跨用户写入。</li>
- *   <li><b>用量入账</b>：{@code llm_usage_log} 仅在转入终态时写一次（GENERATING 无 token，不入账），避免重复计费。</li>
+ *   <li><b>不再入账用量</b>：自 LINK-191 起本通道<b>只持久化对话内容</b>，generate 用量改由统一 Token 用量消息
+ *       {@code tolink.rag.usage_report}（{@code stage=chat}/{@code operation=generate}）承接，
+ *       {@code chat_turn} 不再写 {@code llm_usage_log}。{@code provider_type}/{@code latency_ms} 仍在载荷中，
+ *       但 {@code chat_message} 无对应列、本通道不落库它们。</li>
  * </ul>
  */
 @Service
@@ -41,7 +39,6 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
 
     private final ChatConversationMapper conversationMapper;
     private final ChatMessageMapper messageMapper;
-    private final UsageLogMapper usageLogMapper;
     private final ConversationTitleService conversationTitleService;
 
     /** 创建对话时的默认标题，首轮落库时用提问替换。 */
@@ -104,14 +101,11 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
         message.setErrorMessage(payload.getErrorMessage());
         messageMapper.insert(message);
 
-        if (incoming.isTerminal()) {
-            insertUsageLog(payload, message.getId(), incoming);
-        }
         updateConversationMeta(conversation, payload, incoming);
     }
 
     /**
-     * 既有 GENERATING 行推进到终态：更新同一行，并补写一次用量账本。
+     * 既有 GENERATING 行推进到终态：更新同一行。
      */
     private void promoteToTerminal(ChatConversation conversation, ChatMessage existing,
                                    ChatTurnMQ.MsgPayload payload, ChatTurnStatus incoming) {
@@ -132,32 +126,7 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
         }
         messageMapper.updateById(existing);
 
-        insertUsageLog(payload, existing.getId(), incoming);
         updateConversationMeta(conversation, payload, incoming);
-    }
-
-    /**
-     * 写入 llm_usage_log（关联 conversation_id / message_id / request_id），仅终态调用。
-     */
-    private void insertUsageLog(ChatTurnMQ.MsgPayload payload, Long messageId, ChatTurnStatus incoming) {
-        UsageLog usage = new UsageLog();
-        usage.setUserId(payload.getUserId());
-        usage.setConfigId(payload.getConfigId());
-        usage.setProviderType(nullToEmpty(payload.getProviderType()));
-        usage.setModelName(nullToEmpty(payload.getModelName()));
-        // 全链路口径：对话最终生成补 stage=chat / operation=generate，与 usage_report 通道落同一张表口径一致（LINK-184）。
-        usage.setStage(UsageStage.CHAT.code());
-        usage.setOperation(UsageOperation.GENERATE.code());
-        usage.setPromptTokens(NumberUtil.zeroIfNull(payload.getPromptTokens()));
-        usage.setCompletionTokens(NumberUtil.zeroIfNull(payload.getCompletionTokens()));
-        usage.setTotalTokens(NumberUtil.zeroIfNull(payload.getTotalTokens()));
-        usage.setLatencyMs(payload.getLatencyMs());
-        // 账本沿用 success/partial/failed 口径：COMPLETED→success，FAILED→failed。
-        usage.setStatus(incoming == ChatTurnStatus.FAILED ? "failed" : "success");
-        usage.setConversationId(payload.getConversationId());
-        usage.setMessageId(messageId);
-        usage.setRequestId(payload.getRequestId());
-        usageLogMapper.insert(usage);
     }
 
     /**
@@ -223,9 +192,5 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
         return StringUtils.hasText(normalizedQuery)
                 && normalizedTitle.length() >= 8
                 && normalizedQuery.startsWith(normalizedTitle);
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
     }
 }

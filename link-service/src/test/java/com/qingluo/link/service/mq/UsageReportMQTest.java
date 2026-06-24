@@ -45,16 +45,28 @@ class UsageReportMQTest {
         String raw = "{\"mq_type\":\"USAGE_REPORT\",\"mq_name\":\"tolink.rag.usage_report\",\"payload\":{"
                 + "\"user_id\":1001,\"provider_type\":\"openai\",\"model_name\":\"text-embedding-3-large\","
                 + "\"stage\":\"recall\",\"operation\":\"embed\",\"prompt_tokens\":36,\"completion_tokens\":0,"
-                + "\"total_tokens\":36,\"conversation_id\":7788,\"status\":\"success\"}}";
+                + "\"total_tokens\":36,\"status\":\"success\"}}";
 
         UsageReportMQ.MsgPayload payload = UsageReportMQ.parseMsg(raw);
 
-        // 系统配置调用：config_id 缺省 → NULL；request_id / latency_ms / task_id 同样缺省 → NULL
+        // 系统配置调用：config_id 缺省 → NULL；latency_ms / task_id 同样缺省 → NULL
         assertThat(payload.getConfigId()).isNull();
-        assertThat(payload.getRequestId()).isNull();
         assertThat(payload.getLatencyMs()).isNull();
         assertThat(payload.getTaskId()).isNull();
-        assertThat(payload.getConversationId()).isEqualTo(7788L);
+    }
+
+    @Test
+    void Should_IgnoreLegacyConversationAndRequestFields_When_StillSentByUpstream() {
+        // 瘦身后 conversation_id/request_id 已移出契约，旧上游若仍发也应被忽略（不抛错）。
+        String raw = "{\"payload\":{\"user_id\":1001,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
+                + "\"stage\":\"chat\",\"operation\":\"generate\",\"prompt_tokens\":120,\"completion_tokens\":80,"
+                + "\"total_tokens\":200,\"conversation_id\":7788,\"request_id\":\"req-legacy-1\",\"status\":\"success\"}}";
+
+        UsageReportMQ.MsgPayload payload = UsageReportMQ.parseMsg(raw);
+
+        assertThat(payload.getStage()).isEqualTo("chat");
+        assertThat(payload.getOperation()).isEqualTo("generate");
+        assertThat(payload.getTotalTokens()).isEqualTo(200);
     }
 
     @Test
