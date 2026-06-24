@@ -13,11 +13,15 @@ import org.springframework.util.StringUtils;
 /**
  * 全链路用量上报落库实现。
  *
- * <p>语义为旁路、最终一致：每条上报落 {@code llm_usage_log} 一行，与对话最终生成（chat_turn 通道）口径一致。</p>
+ * <p>语义为旁路、最终一致：每条上报落 {@code llm_usage_log} 一行。承载全部模型调用用量——
+ * 含对话 generate（{@code stage=chat}/{@code operation=generate}），与解析/召回侧统一走本通道，
+ * 按 {@code stage}/{@code operation} 通用落库、无需特判。</p>
  *
- * <p>NULL 是合法态：{@code config_id}（系统配置调用如召回 query 编码）/ {@code conversation_id} /
- * {@code request_id} / {@code latency_ms} 缺省即落 NULL，不补默认值。{@code completion_tokens}
- * 对向量类（embed/rerank）恒为 0 是预期值。{@code task_id} 当前表无独立列，仅作审计锚点不落库。</p>
+ * <p>NULL 是合法态：{@code config_id}（系统配置调用如召回 query 编码）/ {@code latency_ms}
+ * 缺省即落 NULL，不补默认值。{@code completion_tokens} 对向量类（embed/rerank）恒为 0 是预期值。
+ * {@code task_id} 当前表无独立列，仅作审计锚点不落库。{@code llm_usage_log} 瘦身后已无
+ * {@code conversation_id}/{@code message_id}/{@code request_id}/{@code fallback_config_id} 列，generate
+ * 行不再回溯到具体对话（LINK-191）。</p>
  *
  * <p>幂等：本通道默认 at-least-once、偶发重复可接受（旁路账本）；未启用强去重以免与 Python 侧 schema 漂移，
  * 信封 {@code message_id} 仅用于排障追踪。</p>
@@ -43,8 +47,6 @@ public class UsageReportPersistenceServiceImpl implements UsageReportPersistence
         usage.setPromptTokens(NumberUtil.zeroIfNull(payload.getPromptTokens()));
         usage.setCompletionTokens(NumberUtil.zeroIfNull(payload.getCompletionTokens()));
         usage.setTotalTokens(NumberUtil.zeroIfNull(payload.getTotalTokens()));
-        usage.setConversationId(payload.getConversationId()); // 可空 → NULL
-        usage.setRequestId(payload.getRequestId());           // 可空 → NULL
         usage.setLatencyMs(payload.getLatencyMs());           // 可空 → NULL
         usage.setStatus(StringUtils.hasText(payload.getStatus()) ? payload.getStatus() : DEFAULT_STATUS);
         usageLogMapper.insert(usage);

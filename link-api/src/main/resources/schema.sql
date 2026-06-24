@@ -138,10 +138,6 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     latency_ms          INT,
     status              VARCHAR(16) NOT NULL,
     error_message       VARCHAR(512),
-    fallback_config_id  BIGINT,
-    conversation_id     BIGINT,
-    message_id          BIGINT,
-    request_id          VARCHAR(64),
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

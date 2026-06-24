@@ -75,6 +75,10 @@ public class ChatTurnMQ implements AbstractMQ {
 
     /**
      * 对话轮次完成载荷（字段与 LinkRag ChatTurnPayload 对齐，JSON 为 snake_case）。
+     *
+     * <p>自 LINK-191 起 token 字段（prompt/completion/total）已移出本载荷，generate 用量改走
+     * {@link UsageReportMQ}（{@code stage=chat}/{@code operation=generate}）；本通道只负责对话内容落库，
+     * 不再触发 {@code llm_usage_log}。{@code provider_type}/{@code latency_ms} 仍保留在载荷中。</p>
      */
     @Data
     @NoArgsConstructor
@@ -104,12 +108,6 @@ public class ChatTurnMQ implements AbstractMQ {
         private String providerType;
         @JSONField(name = "model_name")
         private String modelName;
-        @JSONField(name = "prompt_tokens")
-        private Integer promptTokens;
-        @JSONField(name = "completion_tokens")
-        private Integer completionTokens;
-        @JSONField(name = "total_tokens")
-        private Integer totalTokens;
         @JSONField(name = "references")
         private List<String> references;
         @JSONField(name = "latency_ms")

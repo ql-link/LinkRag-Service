@@ -164,18 +164,12 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     latency_ms          INT             COMMENT '响应延迟(毫秒)',
     status              VARCHAR(16)     NOT NULL COMMENT '调用状态：success/failed/partial',
     error_message       VARCHAR(512)    COMMENT '错误信息',
-    fallback_config_id  BIGINT UNSIGNED COMMENT '触发 Fallback 时记录原配置 ID',
-    conversation_id     BIGINT UNSIGNED COMMENT '关联对话 ID',
-    message_id          BIGINT UNSIGNED COMMENT '关联消息 ID（chat_message.id）',
-    request_id          VARCHAR(64)     COMMENT '请求追踪 ID / 幂等键（与 chat_message.request_id 一致）',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_user_date (user_id, created_at),
     INDEX idx_config_date (config_id, created_at),
-    INDEX idx_conversation_id (conversation_id),
-    INDEX idx_usage_message_id (message_id),
     INDEX idx_usage_stage_operation (stage, operation)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 调用用量日志表';
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'LLM 调用用量日志表（瘦身：去对话级关联键，generate 用量经 usage_report 落库，无法回溯到具体对话）';
 
 -- 8. 文档文件原始文档上传记录表
 CREATE TABLE IF NOT EXISTS document_original_file (
