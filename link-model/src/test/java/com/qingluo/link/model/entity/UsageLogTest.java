@@ -33,9 +33,16 @@ class UsageLogTest {
         assertFieldExists("latencyMs");
         assertFieldExists("status");
         assertFieldExists("errorMessage");
-        assertFieldExists("fallbackConfigId");
-        assertFieldExists("conversationId");
         assertFieldExists("createdAt");
+    }
+
+    @Test
+    void Should_NotHaveSlimRemovedFields_When_EntityDefined() {
+        // LINK-191 瘦身：去对话级关联键与死字段，generate 用量改经 usage_report 落库。
+        assertFieldAbsent("fallbackConfigId");
+        assertFieldAbsent("conversationId");
+        assertFieldAbsent("messageId");
+        assertFieldAbsent("requestId");
     }
 
     @Test
@@ -49,5 +56,11 @@ class UsageLogTest {
     private void assertFieldExists(String fieldName) throws Exception {
         Field field = UsageLog.class.getDeclaredField(fieldName);
         assertNotNull(field, "字段 " + fieldName + " 应该存在");
+    }
+
+    private void assertFieldAbsent(String fieldName) {
+        assertThrows(NoSuchFieldException.class,
+                () -> UsageLog.class.getDeclaredField(fieldName),
+                "字段 " + fieldName + " 应已随瘦身移除");
     }
 }

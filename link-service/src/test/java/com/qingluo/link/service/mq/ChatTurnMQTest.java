@@ -21,7 +21,6 @@ class ChatTurnMQTest {
             + "\"conversation_id\":10086,\"turn_id\":\"turn-1\",\"request_id\":\"req-1\",\"user_id\":42,"
             + "\"query\":\"什么是RAG\",\"answer\":\"RAG 是检索增强生成\","
             + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
-            + "\"prompt_tokens\":120,\"completion_tokens\":80,\"total_tokens\":200,"
             + "\"references\":[\"chunk-1\",\"chunk-2\"],\"latency_ms\":350,\"status\":\"COMPLETED\"}}";
 
     @Test
@@ -38,9 +37,6 @@ class ChatTurnMQTest {
         assertThat(payload.getConfigId()).isEqualTo(7L);
         assertThat(payload.getProviderType()).isEqualTo("openai");
         assertThat(payload.getModelName()).isEqualTo("gpt-4");
-        assertThat(payload.getPromptTokens()).isEqualTo(120);
-        assertThat(payload.getCompletionTokens()).isEqualTo(80);
-        assertThat(payload.getTotalTokens()).isEqualTo(200);
         assertThat(payload.getReferences()).containsExactly("chunk-1", "chunk-2");
         assertThat(payload.getLatencyMs()).isEqualTo(350);
         assertThat(payload.getStatus()).isEqualTo("COMPLETED");

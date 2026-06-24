@@ -13,14 +13,17 @@ import lombok.NoArgsConstructor;
 import org.springframework.util.StringUtils;
 
 /**
- * Python 向 Java 回传的全链路用量上报消息（非对话调用：解析侧 embed/vision/table、召回侧 embed/rerank）。
+ * Python 向 Java 回传的统一 Token 用量上报消息，承载<b>全部模型调用</b>用量：
+ * 解析侧 embed/vision/table、召回侧 embed/rerank，以及对话最终 generate（{@code stage=chat}/{@code operation=generate}）。
  *
  * <p>Topic：{@code tolink.rag.usage_report}，routing_key = user_id（按用户分区）。
  * 一条用量记录回答「某用户、某阶段、某操作、用了哪个模型、消耗多少 token」，落 {@code llm_usage_log} 一行。
- * 对话最终 generate 走另一通道 {@link ChatTurnMQ}（topic {@code tolink.rag.chat_turn}），两条通道落同一张表、口径一致。</p>
+ * 对话内容（query/answer/references 等）仍走另一通道 {@link ChatTurnMQ}（topic {@code tolink.rag.chat_turn}），
+ * 但其 token 自 LINK-191 起改由本通道承接，{@code chat_turn} 不再触发 {@code llm_usage_log} 落库。</p>
  *
  * <p>线格式为统一信封 {@code {"mq_type","mq_name","payload":{...}}}，业务字段在 payload 内、全 snake_case；
- * {@link #parseMsg(String)} 先解包 payload 再反序列化（兼容无信封的扁平结构）。</p>
+ * {@link #parseMsg(String)} 先解包 payload 再反序列化（兼容无信封的扁平结构）。
+ * generate 行不带 {@code conversation_id}/{@code request_id}（瘦身后表已无这些列），无法回溯到具体对话。</p>
  *
  * <p>可靠性：旁路、最终一致。Python 上报失败只告警不阻断主链路，偶发丢条可接受；全缓存命中（token=0）不上报。</p>
  */
@@ -106,10 +109,6 @@ public class UsageReportMQ implements AbstractMQ {
         /** 解析任务锚点（parse·embed 携带）。当前 llm_usage_log 无独立 task 列，仅作审计锚点、不落库。 */
         @JSONField(name = "task_id")
         private String taskId;
-        @JSONField(name = "conversation_id")
-        private Long conversationId;
-        @JSONField(name = "request_id")
-        private String requestId;
         @JSONField(name = "latency_ms")
         private Integer latencyMs;
         @JSONField(name = "status")

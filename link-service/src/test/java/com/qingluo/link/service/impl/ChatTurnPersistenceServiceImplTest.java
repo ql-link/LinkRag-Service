@@ -11,10 +11,8 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.qingluo.link.components.mq.model.ChatTurnMQ;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
-import com.qingluo.link.mapper.UsageLogMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
-import com.qingluo.link.model.dto.entity.UsageLog;
 import com.qingluo.link.service.ConversationTitleService;
 import java.util.List;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -28,7 +26,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * 对话轮次落库单测：按 turn_id upsert（起点插行 / 终态更新同行）、状态不回退、幂等、归属校验、用量只在终态入账。
+ * 对话轮次落库单测：按 turn_id upsert（起点插行 / 终态更新同行）、状态不回退、幂等、归属校验。
+ *
+ * <p>LINK-191 起本通道只持久化对话内容，不再写 {@code llm_usage_log}（generate 用量改走 usage_report 通道），
+ * 故不再断言用量账本。</p>
  */
 @ExtendWith(MockitoExtension.class)
 class ChatTurnPersistenceServiceImplTest {
@@ -38,9 +39,6 @@ class ChatTurnPersistenceServiceImplTest {
 
     @Mock
     private ChatMessageMapper messageMapper;
-
-    @Mock
-    private UsageLogMapper usageLogMapper;
 
     @Mock
     private ConversationTitleService conversationTitleService;
@@ -54,7 +52,6 @@ class ChatTurnPersistenceServiceImplTest {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
         TableInfoHelper.initTableInfo(assistant, ChatMessage.class);
         TableInfoHelper.initTableInfo(assistant, ChatConversation.class);
-        TableInfoHelper.initTableInfo(assistant, UsageLog.class);
     }
 
     private ChatTurnMQ.MsgPayload payload(String status) {
@@ -68,9 +65,6 @@ class ChatTurnPersistenceServiceImplTest {
         p.setConfigId(7L);
         p.setProviderType("openai");
         p.setModelName("gpt-4");
-        p.setPromptTokens(120);
-        p.setCompletionTokens(80);
-        p.setTotalTokens(200);
         p.setReferences(List.of("chunk-1", "chunk-2"));
         p.setLatencyMs(350);
         p.setStatus(status);
@@ -96,7 +90,7 @@ class ChatTurnPersistenceServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_InsertRowUsageAndConversation_When_FreshCompleted")
+    @DisplayName("Should_InsertRowAndConversation_When_FreshCompleted")
     void Should_PersistAll_When_FreshCompleted() {
         given(conversationMapper.selectOne(any())).willReturn(conversation(100L, 42L));
         given(messageMapper.selectOne(any())).willReturn(null);
@@ -114,15 +108,6 @@ class ChatTurnPersistenceServiceImplTest {
         assertThat(saved.getRequestId()).isEqualTo("req-1");
         assertThat(saved.getStatus()).isEqualTo("COMPLETED");
 
-        ArgumentCaptor<UsageLog> usageCaptor = ArgumentCaptor.forClass(UsageLog.class);
-        verify(usageLogMapper).insert(usageCaptor.capture());
-        UsageLog usage = usageCaptor.getValue();
-        assertThat(usage.getConversationId()).isEqualTo(100L);
-        assertThat(usage.getRequestId()).isEqualTo("req-1");
-        assertThat(usage.getTotalTokens()).isEqualTo(200);
-        assertThat(usage.getUserId()).isEqualTo(42L);
-        assertThat(usage.getStatus()).isEqualTo("success");
-
         ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
         verify(conversationMapper).updateById(convCaptor.capture());
         ChatConversation conv = convCaptor.getValue();
@@ -133,7 +118,7 @@ class ChatTurnPersistenceServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should_InsertGeneratingRowWithoutUsageOrTitleGen_When_FreshGenerating")
+    @DisplayName("Should_InsertGeneratingRowWithoutTitleGen_When_FreshGenerating")
     void Should_InsertGeneratingRow_When_FreshGenerating() {
         given(conversationMapper.selectOne(any())).willReturn(conversation(100L, 42L));
         given(messageMapper.selectOne(any())).willReturn(null);
@@ -147,8 +132,7 @@ class ChatTurnPersistenceServiceImplTest {
         ArgumentCaptor<ChatMessage> msgCaptor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(messageMapper).insert(msgCaptor.capture());
         assertThat(msgCaptor.getValue().getStatus()).isEqualTo("GENERATING");
-        // GENERATING 无 token，不入账，不调模型生成标题（但可设临时标题）。
-        verify(usageLogMapper, never()).insert(any());
+        // GENERATING 不调模型生成标题（但可设临时标题）。
         verify(conversationTitleService, never()).generateAfterCommit(any(), any(), any(), any(), any(), any());
         ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
         verify(conversationMapper).updateById(convCaptor.capture());
@@ -163,9 +147,6 @@ class ChatTurnPersistenceServiceImplTest {
 
         ChatTurnMQ.MsgPayload p = payload("FAILED");
         p.setAnswer("");
-        p.setPromptTokens(0);
-        p.setCompletionTokens(0);
-        p.setTotalTokens(0);
         p.setErrorCode("GENERATION_TIMEOUT");
         p.setErrorMessage("timed out");
 
@@ -177,16 +158,12 @@ class ChatTurnPersistenceServiceImplTest {
         assertThat(msgCaptor.getValue().getAnswer()).isEmpty();
         assertThat(msgCaptor.getValue().getErrorCode()).isEqualTo("GENERATION_TIMEOUT");
         assertThat(msgCaptor.getValue().getErrorMessage()).isEqualTo("timed out");
-
-        ArgumentCaptor<UsageLog> usageCaptor = ArgumentCaptor.forClass(UsageLog.class);
-        verify(usageLogMapper).insert(usageCaptor.capture());
-        assertThat(usageCaptor.getValue().getStatus()).isEqualTo("failed");
         // 失败终态不调模型生成自然标题。
         verify(conversationTitleService, never()).generateAfterCommit(any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("Should_UpdateSameRowAndBookUsageOnce_When_GeneratingPromotedToCompleted")
+    @DisplayName("Should_UpdateSameRow_When_GeneratingPromotedToCompleted")
     void Should_PromoteSameRow_When_GeneratingToCompleted() {
         given(conversationMapper.selectOne(any())).willReturn(conversation(100L, 42L));
         given(messageMapper.selectOne(any())).willReturn(existingMessage("GENERATING"));
@@ -202,10 +179,6 @@ class ChatTurnPersistenceServiceImplTest {
         assertThat(updated.getId()).isEqualTo(555L);
         assertThat(updated.getStatus()).isEqualTo("COMPLETED");
         assertThat(updated.getAnswer()).isEqualTo("RAG 是检索增强生成");
-        // 终态补一次用量账本，关联既有 message_id。
-        ArgumentCaptor<UsageLog> usageCaptor = ArgumentCaptor.forClass(UsageLog.class);
-        verify(usageLogMapper).insert(usageCaptor.capture());
-        assertThat(usageCaptor.getValue().getMessageId()).isEqualTo(555L);
     }
 
     @Test
@@ -218,7 +191,6 @@ class ChatTurnPersistenceServiceImplTest {
 
         verify(messageMapper, never()).insert(any());
         verify(messageMapper, never()).updateById(any());
-        verify(usageLogMapper, never()).insert(any());
         verify(conversationMapper, never()).updateById(any());
     }
 
@@ -232,7 +204,6 @@ class ChatTurnPersistenceServiceImplTest {
 
         verify(messageMapper, never()).insert(any());
         verify(messageMapper, never()).updateById(any());
-        verify(usageLogMapper, never()).insert(any());
     }
 
     @Test
@@ -245,7 +216,6 @@ class ChatTurnPersistenceServiceImplTest {
 
         verify(messageMapper, never()).insert(any());
         verify(messageMapper, never()).updateById(any());
-        verify(usageLogMapper, never()).insert(any());
     }
 
     @Test
@@ -257,7 +227,6 @@ class ChatTurnPersistenceServiceImplTest {
 
         verify(messageMapper, never()).selectOne(any());
         verify(messageMapper, never()).insert(any());
-        verify(usageLogMapper, never()).insert(any());
         verify(conversationMapper, never()).updateById(any());
     }
 
@@ -269,7 +238,6 @@ class ChatTurnPersistenceServiceImplTest {
         service.persist(payload("COMPLETED"));
 
         verify(messageMapper, never()).insert(any());
-        verify(usageLogMapper, never()).insert(any());
     }
 
     @Test
