@@ -21,6 +21,7 @@ import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.SystemProviderService;
 import com.qingluo.link.service.UserLLMConfigService;
+import com.qingluo.link.service.cache.UserLLMConfigCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * 用户 LLM 配置服务实现。
@@ -47,6 +49,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     private final LLMCapabilityService llmCapabilityService;
     private final ApiKeyEncryptService apiKeyEncryptService;
     private final CacheConsistencyService cacheConsistencyService;
+    private final UserLLMConfigCacheService userLLMConfigCacheService;
 
     @Override
     /**
@@ -55,18 +58,19 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     public List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, String capability, Boolean isActive) {
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
 
+        return userLLMConfigCacheService.getOrLoadAll(userId, () -> loadAllConfigDTOs(userId)).stream()
+                .filter(dto -> providerType == null || providerType.equals(dto.getProviderType()))
+                .filter(dto -> normalizedCapability == null || normalizedCapability.equals(dto.getCapability()))
+                .filter(dto -> isActive == null || isActive.equals(dto.getIsActive()))
+                .toList();
+    }
+
+    /**
+     * 从数据库加载当前用户全部配置并转 DTO。调用方在缓存命中后做内存过滤，避免不同筛选条件拆出多份缓存。
+     */
+    private List<UserLLMConfigDTO> loadAllConfigDTOs(Long userId) {
         LambdaQueryWrapper<UserLLMConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(UserLLMConfig::getUserId, userId);
-        if (providerType != null) {
-            wrapper.eq(UserLLMConfig::getProviderType, providerType);
-        }
-        if (normalizedCapability != null) {
-            wrapper.eq(UserLLMConfig::getCapability, normalizedCapability);
-        }
-        if (isActive != null) {
-            wrapper.eq(UserLLMConfig::getIsActive, isActive);
-        }
-
         return userLLMConfigMapper.selectList(wrapper).stream().map(this::toDTO).toList();
     }
 
@@ -213,18 +217,12 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
      */
     public UserLLMConfigDTO getDefaultConfig(Long userId, String capability) {
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
-        UserLLMConfig config = userLLMConfigMapper.selectOne(
-            new LambdaQueryWrapper<UserLLMConfig>()
-                .eq(UserLLMConfig::getUserId, userId)
-                .eq(UserLLMConfig::getCapability, normalizedCapability)
-                .eq(UserLLMConfig::getIsDefault, true)
-                .eq(UserLLMConfig::getIsActive, true)
-        );
-
-        if (config == null) {
-            throw new BusinessException(ErrorCode.NO_DEFAULT_CONFIG);
-        }
-        return toDTO(config);
+        return userLLMConfigCacheService.getOrLoadAll(userId, () -> loadAllConfigDTOs(userId)).stream()
+                .filter(dto -> Objects.equals(normalizedCapability, dto.getCapability()))
+                .filter(dto -> Boolean.TRUE.equals(dto.getIsDefault()))
+                .filter(dto -> Boolean.TRUE.equals(dto.getIsActive()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.NO_DEFAULT_CONFIG));
     }
 
     @Override

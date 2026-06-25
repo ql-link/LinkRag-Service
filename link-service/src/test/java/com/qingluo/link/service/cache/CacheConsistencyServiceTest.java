@@ -62,6 +62,14 @@ class CacheConsistencyServiceTest {
     }
 
     @Test
+    @DisplayName("Should_DeleteUserLlmConfigCache_When_UserDefaultLlmConfigEvicted")
+    void Should_DeleteUserLlmConfigCache_When_UserDefaultLlmConfigEvicted() {
+        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
+
+        verify(redisTemplate).delete(List.of("llm:u_def:7", "llm:u_cfg:7"));
+    }
+
+    @Test
     @DisplayName("Should_NotThrow_When_FirstDeleteFails_NoTransaction")
     void Should_NotThrow_When_FirstDeleteFails_NoTransaction() {
         when(redisTemplate.delete(List.of("llm:pvd:openai", "llm:pvd:catalog:models:openai", "llm:pvd:catalog:index"))).thenThrow(new RuntimeException("redis down"));
