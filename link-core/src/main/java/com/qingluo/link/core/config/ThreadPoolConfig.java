@@ -39,21 +39,6 @@ public class ThreadPoolConfig {
     }
 
     /**
-     * 对话标题生成专用线程池。
-     *
-     * <p>拒绝策略用 {@link ThreadPoolExecutor.AbortPolicy}：池+队列满时由提交方吞掉并保留临时标题，
-     * 避免标题生成反压主对话链路。</p>
-     */
-    @Bean("conversationTitleExecutor")
-    public Executor conversationTitleExecutor() {
-        PoolProperties props = properties.getConversationTitle();
-        if ("pool-".equals(props.getThreadNamePrefix())) {
-            props.setThreadNamePrefix("conversation-title-");
-        }
-        return buildExecutor(props, new ThreadPoolExecutor.AbortPolicy());
-    }
-
-    /**
      * 通用线程池工厂：先 {@link PoolProperties#validate()} fail-fast，再按参数构建并初始化。
      * 供多池复用——未来新池只需新增 {@code @Bean} 调用本方法并传入各自的拒绝策略。
      */
