@@ -66,6 +66,7 @@ MQ 实现事实来源：
 - `user_id`（int，必填）：用户 ID（取自 token），Java 用于归属校验。
 - `query`（string）：用户提问 → `chat_message.query`。
 - `answer`（string）：LLM 回答 → `chat_message.answer`（`GENERATING`/`FAILED` 可为空或半截）。
+- `title`（string，可空）：Python 在首轮问答完成后生成的会话标题 → `chat_conversation.title`。Java 只在当前标题为空或仍为默认“新对话”时写入，且按 255 字符列宽截断；如果用户已手动改成其它标题则跳过，不覆盖。
 - `config_id`（int）、`model_name`（string）：本轮配置与模型快照（`GENERATING` 起点可能未解析）。
 - `provider_type`（string，**可空**）：`GENERATING` 起点与模型未解析的前置失败时为空串，终态补齐。`chat_message` 无对应列，本通道不落库它。
 - `references`（string[]）：召回片段 chunk_id 列表（仅标识、不含正文）→ `chat_message.references`(JSON)。
@@ -77,7 +78,7 @@ MQ 实现事实来源：
 
 > **LINK-191 变更**：本载荷已**移除 `prompt_tokens` / `completion_tokens` / `total_tokens`**，对话 generate 用量改由统一 Token 用量消息 `tolink.rag.usage_report`（`stage='chat'`/`operation='generate'`）承接；本通道**只持久化对话内容、不再写 `llm_usage_log`**。`provider_type` / `latency_ms` 仍保留在载荷中（供追踪），但 `chat_message` 无对应列，不落库。
 
-Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内**按 `turn_id` upsert**：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态（`COMPLETED`/`FAILED`）`UPDATE` 同一行并补齐 answer/references/模型快照/错误字段，**不写 `llm_usage_log`**（generate 用量改走 usage_report 通道）。同时 `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`，并在首轮由 `query` 生成临时标题；终态成功（`COMPLETED`）时异步调用用户 Chat 模型生成自然短标题，失败、拒绝或配置不可用时保留临时标题。三条必做约束：
+Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内**按 `turn_id` upsert**：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态（`COMPLETED`/`FAILED`）`UPDATE` 同一行并补齐 answer/references/模型快照/错误字段，**不写 `llm_usage_log`**（generate 用量改走 usage_report 通道）。同时 `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`；若载荷带 `title`，仅在当前标题为空或仍为默认“新对话”时写入。三条必做约束：
 
 - **按 `turn_id` upsert + 幂等**：以 `(conversation_id, turn_id)` 定位同一轮的行（`chat_message.turn_id` 已建唯一索引 `uk_chat_message_turn_id`），同一 `turn_id` 多次到达（重发/重试）不重复插入。
 - **状态不回退**：终态写入后不再被迟到/重投的 `GENERATING` 覆盖；重复终态视为重投跳过。

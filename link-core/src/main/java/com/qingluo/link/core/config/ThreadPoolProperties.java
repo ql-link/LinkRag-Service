@@ -13,8 +13,6 @@ public class ThreadPoolProperties {
 
     /** 文档上传专用池：thread-pool.document-upload.* */
     private PoolProperties documentUpload = new PoolProperties();
-    /** 对话标题生成专用池：thread-pool.conversation-title.* */
-    private PoolProperties conversationTitle = new PoolProperties();
 
     public PoolProperties getDocumentUpload() {
         return documentUpload;
@@ -24,11 +22,4 @@ public class ThreadPoolProperties {
         this.documentUpload = documentUpload;
     }
 
-    public PoolProperties getConversationTitle() {
-        return conversationTitle;
-    }
-
-    public void setConversationTitle(PoolProperties conversationTitle) {
-        this.conversationTitle = conversationTitle;
-    }
 }

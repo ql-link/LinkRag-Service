@@ -78,7 +78,8 @@ public class ChatTurnMQ implements AbstractMQ {
      *
      * <p>自 LINK-191 起 token 字段（prompt/completion/total）已移出本载荷，generate 用量改走
      * {@link UsageReportMQ}（{@code stage=chat}/{@code operation=generate}）；本通道只负责对话内容落库，
-     * 不再触发 {@code llm_usage_log}。{@code provider_type}/{@code latency_ms} 仍保留在载荷中。</p>
+     * 不再触发 {@code llm_usage_log}。{@code provider_type}/{@code latency_ms} 仍保留在载荷中。
+     * {@code title} 由 Python 在首轮问答完成后生成，Java 仅按持久化约束写入会话标题。</p>
      */
     @Data
     @NoArgsConstructor
@@ -102,6 +103,9 @@ public class ChatTurnMQ implements AbstractMQ {
         private String query;
         @JSONField(name = "answer")
         private String answer;
+        /** Python 生成的会话标题；Java 仅在当前标题仍为空/默认时写入，不覆盖用户手动标题。 */
+        @JSONField(name = "title")
+        private String title;
         @JSONField(name = "config_id")
         private Long configId;
         @JSONField(name = "provider_type")

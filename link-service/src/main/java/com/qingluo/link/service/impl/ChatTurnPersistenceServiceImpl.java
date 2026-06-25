@@ -8,7 +8,6 @@ import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
 import com.qingluo.link.service.ChatTurnPersistenceService;
-import com.qingluo.link.service.ConversationTitleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,10 +38,10 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
 
     private final ChatConversationMapper conversationMapper;
     private final ChatMessageMapper messageMapper;
-    private final ConversationTitleService conversationTitleService;
 
-    /** 创建对话时的默认标题，首轮落库时用提问替换。 */
+    /** 创建对话时的默认标题；仅当上游标题到达且当前仍为默认值时替换。 */
     private static final String DEFAULT_TITLE = "新对话";
+    private static final int MAX_TITLE_LENGTH = 255;
 
     @Override
     @Transactional
@@ -101,7 +100,7 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
         message.setErrorMessage(payload.getErrorMessage());
         messageMapper.insert(message);
 
-        updateConversationMeta(conversation, payload, incoming);
+        updateConversationMeta(conversation, payload);
     }
 
     /**
@@ -126,71 +125,55 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
         }
         messageMapper.updateById(existing);
 
-        updateConversationMeta(conversation, payload, incoming);
+        updateConversationMeta(conversation, payload);
     }
 
     /**
-     * 更新对话元信息：last_config_id / last_model_name / updated_at；首轮由提问生成临时标题，
-     * 终态成功时再异步生成自然短标题（GENERATING/FAILED 仅保留临时标题，不调模型）。
+     * 更新对话元信息：last_config_id / last_model_name / updated_at；如果 Python 随 chat_turn
+     * 上报标题，则仅在当前标题为空或仍为默认标题时写入，避免覆盖用户手动标题。
      */
-    private void updateConversationMeta(ChatConversation conversation, ChatTurnMQ.MsgPayload payload,
-                                        ChatTurnStatus incoming) {
+    private void updateConversationMeta(ChatConversation conversation, ChatTurnMQ.MsgPayload payload) {
         if (payload.getConfigId() != null) {
             conversation.setLastConfigId(payload.getConfigId());
         }
         if (StringUtils.hasText(payload.getModelName())) {
             conversation.setLastModelName(payload.getModelName());
         }
-        String fallbackTitle = applyTitleFromFirstTurn(conversation, payload.getQuery());
+        applyTitleFromPayload(conversation, payload.getTitle());
         // 置空 updated_at，让 updateById 不写该列，由 DB ON UPDATE CURRENT_TIMESTAMP 自动刷新，
         // 使会话列表「最近活跃倒序」每轮（含 GENERATING 起点）随落库前移（P1）。
         conversation.setUpdatedAt(null);
         conversationMapper.updateById(conversation);
-        if (incoming == ChatTurnStatus.COMPLETED && StringUtils.hasText(fallbackTitle)) {
-            log.info("chat_turn schedule conversation title generation. conversation_id={}, turn_id={}, fallback_title={}",
-                    conversation.getId(), payload.getTurnId(), fallbackTitle);
-            conversationTitleService.generateAfterCommit(
-                    conversation.getId(), payload.getUserId(), payload.getConfigId(),
-                    payload.getQuery(), payload.getAnswer(), fallbackTitle);
-        }
     }
 
     /**
-     * 首轮落库时用提问生成临时标题：仅当当前标题为空或仍是默认标题。
+     * Python 生成标题后随 chat_turn 上报；Java 只负责落库保护，不做 LLM 调用或 query 兜底生成。
      */
-    private String applyTitleFromFirstTurn(ChatConversation conversation, String query) {
-        String current = conversation.getTitle();
-        if (!StringUtils.hasText(query)) {
-            return null;
-        }
-        String title = conversationTitleService.buildFallbackTitle(query);
+    private void applyTitleFromPayload(ChatConversation conversation, String rawTitle) {
+        String title = normalizeTitle(rawTitle);
         if (!StringUtils.hasText(title)) {
-            return null;
+            return;
         }
-        boolean needTitle = !StringUtils.hasText(current)
-                || DEFAULT_TITLE.equals(current.trim())
-                || title.equals(current.trim())
-                || isQuestionPrefixTitle(query, current);
-        if (!needTitle) {
-            return null;
-        }
+        String current = conversation.getTitle();
         if (StringUtils.hasText(current)
                 && !DEFAULT_TITLE.equals(current.trim())
-                && isQuestionPrefixTitle(query, current)) {
-            return current.trim();
+                && !title.equals(current.trim())) {
+            return;
         }
         conversation.setTitle(title);
-        return title;
     }
 
-    private boolean isQuestionPrefixTitle(String query, String currentTitle) {
-        if (!StringUtils.hasText(query) || !StringUtils.hasText(currentTitle)) {
-            return false;
+    private String normalizeTitle(String rawTitle) {
+        if (!StringUtils.hasText(rawTitle)) {
+            return null;
         }
-        String normalizedQuery = conversationTitleService.buildFallbackTitle(query);
-        String normalizedTitle = currentTitle.trim();
-        return StringUtils.hasText(normalizedQuery)
-                && normalizedTitle.length() >= 8
-                && normalizedQuery.startsWith(normalizedTitle);
+        String title = rawTitle.trim()
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .replaceAll("\\s+", " ");
+        if (title.length() > MAX_TITLE_LENGTH) {
+            return title.substring(0, MAX_TITLE_LENGTH);
+        }
+        return title;
     }
 }

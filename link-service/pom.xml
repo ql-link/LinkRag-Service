@@ -58,13 +58,6 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- Lightweight OpenAI-compatible chat calls for conversation title generation -->
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>okhttp</artifactId>
-            <version>4.12.0</version>
-        </dependency>
-
         <!-- JSON request/response handling for lightweight LLM calls -->
         <dependency>
             <groupId>com.alibaba</groupId>
