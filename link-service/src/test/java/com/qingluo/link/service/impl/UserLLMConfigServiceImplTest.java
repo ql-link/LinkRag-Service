@@ -22,6 +22,7 @@ import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.SystemProviderService;
+import com.qingluo.link.service.cache.UserLLMConfigCacheService;
 import com.qingluo.link.service.impl.llm.UserLLMConfigServiceImpl;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -62,6 +63,8 @@ class UserLLMConfigServiceImplTest {
     private ApiKeyEncryptService apiKeyEncryptService;
     @Mock
     private CacheConsistencyService cacheConsistencyService;
+    @Mock
+    private UserLLMConfigCacheService userLLMConfigCacheService;
 
     @InjectMocks
     private UserLLMConfigServiceImpl service;
@@ -332,23 +335,41 @@ class UserLLMConfigServiceImplTest {
     void getDefaultConfig_returnsEffective() {
         UserLLMConfig cfg = config(11L, 7L, "openai", "gpt-4o", "CHAT");
         cfg.setIsDefault(true);
-        given(userLLMConfigMapper.selectOne(any())).willReturn(cfg);
         given(apiKeyEncryptService.maskApiKey("ENC")).willReturn("EN****");
+        UserLLMConfigDTO dto = toDto(cfg);
+        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of(dto));
 
-        UserLLMConfigDTO dto = service.getDefaultConfig(7L, "CHAT");
+        UserLLMConfigDTO result = service.getDefaultConfig(7L, "CHAT");
 
-        assertThat(dto.getModelName()).isEqualTo("gpt-4o");
-        assertThat(dto.getApiKeyMasked()).isEqualTo("EN****");
+        assertThat(result.getModelName()).isEqualTo("gpt-4o");
+        assertThat(result.getApiKeyMasked()).isEqualTo("EN****");
     }
 
     @Test
     @DisplayName("六·无生效配置返回 NO_DEFAULT_CONFIG")
     void getDefaultConfig_throwsWhenNone() {
-        given(userLLMConfigMapper.selectOne(any())).willReturn(null);
+        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of());
 
         assertThatThrownBy(() -> service.getDefaultConfig(7L, "CHAT"))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", ErrorCode.NO_DEFAULT_CONFIG.getCode());
+    }
+
+    @Test
+    @DisplayName("读取配置列表命中用户配置缓存后在内存过滤")
+    void getConfigs_filtersCachedUserConfigsInMemory() {
+        UserLLMConfig chat = config(11L, 7L, "openai", "gpt-4o", "CHAT");
+        UserLLMConfig embedding = config(12L, 7L, "openai", "text-embedding-3", "EMBEDDING");
+        embedding.setIsActive(false);
+        given(apiKeyEncryptService.maskApiKey("ENC")).willReturn("EN****");
+        List<UserLLMConfigDTO> cached = List.of(toDto(chat), toDto(embedding));
+        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any()))
+                .willReturn(cached);
+
+        List<UserLLMConfigDTO> result = service.getConfigs(7L, "openai", "CHAT", true);
+
+        assertThat(result).extracting(UserLLMConfigDTO::getModelName).containsExactly("gpt-4o");
+        verify(userLLMConfigMapper, never()).selectList(any());
     }
 
     // ============ helpers ============
@@ -391,6 +412,21 @@ class UserLLMConfigServiceImplTest {
         config.setIsDefault(false);
         config.setIsSystemPreset(false);
         return config;
+    }
+
+    private UserLLMConfigDTO toDto(UserLLMConfig config) {
+        UserLLMConfigDTO dto = new UserLLMConfigDTO();
+        dto.setId(config.getId());
+        dto.setProviderType(config.getProviderType());
+        dto.setModelName(config.getModelName());
+        dto.setCapability(config.getCapability());
+        dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(config.getApiKey()));
+        dto.setApiBaseUrl(config.getApiBaseUrl());
+        dto.setProtocol(config.getProtocol());
+        dto.setIsActive(config.getIsActive());
+        dto.setIsDefault(config.getIsDefault());
+        dto.setIsSystemPreset(config.getIsSystemPreset());
+        return dto;
     }
 
     private SelectEffectiveModelRequest effectiveReq(String capability, String type, String model) {
