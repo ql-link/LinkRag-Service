@@ -1,6 +1,7 @@
 package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import com.qingluo.link.core.exception.BusinessException;
@@ -103,20 +104,19 @@ public class ChatServiceImpl implements ChatService {
      * 更新会话标题、置顶状态等基础信息。
      */
     public ConversationDTO updateConversation(Long userId, Long conversationId, UpdateConversationRequest request) {
-        ChatConversation conversation = getOwnedConversation(userId, conversationId);
+        getOwnedConversation(userId, conversationId);
 
         boolean changed = false;
+        String title = null;
         if (request.getTitle() != null) {
-            String title = request.getTitle().trim();
+            title = request.getTitle().trim();
             if (!StringUtils.hasText(title)) {
                 throw new BusinessException(400, "对话标题不能为空", 400);
             }
-            conversation.setTitle(title);
             changed = true;
         }
 
         if (request.getIsPinned() != null) {
-            conversation.setIsPinned(request.getIsPinned());
             changed = true;
         }
 
@@ -124,8 +124,18 @@ public class ChatServiceImpl implements ChatService {
             throw new BusinessException(400, "请至少提供一个需要更新的字段", 400);
         }
 
-        conversationMapper.updateById(conversation);
-        return toDTO(conversation);
+        LambdaUpdateWrapper<ChatConversation> updateWrapper = new LambdaUpdateWrapper<ChatConversation>()
+            .eq(ChatConversation::getId, conversationId)
+            .eq(ChatConversation::getUserId, userId)
+            .setSql("updated_at = CURRENT_TIMESTAMP");
+        if (title != null) {
+            updateWrapper.set(ChatConversation::getTitle, title);
+        }
+        if (request.getIsPinned() != null) {
+            updateWrapper.set(ChatConversation::getIsPinned, request.getIsPinned());
+        }
+        conversationMapper.update(null, updateWrapper);
+        return toDTO(getOwnedConversation(userId, conversationId));
     }
 
     @Override
