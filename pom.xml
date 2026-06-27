@@ -48,6 +48,7 @@
         <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
 
         <sa-token-spring-boot-starter.version>1.39.0</sa-token-spring-boot-starter.version>
+        <okhttp.version>4.12.0</okhttp.version>
     </properties>
 
 
@@ -166,6 +167,13 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-pool2</artifactId>
                 <version>${commons-pool2.version}</version>
+            </dependency>
+
+            <!-- 覆盖 Spring Boot 默认管理的 okhttp 3.14.9：minio 8.5.12 需要 okhttp 4.x 的 RequestBody.create(byte[], MediaType) -->
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>${okhttp.version}</version>
             </dependency>
 
         </dependencies>
