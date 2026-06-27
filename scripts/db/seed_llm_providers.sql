@@ -211,4 +211,22 @@ ON DUPLICATE KEY UPDATE
     is_active    = VALUES(is_active),
     updated_at   = CURRENT_TIMESTAMP;
 
+-- LinkRag 对外展示名保持短名；真实 model_name 仍用于调用。
+UPDATE llm_provider_model pm
+JOIN llm_system_provider sp ON sp.id = pm.provider_id
+SET pm.display_name = CASE
+    WHEN pm.model_name = 'deepseek-ai/DeepSeek-V4-Flash' AND pm.capability = 'CHAT'
+        THEN 'DeepSeek V4 Flash'
+    WHEN pm.model_name = 'BAAI/bge-m3' AND pm.capability = 'EMBEDDING'
+        THEN 'BGE-M3'
+    WHEN pm.model_name = 'doubao-embedding-vision-251215' AND pm.capability = 'SPARSE_EMBEDDING'
+        THEN 'Doubao Sparse'
+    WHEN pm.model_name = 'BAAI/bge-reranker-v2-m3' AND pm.capability = 'RERANK'
+        THEN 'BGE Reranker M3'
+    WHEN pm.model_name = 'Qwen/Qwen3.6-27B' AND pm.capability = 'VISION'
+        THEN 'Qwen 3.6 27B'
+    ELSE pm.display_name
+END
+WHERE sp.provider_type = 'linkrag';
+
 COMMIT;

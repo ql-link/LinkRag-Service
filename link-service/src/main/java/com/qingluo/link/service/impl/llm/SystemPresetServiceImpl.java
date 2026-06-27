@@ -62,6 +62,7 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         SystemPreset preset = new SystemPreset();
         preset.setProviderId(request.getProviderId());
         preset.setModelName(request.getModelName());
+        preset.setDisplayName(resolveDisplayName(model));
         preset.setCapability(capability);
         preset.setProviderType(provider.getProviderType());
         preset.setProtocol(model.getProtocol());
@@ -182,6 +183,7 @@ public class SystemPresetServiceImpl implements SystemPresetService {
 
         preset.setProviderId(providerId);
         preset.setModelName(modelName);
+        preset.setDisplayName(resolveDisplayName(model));
         preset.setCapability(capability);
         preset.setProviderType(provider.getProviderType());
         preset.setProtocol(model.getProtocol());
@@ -197,5 +199,9 @@ public class SystemPresetServiceImpl implements SystemPresetService {
             wrapper.ne(SystemPreset::getId, excludeId);
         }
         systemPresetMapper.update(null, wrapper);
+    }
+
+    private String resolveDisplayName(ProviderModel model) {
+        return StringUtils.hasText(model.getDisplayName()) ? model.getDisplayName() : model.getModelName();
     }
 }

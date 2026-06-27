@@ -48,7 +48,7 @@ public interface ProviderModelService {
      * 管理端：新增一条模型能力（已存在则幂等确保上架并刷新事实字段）。
      * protocol/api_base_url 是运行事实来源，均必填且 protocol 须在受支持集合内。
      */
-    ProviderModel addModelCapability(Long providerId, String modelName, String capability,
+    ProviderModel addModelCapability(Long providerId, String modelName, String displayName, String capability,
                                      String protocol, String apiBaseUrl);
 
     /**

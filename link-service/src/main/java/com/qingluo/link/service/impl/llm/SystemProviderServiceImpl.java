@@ -138,15 +138,21 @@ public class SystemProviderServiceImpl implements SystemProviderService {
      */
     private ProviderModelDTO toProviderModelDTO(ProviderRef provider, List<ProviderModel> rows) {
         Map<String, List<ModelCapabilityDetailDTO>> grouped = new LinkedHashMap<>();
+        Map<String, String> displayNames = new LinkedHashMap<>();
         for (ProviderModel row : rows) {
             // 暴露每个 (模型,能力) 的协议与入口事实值，让前端/管理端看到「这个能力实际怎么调」
             grouped.computeIfAbsent(row.getModelName(), k -> new ArrayList<>())
                     .add(new ModelCapabilityDetailDTO(row.getCapability(), row.getProtocol(), row.getApiBaseUrl()));
+            displayNames.computeIfAbsent(row.getModelName(), k -> resolveDisplayName(row));
         }
         List<ModelCapabilityDTO> models = grouped.entrySet().stream()
-                .map(entry -> new ModelCapabilityDTO(entry.getKey(), entry.getValue()))
+                .map(entry -> new ModelCapabilityDTO(entry.getKey(), displayNames.get(entry.getKey()), entry.getValue()))
                 .toList();
         return new ProviderModelDTO(provider.getProviderType(), provider.getProviderName(), models);
+    }
+
+    private String resolveDisplayName(ProviderModel model) {
+        return StringUtils.hasText(model.getDisplayName()) ? model.getDisplayName() : model.getModelName();
     }
 
     /**

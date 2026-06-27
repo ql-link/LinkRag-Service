@@ -68,7 +68,7 @@ class SystemPresetServiceImplTest {
     void createPreset_copiesModelFacts() {
         given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "aliyun", "https://other"));
         given(providerModelService.findActiveModelCapability(5L, "gte-rerank", "RERANK"))
-                .willReturn(model("dashscope", "https://dashscope.aliyuncs.com/api/v1"));
+                .willReturn(model("GTE Rerank", "dashscope", "https://dashscope.aliyuncs.com/api/v1"));
         given(apiKeyEncryptService.encrypt("sk-platform")).willReturn("ENC_P");
 
         CreatePresetRequest request = new CreatePresetRequest();
@@ -82,6 +82,7 @@ class SystemPresetServiceImplTest {
         verify(systemPresetMapper).insert(any(SystemPreset.class));
         assertThat(result.getApiKey()).isEqualTo("ENC_P");
         assertThat(result.getCapability()).isEqualTo("RERANK");
+        assertThat(result.getDisplayName()).isEqualTo("GTE Rerank");
         assertThat(result.getProtocol()).isEqualTo("dashscope");
         assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
         assertThat(result.getProviderType()).isEqualTo("aliyun");
@@ -242,7 +243,13 @@ class SystemPresetServiceImplTest {
     }
 
     private ProviderModel model(String protocol, String apiBaseUrl) {
+        return model(null, protocol, apiBaseUrl);
+    }
+
+    private ProviderModel model(String displayName, String protocol, String apiBaseUrl) {
         ProviderModel m = new ProviderModel();
+        m.setModelName("model");
+        m.setDisplayName(displayName);
         m.setProtocol(protocol);
         m.setApiBaseUrl(apiBaseUrl);
         m.setIsActive(true);

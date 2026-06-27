@@ -55,6 +55,7 @@ class EffectiveLLMConfigServiceImplTest {
         assertThat(result.getSource()).isEqualTo("USER");
         assertThat(result.getConfigId()).isEqualTo(11L);
         assertThat(result.getProviderType()).isEqualTo("openai");
+        assertThat(result.getDisplayName()).isEqualTo("gpt-4o");
         assertThat(result.getApiKeyMasked()).isEqualTo("EN****USER");
         verify(systemPresetMapper, never()).selectOne(any(LambdaQueryWrapper.class));
     }
@@ -72,6 +73,7 @@ class EffectiveLLMConfigServiceImplTest {
         assertThat(result.getConfigId()).isEqualTo(100L);
         assertThat(result.getProviderType()).isEqualTo("linkrag");
         assertThat(result.getModelName()).isEqualTo("linkrag-chat");
+        assertThat(result.getDisplayName()).isEqualTo("LinkRag Chat");
         assertThat(result.getApiKeyMasked()).isEqualTo("EN****SYS");
     }
 
@@ -105,6 +107,7 @@ class EffectiveLLMConfigServiceImplTest {
         preset.setProviderId(99L);
         preset.setProviderType("linkrag");
         preset.setModelName("linkrag-chat");
+        preset.setDisplayName("LinkRag Chat");
         preset.setCapability("CHAT");
         preset.setProtocol("openai");
         preset.setApiBaseUrl("https://api.linkrag.local/v1/chat/completions");

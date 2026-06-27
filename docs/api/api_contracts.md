@@ -83,12 +83,12 @@
 > 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力唯一）。`providerType=linkrag` 时，`PUT /configs/effective` 清空该能力用户自配默认，使 LinkRag 只读配置生效。`PATCH /configs/toggle-model` 独立启停用户自配配置：请求体 `capability` 存在时只启停该 `providerType + modelName + capability` 自配行，不存在时兼容旧前端，按 `providerType + modelName` 批量启停该模型全部用户自配能力；若关闭的是当前能力用户默认配置，后端清除该默认标记，使实际生效配置回退 LinkRag 系统默认。LinkRag 不可编辑/删除/启停。`GET /configs/default` 返回 `EffectiveLLMConfigDTO`，字段 `source` 为 `USER` 或 `SYSTEM`，供执行端按来源表读取；前端配置页优先使用 `GET /configs` 的 `isDefault` 展示当前生效项。`GET /configs` 支持 `capability` / `isActive` 过滤，返回用户自配配置 + LinkRag 只读配置；`UserLLMConfigDTO.isEditable=false` 表示只读，不允许编辑、删除、启停或改 Key。错误码：系统服务厂商不可自配/启停 `10016`、能力级启停找不到用户自配配置 `10004`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
 
 > **LLM 协议改造字段变更（破坏性 + 加法）**，详见下文「LLM 协议与入口契约」：
-> - `GET /api/v1/llm/providers`：`ModelCapabilityDTO.capabilities` 由 `List<String>`（能力名）**升级为** `List<ModelCapabilityDetailDTO>`，每元素为 `{ capability, protocol, apiBaseUrl }`（**破坏性，前端需同批适配**）。`apiBaseUrl` 为**完整端点 URL**（见下「base 形态约定」）。例：`{"modelName":"qwen-max","capabilities":[{"capability":"CHAT","protocol":"openai","apiBaseUrl":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"}]}`。
-> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `protocol`（运行快照，复制自模型能力层）与 `isEditable`（LinkRag 为 `false`）；`SetupProviderRequest` 请求体不变。
-> - `POST /api/v1/admin/providers/{providerId}/models`：`AddProviderModelRequest` 新增 `protocol`（`NotBlank`，须为 5 协议枚举）、`apiBaseUrl`（`NotBlank`）；缺失或非法分别返回 `10014` / `10015`（400）。
+> - `GET /api/v1/llm/providers`：`ModelCapabilityDTO` 新增 `displayName`（模型短展示名，真实调用仍用 `modelName`）；`capabilities` 由 `List<String>`（能力名）**升级为** `List<ModelCapabilityDetailDTO>`，每元素为 `{ capability, protocol, apiBaseUrl }`（**破坏性，前端需同批适配**）。`apiBaseUrl` 为**完整端点 URL**（见下「base 形态约定」）。例：`{"modelName":"Qwen/Qwen3.6-27B","displayName":"Qwen 3.6 27B","capabilities":[{"capability":"VISION","protocol":"openai","apiBaseUrl":"https://api.siliconflow.cn/v1/chat/completions"}]}`。
+> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `displayName`、`protocol`（运行快照，复制自模型能力层）与 `isEditable`（LinkRag 为 `false`）；`SetupProviderRequest` 请求体不变。
+> - `POST /api/v1/admin/providers/{providerId}/models`：`AddProviderModelRequest` 新增可选 `displayName`、必填 `protocol`（`NotBlank`，须为 5 协议枚举）、`apiBaseUrl`（`NotBlank`）；缺失或非法分别返回 `10014` / `10015`（400）。
 > - `POST /api/v1/admin/providers`：`CreateProviderRequest` 新增 `defaultProtocol`（厂商默认协议模板）。
-> - `GET /api/v1/llm/configs/default`：响应由 `UserLLMConfigDTO` 改为 `EffectiveLLMConfigDTO`，新增 `source` 与 `configId`，用于 Python 按来源表读取最终配置。
-> - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；`createPreset` 内部按 (providerId, modelName, capability) 查 `llm_provider_model` 复制 `protocol` / `api_base_url`（事实来源单一，不接受管理员手填）。当 `isDefault=true` 时自动解除同能力其他系统默认。
+> - `GET /api/v1/llm/configs/default`：响应由 `UserLLMConfigDTO` 改为 `EffectiveLLMConfigDTO`，新增 `source`、`configId` 与 `displayName`，用于 Python 按来源表读取最终配置。
+> - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；`createPreset` 内部按 (providerId, modelName, capability) 查 `llm_provider_model` 复制 `protocol` / `api_base_url` / `display_name`（事实来源单一，不接受管理员手填）。当 `isDefault=true` 时自动解除同能力其他系统默认。
 
 ### LLM 协议与入口契约
 

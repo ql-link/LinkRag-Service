@@ -48,10 +48,12 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `llm_system_provider` | `default_protocol` | `VARCHAR(32)` | `NOT NULL DEFAULT 'openai'` | 厂商默认协议模板，仅用于管理端展示与新增模型能力时预填，**不参与运行决策** |
 | `llm_provider_model` | `protocol` | `VARCHAR(32)` | 当前 nullable（服务层保证非空，回填后收紧 `NOT NULL`） | 事实来源：本 (模型,能力) 真实调用协议，下游按 `protocol + capability` 选 adapter |
 | `llm_provider_model` | `api_base_url` | `VARCHAR(512)` | 当前 nullable（服务层保证非空，回填后收紧） | 事实来源：**完整端点 URL**（Python 直打、不拼后缀，如 `.../v1/chat/completions`）；`google` 例外存 base 到 `/v1beta`，见下「base 形态」 |
+| `llm_provider_model` | `display_name` | `VARCHAR(64)` | nullable | 模型展示名；真实调用仍使用 `model_name`，为空时展示层回退 `model_name` |
 | `llm_system_preset` | `provider_type` | `VARCHAR(32)` | 当前 nullable | 厂商类型快照，系统兜底解析直接读取 |
 | `llm_system_preset` | `protocol` | `VARCHAR(32)` | 当前 nullable | 创建预设时复制自模型能力层 |
 | `llm_system_preset` | `api_base_url` | `VARCHAR(512)` | 当前 nullable | 创建预设时复制自模型能力层 |
 | `llm_system_preset` | `is_default` | `BOOLEAN` | `NOT NULL DEFAULT FALSE` | 是否为该能力的 LinkRag 系统兜底默认 |
+| `llm_system_preset` | `display_name` | `VARCHAR(64)` | nullable | 系统兜底模型展示名；创建/重绑预设时复制自模型能力层 |
 | `llm_user_config` | `protocol` | `VARCHAR(32)` | 当前 nullable | 运行快照：复制自模型能力层，下游按 `protocol + capability` 选 adapter，不再查厂商/模型表 |
 
 > `llm_user_config.api_base_url` 为既有列，本次仅改写入来源（厂商默认 → 模型能力事实），不新增列。存量库迁移策略：先以 nullable 加列 → 运行 seed/import 回填重点厂商 → 再 `ALTER ... NOT NULL`，避免锁表失败；全新 init 已直接带这些列。Python 执行端已确认 `protocol` 视为必填、运行期对 NULL fail-fast，故回填清理后 `llm_provider_model` / `llm_system_preset` / `llm_user_config` 的 `protocol` 应收紧为 `NOT NULL`（DB 约束 + 执行端 fail-fast 双保险）。共享库 schema 演进由 Python Alembic 落地，本仓 `scripts/db` 仅本地/测试用。
@@ -69,7 +71,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | 系统预设层（LinkRag 兜底） | `llm_system_preset.provider_type` + `protocol` + `api_base_url` | 系统兜底配置，Java 在用户无自配默认时返回 `source=SYSTEM` | **完整端点 URL**（随模型层复制） | 是 |
 | 用户配置层（运行快照） | `llm_user_config.protocol` + `api_base_url` | 用户启用厂商时复制自模型能力层的运行时快照，Java 优先返回 `source=USER` | **完整端点 URL**（随模型层复制） | 是 |
 
-关键不变量：用户配置展开（`setupProvider`）与系统预设创建/重绑时，`protocol` / `api_base_url` **只复制自模型能力层，绝不 fallback 到厂商默认值**；同一厂商不同能力可落不同协议（典型：千问 chat=`openai`、rerank=`dashscope`），属合法场景。Java 有效配置解析顺序固定为 `llm_user_config` 用户自配默认 → `llm_system_preset` LinkRag 系统兜底默认，并通过 `source + configId` 消除两张表 ID 歧义。
+关键不变量：用户配置展开（`setupProvider`）与系统预设创建/重绑时，`protocol` / `api_base_url` **只复制自模型能力层，绝不 fallback 到厂商默认值**；系统预设的 `display_name` 也随模型能力层复制。真实调用始终使用 `model_name`，`display_name` 只供展示。同一厂商不同能力可落不同协议（典型：千问 chat=`openai`、rerank=`dashscope`），属合法场景。Java 有效配置解析顺序固定为 `llm_user_config` 用户自配默认 → `llm_system_preset` LinkRag 系统兜底默认，并通过 `source + configId` 消除两张表 ID 歧义。
 - Java 端和 Python RAG 端共享数据库时，字段语义必须在本文件或模块文档中明确。
 - `document_original_file` 只保存上传事实，不保存解析状态或解析产物。
 - `document_parse_file.latest_parse_task_id` 指向 `document_parsed_log.task_id`；Markdown 产物定位由 Python 写入 `document_parsed_log`。

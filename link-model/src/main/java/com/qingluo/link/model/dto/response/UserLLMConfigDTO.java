@@ -27,6 +27,9 @@ public class UserLLMConfigDTO {
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
 
+    @Schema(description = "模型展示名；用户自配为空时等于模型名称，LinkRag 只读项来自系统预设", example = "Qwen 3.6 27B")
+    private String displayName;
+
     @Schema(description = "专用能力标识：CHAT/EMBEDDING/SPARSE_EMBEDDING/RERANK", example = "CHAT")
     private String capability;
 

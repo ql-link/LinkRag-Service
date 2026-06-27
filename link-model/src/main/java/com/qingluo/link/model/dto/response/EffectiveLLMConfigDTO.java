@@ -28,6 +28,9 @@ public class EffectiveLLMConfigDTO {
     @Schema(description = "模型名称", example = "deepseek-v3")
     private String modelName;
 
+    @Schema(description = "模型展示名；为空时等于模型名称", example = "DeepSeek V4 Flash")
+    private String displayName;
+
     @Schema(description = "模型能力", example = "CHAT")
     private String capability;
 

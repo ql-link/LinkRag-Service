@@ -12,6 +12,12 @@ WHERE NOT EXISTS (
 ALTER TABLE llm_system_preset
     ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否为该能力的系统兜底默认配置';
 
+ALTER TABLE llm_provider_model
+    ADD COLUMN display_name VARCHAR(64) NULL COMMENT '模型展示名' AFTER model_name;
+
+ALTER TABLE llm_system_preset
+    ADD COLUMN display_name VARCHAR(64) NULL COMMENT '模型展示名' AFTER model_name;
+
 CREATE INDEX idx_system_preset_default
     ON llm_system_preset (provider_type, capability, is_active, is_default);
 

@@ -429,6 +429,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         dto.setId(config.getId());
         dto.setProviderType(config.getProviderType());
         dto.setModelName(config.getModelName());
+        dto.setDisplayName(config.getModelName());
         dto.setCapability(config.getCapability());
         dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(config.getApiKey()));
         dto.setApiBaseUrl(config.getApiBaseUrl());
@@ -447,6 +448,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         dto.setId(preset.getId());
         dto.setProviderType(preset.getProviderType());
         dto.setModelName(preset.getModelName());
+        dto.setDisplayName(resolveDisplayName(preset));
         dto.setCapability(preset.getCapability());
         dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(preset.getApiKey()));
         dto.setApiBaseUrl(preset.getApiBaseUrl());
@@ -465,5 +467,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
                 .anyMatch(dto -> capability.equals(dto.getCapability())
                         && Boolean.TRUE.equals(dto.getIsDefault())
                         && Boolean.TRUE.equals(dto.getIsActive()));
+    }
+
+    private String resolveDisplayName(SystemPreset preset) {
+        return StringUtils.hasText(preset.getDisplayName()) ? preset.getDisplayName() : preset.getModelName();
     }
 }

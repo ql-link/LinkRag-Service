@@ -480,6 +480,7 @@ class UserLLMConfigServiceImplTest {
         UserLLMConfigDTO linkRag = result.get(0);
         assertThat(linkRag.getProviderType()).isEqualTo("linkrag");
         assertThat(linkRag.getModelName()).isEqualTo("linkrag-chat");
+        assertThat(linkRag.getDisplayName()).isEqualTo("LinkRag Chat");
         assertThat(linkRag.getIsEditable()).isFalse();
         assertThat(linkRag.getIsDefault()).isTrue();
         assertThat(linkRag.getApiKeyMasked()).isEqualTo("SY****");
@@ -572,6 +573,7 @@ class UserLLMConfigServiceImplTest {
         preset.setProviderId(99L);
         preset.setProviderType("linkrag");
         preset.setModelName(modelName);
+        preset.setDisplayName("LinkRag Chat");
         preset.setCapability(capability);
         preset.setApiKey("ENC_SYS");
         preset.setApiBaseUrl("https://api.linkrag.local/v1");

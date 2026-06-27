@@ -214,8 +214,8 @@ public class AdminController {
             @Parameter(description = "厂商ID") @PathVariable Long providerId,
             @RequestBody @Validated AddProviderModelRequest request) {
         return Result.success(
-                providerModelService.addModelCapability(providerId, request.getModelName(), request.getCapability(),
-                        request.getProtocol(), request.getApiBaseUrl()));
+                providerModelService.addModelCapability(providerId, request.getModelName(), request.getDisplayName(),
+                        request.getCapability(), request.getProtocol(), request.getApiBaseUrl()));
     }
 
     /**

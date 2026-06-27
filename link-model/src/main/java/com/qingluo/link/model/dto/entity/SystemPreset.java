@@ -30,6 +30,10 @@ public class SystemPreset {
     @TableField("model_name")
     private String modelName;
 
+    @Schema(description = "模型展示名；为空时前端回退模型名称", example = "GPT-4o")
+    @TableField("display_name")
+    private String displayName;
+
     @Schema(description = "能力标识", example = "CHAT")
     @TableField("capability")
     private String capability;

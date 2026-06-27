@@ -67,6 +67,8 @@ class SystemProviderServiceImplTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getModels()).extracting("modelName")
                 .containsExactlyInAnyOrder("gpt-4o", "gpt-4o-mini");
+        assertThat(result.get(0).getModels()).extracting("displayName")
+                .containsExactlyInAnyOrder("gpt-4o", "gpt-4o-mini");
         // 命中缓存：不查厂商表、不查模型表
         verifyNoInteractions(systemProviderMapper, providerModelService);
     }
@@ -119,11 +121,15 @@ class SystemProviderServiceImplTest {
     void getActiveProviderModels_exposesProtocolPerCapability() {
         givenCacheHit(new ProviderCatalogSnapshot(
                 List.of(ref(5L, "aliyun")),
-                List.of(pm(5L, "qwen-max", "CHAT", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-                        pm(5L, "gte-rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1"))));
+                List.of(pm(5L, "qwen-max", "Qwen Max", "CHAT", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                        pm(5L, "gte-rerank", "GTE Rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1"))));
 
         List<ProviderModelDTO> result = service.getActiveProviderModels(null);
 
+        assertThat(result.get(0).getModels()).extracting("modelName", "displayName")
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple("qwen-max", "Qwen Max"),
+                        org.assertj.core.groups.Tuple.tuple("gte-rerank", "GTE Rerank"));
         assertThat(result.get(0).getModels())
                 .flatExtracting("capabilities")
                 .extracting("capability", "protocol")
@@ -223,9 +229,15 @@ class SystemProviderServiceImplTest {
     }
 
     private ProviderModel pm(Long providerId, String model, String capability, String protocol, String apiBaseUrl) {
+        return pm(providerId, model, null, capability, protocol, apiBaseUrl);
+    }
+
+    private ProviderModel pm(Long providerId, String model, String displayName, String capability,
+                             String protocol, String apiBaseUrl) {
         ProviderModel m = new ProviderModel();
         m.setProviderId(providerId);
         m.setModelName(model);
+        m.setDisplayName(displayName);
         m.setCapability(capability);
         m.setProtocol(protocol);
         m.setApiBaseUrl(apiBaseUrl);

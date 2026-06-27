@@ -78,6 +78,7 @@ public class EffectiveLLMConfigServiceImpl implements EffectiveLLMConfigService 
         dto.setProviderId(config.getProviderId());
         dto.setProviderType(config.getProviderType());
         dto.setModelName(config.getModelName());
+        dto.setDisplayName(config.getModelName());
         dto.setCapability(config.getCapability());
         dto.setProtocol(config.getProtocol());
         dto.setApiBaseUrl(config.getApiBaseUrl());
@@ -92,10 +93,15 @@ public class EffectiveLLMConfigServiceImpl implements EffectiveLLMConfigService 
         dto.setProviderId(preset.getProviderId());
         dto.setProviderType(preset.getProviderType());
         dto.setModelName(preset.getModelName());
+        dto.setDisplayName(resolveDisplayName(preset));
         dto.setCapability(preset.getCapability());
         dto.setProtocol(preset.getProtocol());
         dto.setApiBaseUrl(preset.getApiBaseUrl());
         dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(preset.getApiKey()));
         return dto;
+    }
+
+    private String resolveDisplayName(SystemPreset preset) {
+        return StringUtils.hasText(preset.getDisplayName()) ? preset.getDisplayName() : preset.getModelName();
     }
 }
