@@ -9,8 +9,8 @@ import java.time.LocalDateTime;
 /**
  * 用户 LLM 配置 DTO
  *
- * <p>对外只暴露脱敏后的 Key；is_system_preset 标识只读预设行。
- * 执行参数（超时/重试/流式）等已随重构移除。</p>
+ * <p>对外只暴露脱敏后的 Key。该 DTO 面向前端表达「可使用的配置项」；
+ * LinkRag 系统兜底作为只读配置项返回。</p>
  */
 @Data
 @NoArgsConstructor
@@ -26,6 +26,9 @@ public class UserLLMConfigDTO {
 
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
+
+    @Schema(description = "模型展示名；用户自配为空时等于模型名称，LinkRag 只读项来自系统预设", example = "Qwen 3.6 27B")
+    private String displayName;
 
     @Schema(description = "专用能力标识：CHAT/EMBEDDING/SPARSE_EMBEDDING/RERANK", example = "CHAT")
     private String capability;
@@ -45,8 +48,11 @@ public class UserLLMConfigDTO {
     @Schema(description = "是否为该能力的生效配置", example = "false")
     private Boolean isDefault;
 
-    @Schema(description = "是否为系统预设行（只读）", example = "false")
+    @Schema(description = "历史兼容字段；新用户自配配置恒为 false", example = "false")
     private Boolean isSystemPreset;
+
+    @Schema(description = "是否允许用户编辑/删除/启停", example = "true")
+    private Boolean isEditable;
 
     @Schema(description = "创建时间")
     private LocalDateTime createdAt;

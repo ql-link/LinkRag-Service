@@ -22,6 +22,9 @@ public class ModelCapabilityDTO {
     @Schema(description = "模型名称", example = "gpt-4o")
     private String modelName;
 
+    @Schema(description = "模型展示名；为空时等于模型名称", example = "GPT-4o")
+    private String displayName;
+
     @Schema(description = "模型支持的能力明细（含协议与入口）")
     private List<ModelCapabilityDetailDTO> capabilities;
 }

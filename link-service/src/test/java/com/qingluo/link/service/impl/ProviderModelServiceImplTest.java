@@ -92,9 +92,10 @@ class ProviderModelServiceImplTest {
         given(providerModelMapper.selectOne(any())).willReturn(null);
 
         ProviderModel result = service.addModelCapability(
-                5L, "gte-rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1");
+                5L, "gte-rerank", "GTE Rerank", "RERANK", "dashscope", "https://dashscope.aliyuncs.com/api/v1");
 
         verify(providerModelMapper).insert(any(ProviderModel.class));
+        assertThat(result.getDisplayName()).isEqualTo("GTE Rerank");
         assertThat(result.getProtocol()).isEqualTo("dashscope");
         assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
         verify(cacheConsistencyService).evict(eq(CacheEvictTarget.SYSTEM_PROVIDER), any());
@@ -108,11 +109,12 @@ class ProviderModelServiceImplTest {
         existing.setIsActive(false);
         given(providerModelMapper.selectOne(any())).willReturn(existing);
 
-        service.addModelCapability(5L, "gpt-4o", "CHAT", "openai", "https://api.openai.com/v1");
+        service.addModelCapability(5L, "gpt-4o", "GPT-4o", "CHAT", "openai", "https://api.openai.com/v1");
 
         verify(providerModelMapper, never()).insert(any());
         verify(providerModelMapper).updateById(existing);
         assertThat(existing.getIsActive()).isTrue();
+        assertThat(existing.getDisplayName()).isEqualTo("GPT-4o");
         assertThat(existing.getProtocol()).isEqualTo("openai");
         assertThat(existing.getApiBaseUrl()).isEqualTo("https://api.openai.com/v1");
     }
@@ -122,7 +124,7 @@ class ProviderModelServiceImplTest {
     void addModelCapability_rejectsUnknownProvider() {
         given(systemProviderMapper.selectById(99L)).willReturn(null);
 
-        assertThatThrownBy(() -> service.addModelCapability(99L, "m", "CHAT", "openai", "https://x"))
+        assertThatThrownBy(() -> service.addModelCapability(99L, "m", null, "CHAT", "openai", "https://x"))
                 .isInstanceOf(NotFoundException.class);
     }
 
@@ -131,7 +133,7 @@ class ProviderModelServiceImplTest {
     void addModelCapability_rejectsBlankApiBaseUrl() {
         given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "openai"));
 
-        assertThatThrownBy(() -> service.addModelCapability(5L, "m", "CHAT", "openai", "  "))
+        assertThatThrownBy(() -> service.addModelCapability(5L, "m", null, "CHAT", "openai", "  "))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", ErrorCode.MODEL_CONFIG_INCOMPLETE.getCode());
         verify(providerModelMapper, never()).insert(any());
@@ -144,7 +146,7 @@ class ProviderModelServiceImplTest {
         doThrow(new BusinessException(ErrorCode.INVALID_PROTOCOL))
                 .when(llmProtocolService).validateProtocol("cohere");
 
-        assertThatThrownBy(() -> service.addModelCapability(5L, "m", "RERANK", "cohere", "https://x"))
+        assertThatThrownBy(() -> service.addModelCapability(5L, "m", null, "RERANK", "cohere", "https://x"))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_PROTOCOL.getCode());
         verify(providerModelMapper, never()).insert(any());
@@ -170,6 +172,7 @@ class ProviderModelServiceImplTest {
 
         UpdateProviderModelRequest request = new UpdateProviderModelRequest();
         request.setModelName("gpt-4o-mini");
+        request.setDisplayName("GPT-4o Mini");
         request.setCapability("vision");
         request.setProtocol("openai");
         request.setApiBaseUrl("https://api.openai.com/v1/chat/completions");
@@ -178,6 +181,7 @@ class ProviderModelServiceImplTest {
         ProviderModel result = service.updateModelCapability(9L, request);
 
         assertThat(result.getModelName()).isEqualTo("gpt-4o-mini");
+        assertThat(result.getDisplayName()).isEqualTo("GPT-4o Mini");
         assertThat(result.getCapability()).isEqualTo("VISION");
         assertThat(result.getIsActive()).isFalse();
         verify(providerModelMapper).updateById(existing);

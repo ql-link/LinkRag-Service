@@ -120,7 +120,7 @@ public class ProviderModelServiceImpl implements ProviderModelService {
      * 新增模型能力目录项。已存在同 (厂商,模型,能力) 时幂等确保其上架并刷新事实字段，
      * 避免管理员重复新增报唯一约束冲突。protocol/api_base_url 是运行事实，校验后写入。
      */
-    public ProviderModel addModelCapability(Long providerId, String modelName, String capability,
+    public ProviderModel addModelCapability(Long providerId, String modelName, String displayName, String capability,
                                             String protocol, String apiBaseUrl) {
         SystemProvider provider = requireProvider(providerId);
         String normalizedCapability = normalizeCapability(capability);
@@ -137,6 +137,7 @@ public class ProviderModelServiceImpl implements ProviderModelService {
                         .eq(ProviderModel::getCapability, normalizedCapability)
         );
         if (existing != null) {
+            existing.setDisplayName(normalizeDisplayName(displayName));
             existing.setProtocol(protocol);
             existing.setApiBaseUrl(apiBaseUrl);
             existing.setIsActive(true);
@@ -148,6 +149,7 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         ProviderModel model = new ProviderModel();
         model.setProviderId(providerId);
         model.setModelName(modelName);
+        model.setDisplayName(normalizeDisplayName(displayName));
         model.setCapability(normalizedCapability);
         model.setProtocol(protocol);
         model.setApiBaseUrl(apiBaseUrl);
@@ -171,6 +173,9 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         ProviderModel model = requireModel(id);
         if (StringUtils.hasText(request.getModelName())) {
             model.setModelName(request.getModelName());
+        }
+        if (request.getDisplayName() != null) {
+            model.setDisplayName(normalizeDisplayName(request.getDisplayName()));
         }
         if (StringUtils.hasText(request.getCapability())) {
             model.setCapability(normalizeCapability(request.getCapability()));
@@ -241,5 +246,9 @@ public class ProviderModelServiceImpl implements ProviderModelService {
             return null;
         }
         return normalizeCapability(capability);
+    }
+
+    private String normalizeDisplayName(String displayName) {
+        return StringUtils.hasText(displayName) ? displayName.trim() : null;
     }
 }

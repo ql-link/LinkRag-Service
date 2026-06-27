@@ -140,6 +140,8 @@ link-model       # Entity、请求 / 响应 DTO、枚举、统一响应模型
 | 文件 | 本地存储 / MinIO OSS 组件 |
 | 测试 | JUnit 5、Mockito、SpringBootTest、MockMvc |
 
+> MinIO 8.5.x 依赖 OkHttp 4.x API，根 `pom.xml` 已统一锁定 OkHttp `4.12.0` / Okio `3.6.0`，避免被 Spring Boot 2.5 的默认依赖管理降级到 OkHttp 3.x。
+
 ## 快速开始
 
 ### 1. 初始化数据库

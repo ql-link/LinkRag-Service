@@ -13,6 +13,9 @@ public class UpdateProviderModelRequest {
     @Schema(description = "模型名称", example = "gpt-4o")
     private String modelName;
 
+    @Schema(description = "模型展示名；传空字符串会清空展示名", example = "GPT-4o")
+    private String displayName;
+
     @Schema(description = "能力标识，如 CHAT/EMBEDDING/SPARSE_EMBEDDING", example = "CHAT")
     private String capability;
 

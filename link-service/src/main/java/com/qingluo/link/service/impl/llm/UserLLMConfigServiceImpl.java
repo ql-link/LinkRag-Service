@@ -8,9 +8,11 @@ import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.core.log.AuditLog;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
+import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.SelectEffectiveModelRequest;
 import com.qingluo.link.model.dto.request.SetupProviderRequest;
@@ -35,15 +37,18 @@ import java.util.Objects;
 /**
  * 用户 LLM 配置服务实现。
  *
- * <p>用户配置表是下游唯一生效源，按能力多行存储；系统预设行（is_system_preset=true）
- * 与用户自配行（is_system_preset=false）共存于本表，靠 is_default 表达「某能力当前生效哪一条」。
+ * <p>用户配置表只保存用户自配行（is_system_preset=false），按能力多行存储，靠 is_default
+ * 表达「某能力用户自配当前生效哪一条」。系统兜底配置由 llm_system_preset 提供，不再注册镜像到本表。
  * Key 为厂商级——同厂商多行共用同一个加密 Key。缓存失效统一走 {@link CacheConsistencyService}。</p>
  */
 @Service
 @RequiredArgsConstructor
 public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
+    private static final String LINKRAG_PROVIDER_TYPE = "linkrag";
+
     private final UserLLMConfigMapper userLLMConfigMapper;
+    private final SystemPresetMapper systemPresetMapper;
     private final SystemProviderService systemProviderService;
     private final ProviderModelService providerModelService;
     private final LLMCapabilityService llmCapabilityService;
@@ -53,12 +58,19 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     @Override
     /**
-     * 按条件查询用户 LLM 配置列表（含预设行），支持按能力过滤。
+     * 按条件查询可用 LLM 配置列表，支持按能力过滤。
+     *
+     * <p>返回用户自配配置 + LinkRag 只读系统配置。前端不需要理解系统预设；
+     * 只需要按 isEditable 控制是否允许编辑/删除/启停。</p>
      */
     public List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, String capability, Boolean isActive) {
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
 
-        return userLLMConfigCacheService.getOrLoadAll(userId, () -> loadAllConfigDTOs(userId)).stream()
+        List<UserLLMConfigDTO> userConfigs = userLLMConfigCacheService.getOrLoadAll(userId, () -> loadAllConfigDTOs(userId));
+        List<UserLLMConfigDTO> configs = new ArrayList<>(userConfigs);
+        configs.addAll(loadLinkRagConfigDTOs(normalizedCapability, userConfigs));
+
+        return configs.stream()
                 .filter(dto -> providerType == null || providerType.equals(dto.getProviderType()))
                 .filter(dto -> normalizedCapability == null || normalizedCapability.equals(dto.getCapability()))
                 .filter(dto -> isActive == null || isActive.equals(dto.getIsActive()))
@@ -71,7 +83,28 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     private List<UserLLMConfigDTO> loadAllConfigDTOs(Long userId) {
         LambdaQueryWrapper<UserLLMConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(UserLLMConfig::getUserId, userId);
+        wrapper.eq(UserLLMConfig::getIsSystemPreset, false);
         return userLLMConfigMapper.selectList(wrapper).stream().map(this::toDTO).toList();
+    }
+
+    /**
+     * 加载 LinkRag 系统默认配置并按前端统一配置项返回。
+     *
+     * <p>LinkRag 是否为当前生效由用户自配默认是否存在决定：同能力存在启用的用户默认时，
+     * LinkRag 仍可使用但不是当前生效；否则它就是该能力的生效配置。</p>
+     */
+    private List<UserLLMConfigDTO> loadLinkRagConfigDTOs(String normalizedCapability, List<UserLLMConfigDTO> userConfigs) {
+        LambdaQueryWrapper<SystemPreset> wrapper = new LambdaQueryWrapper<SystemPreset>()
+                .eq(SystemPreset::getProviderType, LINKRAG_PROVIDER_TYPE)
+                .eq(SystemPreset::getIsDefault, true)
+                .eq(SystemPreset::getIsActive, true);
+        if (normalizedCapability != null) {
+            wrapper.eq(SystemPreset::getCapability, normalizedCapability);
+        }
+
+        return systemPresetMapper.selectList(wrapper).stream()
+                .map(preset -> toLinkRagDTO(preset, hasActiveUserDefault(userConfigs, preset.getCapability())))
+                .toList();
     }
 
     @Override
@@ -85,6 +118,9 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
      * protocol/api_base_url 复制自模型能力层事实快照，缺失即抛 MODEL_CONFIG_INCOMPLETE，绝不 fallback 厂商默认。</p>
      */
     public List<UserLLMConfigDTO> setupProvider(Long userId, SetupProviderRequest request) {
+        if (LINKRAG_PROVIDER_TYPE.equals(request.getProviderType())) {
+            throw new BusinessException(ErrorCode.SYSTEM_PROVIDER_READONLY);
+        }
         SystemProvider provider = systemProviderService.getActiveByProviderType(request.getProviderType());
         String encryptedApiKey = apiKeyEncryptService.encrypt(request.getApiKey());
 
@@ -132,12 +168,23 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     @Override
     @Transactional
     /**
-     * 模型启停（独立窗口）：按 (厂商, 模型) 批量切换该模型全部能力行的启用状态。
-     * 只作用于自配行，预设行作为常备备选不被启停。关停后该模型既退出按能力选生效的候选，
-     * 又因 is_active=false 不会被 getDefaultConfig 取为生效。
+     * 模型启停（独立窗口）：capability 存在时只切换当前模型能力；capability 为空时
+     * 兼容旧前端，按 (厂商, 模型) 批量切换该模型全部能力行。
+     *
+     * <p>只作用于用户自配行，LinkRag / 系统预设行不可通过该接口启停。若关闭的是当前能力
+     * 用户默认配置，同时清除该默认标记，后续有效配置解析自然回退 LinkRag 系统默认。</p>
      */
     public void toggleModel(Long userId, ToggleModelRequest request) {
+        if (LINKRAG_PROVIDER_TYPE.equals(request.getProviderType())) {
+            throw new BusinessException(ErrorCode.SYSTEM_PROVIDER_READONLY);
+        }
         SystemProvider provider = systemProviderService.getActiveByProviderType(request.getProviderType());
+
+        String capability = normalizeCapabilityIfPresent(request.getCapability());
+        if (capability != null) {
+            toggleModelCapability(userId, provider, request, capability);
+            return;
+        }
 
         userLLMConfigMapper.update(null,
                 new LambdaUpdateWrapper<UserLLMConfig>()
@@ -148,6 +195,25 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
                         .set(UserLLMConfig::getIsActive, request.getEnabled())
         );
 
+        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
+    }
+
+    /**
+     * 能力级启停：明确定位一条用户自配配置，不存在则返回 USER_CONFIG_NOT_FOUND。
+     */
+    private void toggleModelCapability(Long userId, SystemProvider provider, ToggleModelRequest request, String capability) {
+        UserLLMConfig config = findSelfConfig(userId, provider.getId(), request.getModelName(), capability);
+        if (config == null) {
+            throw NotFoundException.userConfigNotFound();
+        }
+
+        config.setIsActive(request.getEnabled());
+        if (Boolean.FALSE.equals(request.getEnabled()) && Boolean.TRUE.equals(config.getIsDefault())) {
+            config.setIsDefault(false);
+        }
+        userLLMConfigMapper.updateById(config);
+
+        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, config.getId());
         cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
@@ -162,6 +228,10 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
      */
     public void selectEffectiveModel(Long userId, SelectEffectiveModelRequest request) {
         String capability = normalizeCapability(request.getCapability());
+        if (LINKRAG_PROVIDER_TYPE.equals(request.getProviderType())) {
+            selectLinkRagEffective(userId, capability, request.getModelName());
+            return;
+        }
         SystemProvider provider = systemProviderService.getActiveByProviderType(request.getProviderType());
 
         if (!providerModelService.isModelCapabilityActive(provider.getId(), request.getModelName(), capability)) {
@@ -183,16 +253,31 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
+    /**
+     * 前端把 LinkRag 当作只读配置厂商选择时，实际语义是清空该能力用户自配默认，
+     * 让有效配置解析回退到 LinkRag 系统默认。
+     */
+    private void selectLinkRagEffective(Long userId, String capability, String modelName) {
+        SystemPreset preset = systemPresetMapper.selectOne(new LambdaQueryWrapper<SystemPreset>()
+                .eq(SystemPreset::getProviderType, LINKRAG_PROVIDER_TYPE)
+                .eq(SystemPreset::getCapability, capability)
+                .eq(SystemPreset::getModelName, modelName)
+                .eq(SystemPreset::getIsDefault, true)
+                .eq(SystemPreset::getIsActive, true)
+                .last("LIMIT 1"));
+        if (preset == null) {
+            throw new BusinessException(ErrorCode.NO_DEFAULT_CONFIG);
+        }
+        clearDefaultConfig(userId, capability);
+    }
+
     @Override
     @Transactional
     /**
-     * 删除指定用户的 LLM 配置；系统预设行只读，删除被拒（PRESET_READONLY）。
+     * 删除指定用户的自配 LLM 配置。系统兜底不在本表中维护。
      */
     public void deleteConfig(Long userId, Long configId) {
         UserLLMConfig config = getConfigOrThrow(userId, configId);
-        if (Boolean.TRUE.equals(config.getIsSystemPreset())) {
-            throw new BusinessException(ErrorCode.PRESET_READONLY);
-        }
         userLLMConfigMapper.deleteById(configId);
         cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, configId);
         cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
@@ -202,7 +287,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     @Override
     /**
-     * 获取当前用户的默认 LLM 配置（CHAT 能力）。
+     * 获取当前用户的自配默认 LLM 配置（CHAT 能力）。
      */
     public UserLLMConfigDTO getDefaultConfig(Long userId) {
         return getDefaultConfig(userId, "CHAT");
@@ -210,10 +295,10 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     @Override
     /**
-     * 获取当前用户某个能力的生效 LLM 配置。
+     * 获取当前用户某个能力的自配默认 LLM 配置。
      *
-     * <p>取 (用户, 能力, is_default=true, is_active=true) 一行：有自配生效命中自配；
-     * 两步中间态（已配厂商未选生效）回退到注册写入的系统预设；都没有则报 NO_DEFAULT_CONFIG。</p>
+     * <p>取 (用户, 能力, is_default=true, is_active=true, is_system_preset=false) 一行；
+     * 系统兜底由 EffectiveLLMConfigService 处理。</p>
      */
     public UserLLMConfigDTO getDefaultConfig(Long userId, String capability) {
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
@@ -221,6 +306,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
                 .filter(dto -> Objects.equals(normalizedCapability, dto.getCapability()))
                 .filter(dto -> Boolean.TRUE.equals(dto.getIsDefault()))
                 .filter(dto -> Boolean.TRUE.equals(dto.getIsActive()))
+                .filter(dto -> !Boolean.TRUE.equals(dto.getIsSystemPreset()))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.NO_DEFAULT_CONFIG));
     }
@@ -228,8 +314,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     @Override
     @Transactional
     /**
-     * 将当前用户的一条配置设为某能力生效（含按能力切换到/切回系统预设）。
-     * 预设行 is_active 恒为真，可被放行切换生效。
+     * 将当前用户的一条自配配置设为某能力生效。
      */
     public void setDefaultConfig(Long userId, Long configId, String capability) {
         String normalizedCapability = normalizeCapability(capability);
@@ -246,6 +331,20 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         config.setIsDefault(true);
         userLLMConfigMapper.updateById(config);
         cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, configId);
+        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
+    }
+
+    @Override
+    @Transactional
+    public void clearDefaultConfig(Long userId, String capability) {
+        String normalizedCapability = normalizeCapability(capability);
+        userLLMConfigMapper.update(null,
+                new LambdaUpdateWrapper<UserLLMConfig>()
+                        .eq(UserLLMConfig::getUserId, userId)
+                        .eq(UserLLMConfig::getCapability, normalizedCapability)
+                        .eq(UserLLMConfig::getIsSystemPreset, false)
+                        .set(UserLLMConfig::getIsDefault, false)
+        );
         cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
@@ -272,6 +371,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
             new LambdaQueryWrapper<UserLLMConfig>()
                 .eq(UserLLMConfig::getId, configId)
                 .eq(UserLLMConfig::getUserId, userId)
+                .eq(UserLLMConfig::getIsSystemPreset, false)
         );
 
         if (config == null) {
@@ -281,13 +381,14 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     }
 
     /**
-     * 清理当前用户指定能力下、除指定配置外的生效标记（预设与自配一并清，保证单能力生效唯一）。
+     * 清理当前用户指定能力下、除指定配置外的自配生效标记，保证单用户单能力自配生效唯一。
      */
     private void clearOtherDefault(Long userId, String capability, Long excludeConfigId) {
         userLLMConfigMapper.update(null,
             new LambdaUpdateWrapper<UserLLMConfig>()
                 .eq(UserLLMConfig::getUserId, userId)
                 .eq(UserLLMConfig::getCapability, capability)
+                .eq(UserLLMConfig::getIsSystemPreset, false)
                 .ne(UserLLMConfig::getId, excludeConfigId)
                 .set(UserLLMConfig::getIsDefault, false)
         );
@@ -328,6 +429,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         dto.setId(config.getId());
         dto.setProviderType(config.getProviderType());
         dto.setModelName(config.getModelName());
+        dto.setDisplayName(config.getModelName());
         dto.setCapability(config.getCapability());
         dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(config.getApiKey()));
         dto.setApiBaseUrl(config.getApiBaseUrl());
@@ -335,8 +437,39 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         dto.setIsActive(config.getIsActive());
         dto.setIsDefault(config.getIsDefault());
         dto.setIsSystemPreset(config.getIsSystemPreset());
+        dto.setIsEditable(true);
         dto.setCreatedAt(config.getCreatedAt());
         dto.setUpdatedAt(config.getUpdatedAt());
         return dto;
+    }
+
+    private UserLLMConfigDTO toLinkRagDTO(SystemPreset preset, boolean hasActiveUserDefault) {
+        UserLLMConfigDTO dto = new UserLLMConfigDTO();
+        dto.setId(preset.getId());
+        dto.setProviderType(preset.getProviderType());
+        dto.setModelName(preset.getModelName());
+        dto.setDisplayName(resolveDisplayName(preset));
+        dto.setCapability(preset.getCapability());
+        dto.setApiKeyMasked(apiKeyEncryptService.maskApiKey(preset.getApiKey()));
+        dto.setApiBaseUrl(preset.getApiBaseUrl());
+        dto.setProtocol(preset.getProtocol());
+        dto.setIsActive(true);
+        dto.setIsDefault(!hasActiveUserDefault);
+        dto.setIsSystemPreset(true);
+        dto.setIsEditable(false);
+        dto.setCreatedAt(preset.getCreatedAt());
+        dto.setUpdatedAt(preset.getUpdatedAt());
+        return dto;
+    }
+
+    private boolean hasActiveUserDefault(List<UserLLMConfigDTO> userConfigs, String capability) {
+        return userConfigs.stream()
+                .anyMatch(dto -> capability.equals(dto.getCapability())
+                        && Boolean.TRUE.equals(dto.getIsDefault())
+                        && Boolean.TRUE.equals(dto.getIsActive()));
+    }
+
+    private String resolveDisplayName(SystemPreset preset) {
+        return StringUtils.hasText(preset.getDisplayName()) ? preset.getDisplayName() : preset.getModelName();
     }
 }

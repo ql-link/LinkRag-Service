@@ -9,16 +9,10 @@ import java.util.List;
 /**
  * 系统预设服务。
  *
- * <p>管理员预配整套可用配置（自带平台 Key）；用户注册时把 active 预设复制进用户配置表，
- * 作为常备只读备选实现开箱即用。</p>
+ * <p>管理员预配 LinkRag 系统兜底配置（自带平台 Key）；用户没有自配生效模型时，
+ * Java 回退到 active + default 的系统预设。</p>
  */
 public interface SystemPresetService {
-
-    /**
-     * 注册时把全部 active 系统预设复制进该用户的配置表（is_system_preset=true）。
-     * 同一能力只让首条预设生效（is_default=true），其余作为备选；重复调用幂等不重复灌入。
-     */
-    void applyPresetsForNewUser(Long userId);
 
     /**
      * 管理端：新增一条系统预设（平台 Key 入库前加密）。
@@ -39,6 +33,11 @@ public interface SystemPresetService {
      * 管理端：启用/禁用一条系统预设。
      */
     void togglePreset(Long id, boolean isActive);
+
+    /**
+     * 管理端：把一条系统预设设为其能力的系统兜底默认，并解除同能力其他默认。
+     */
+    void setDefaultPreset(Long id);
 
     /**
      * 管理端：列出全部系统预设（Key 脱敏返回）。
