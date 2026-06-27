@@ -168,12 +168,23 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     @Override
     @Transactional
     /**
-     * 模型启停（独立窗口）：按 (厂商, 模型) 批量切换该模型全部能力行的启用状态。
-     * 只作用于自配行，预设行作为常备备选不被启停。关停后该模型既退出按能力选生效的候选，
-     * 又因 is_active=false 不会被 getDefaultConfig 取为生效。
+     * 模型启停（独立窗口）：capability 存在时只切换当前模型能力；capability 为空时
+     * 兼容旧前端，按 (厂商, 模型) 批量切换该模型全部能力行。
+     *
+     * <p>只作用于用户自配行，LinkRag / 系统预设行不可通过该接口启停。若关闭的是当前能力
+     * 用户默认配置，同时清除该默认标记，后续有效配置解析自然回退 LinkRag 系统默认。</p>
      */
     public void toggleModel(Long userId, ToggleModelRequest request) {
+        if (LINKRAG_PROVIDER_TYPE.equals(request.getProviderType())) {
+            throw new BusinessException(ErrorCode.SYSTEM_PROVIDER_READONLY);
+        }
         SystemProvider provider = systemProviderService.getActiveByProviderType(request.getProviderType());
+
+        String capability = normalizeCapabilityIfPresent(request.getCapability());
+        if (capability != null) {
+            toggleModelCapability(userId, provider, request, capability);
+            return;
+        }
 
         userLLMConfigMapper.update(null,
                 new LambdaUpdateWrapper<UserLLMConfig>()
@@ -184,6 +195,25 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
                         .set(UserLLMConfig::getIsActive, request.getEnabled())
         );
 
+        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
+    }
+
+    /**
+     * 能力级启停：明确定位一条用户自配配置，不存在则返回 USER_CONFIG_NOT_FOUND。
+     */
+    private void toggleModelCapability(Long userId, SystemProvider provider, ToggleModelRequest request, String capability) {
+        UserLLMConfig config = findSelfConfig(userId, provider.getId(), request.getModelName(), capability);
+        if (config == null) {
+            throw NotFoundException.userConfigNotFound();
+        }
+
+        config.setIsActive(request.getEnabled());
+        if (Boolean.FALSE.equals(request.getEnabled()) && Boolean.TRUE.equals(config.getIsDefault())) {
+            config.setIsDefault(false);
+        }
+        userLLMConfigMapper.updateById(config);
+
+        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, config.getId());
         cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 

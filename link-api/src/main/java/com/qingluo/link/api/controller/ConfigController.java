@@ -62,11 +62,11 @@ public class ConfigController {
     }
 
     /**
-     * 模型启停（独立窗口）：按厂商 + 模型批量启停该模型全部能力行。
+     * 模型启停（独立窗口）：capability 存在时按能力单独启停；为空时兼容旧前端，按模型批量启停。
      */
     @PatchMapping("/toggle-model")
     @SaCheckLogin
-    @Operation(summary = "模型启停", description = "按厂商+模型批量启停该模型全部能力；关闭后按能力选生效时不再展示")
+    @Operation(summary = "模型启停", description = "capability 存在时只启停该模型能力；为空时按厂商+模型批量启停全部能力。仅允许用户自配配置，LinkRag 只读配置不可启停")
     public Result<Void> toggleModel(@Valid @RequestBody ToggleModelRequest request) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
         userLLMConfigService.toggleModel(userId, request);

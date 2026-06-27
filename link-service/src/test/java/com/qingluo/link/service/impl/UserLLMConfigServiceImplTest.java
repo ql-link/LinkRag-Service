@@ -251,6 +251,88 @@ class UserLLMConfigServiceImplTest {
         verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
+    @Test
+    @DisplayName("三·带 capability 时只启停当前模型能力行")
+    void toggleModel_withCapability_updatesOnlyOneConfig() {
+        SystemProvider provider = providerOf(5L, "openai", "url");
+        given(systemProviderService.getActiveByProviderType("openai")).willReturn(provider);
+        UserLLMConfig cfg = config(11L, 7L, "openai", "gpt-4o", "VISION");
+        given(userLLMConfigMapper.selectOne(any())).willReturn(cfg);
+
+        ToggleModelRequest request = new ToggleModelRequest();
+        request.setProviderType("openai");
+        request.setModelName("gpt-4o");
+        request.setCapability("vision");
+        request.setEnabled(false);
+
+        service.toggleModel(7L, request);
+
+        assertThat(cfg.getIsActive()).isFalse();
+        verify(userLLMConfigMapper).updateById(cfg);
+        verify(userLLMConfigMapper, never()).update(eq(null), any(LambdaUpdateWrapper.class));
+        verify(cacheConsistencyService).evict(CacheEvictTarget.LLM_CONFIG, 11L);
+        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
+    }
+
+    @Test
+    @DisplayName("三·关闭当前能力用户默认配置时清除默认标记以回退 LinkRag")
+    void toggleModel_withCapability_clearsDefaultWhenDisabled() {
+        SystemProvider provider = providerOf(5L, "openai", "url");
+        given(systemProviderService.getActiveByProviderType("openai")).willReturn(provider);
+        UserLLMConfig cfg = config(11L, 7L, "openai", "gpt-4o", "CHAT");
+        cfg.setIsDefault(true);
+        given(userLLMConfigMapper.selectOne(any())).willReturn(cfg);
+
+        ToggleModelRequest request = new ToggleModelRequest();
+        request.setProviderType("openai");
+        request.setModelName("gpt-4o");
+        request.setCapability("CHAT");
+        request.setEnabled(false);
+
+        service.toggleModel(7L, request);
+
+        assertThat(cfg.getIsActive()).isFalse();
+        assertThat(cfg.getIsDefault()).isFalse();
+        verify(userLLMConfigMapper).updateById(cfg);
+        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
+    }
+
+    @Test
+    @DisplayName("三·能力级启停找不到用户自配配置时返回 USER_CONFIG_NOT_FOUND")
+    void toggleModel_withCapability_throwsWhenSelfConfigMissing() {
+        SystemProvider provider = providerOf(5L, "openai", "url");
+        given(systemProviderService.getActiveByProviderType("openai")).willReturn(provider);
+        given(userLLMConfigMapper.selectOne(any())).willReturn(null);
+
+        ToggleModelRequest request = new ToggleModelRequest();
+        request.setProviderType("openai");
+        request.setModelName("gpt-4o");
+        request.setCapability("CHAT");
+        request.setEnabled(false);
+
+        assertThatThrownBy(() -> service.toggleModel(7L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", ErrorCode.USER_CONFIG_NOT_FOUND.getCode());
+        verify(userLLMConfigMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("三·LinkRag 系统兜底厂商不可通过模型启停接口修改")
+    void toggleModel_rejectsLinkRag() {
+        ToggleModelRequest request = new ToggleModelRequest();
+        request.setProviderType("linkrag");
+        request.setModelName("linkrag-chat");
+        request.setCapability("CHAT");
+        request.setEnabled(false);
+
+        assertThatThrownBy(() -> service.toggleModel(7L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", ErrorCode.SYSTEM_PROVIDER_READONLY.getCode());
+        verify(systemProviderService, never()).getActiveByProviderType(any());
+        verify(userLLMConfigMapper, never()).updateById(any());
+        verify(userLLMConfigMapper, never()).update(eq(null), any(LambdaUpdateWrapper.class));
+    }
+
     // ============ 四、按能力选生效 ============
 
     @Test

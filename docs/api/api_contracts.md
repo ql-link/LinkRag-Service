@@ -53,7 +53,7 @@
 | GET | `/api/v1/llm/providers` | 可用厂商与模型能力（来源 `llm_provider_model`） |
 | GET | `/api/v1/llm/configs` | 用户可用配置列表（用户自配 + LinkRag 只读配置） |
 | POST | `/api/v1/llm/configs/setup-provider` | 配置厂商：选厂商+填厂商级 Key，自动展开整厂商模型 |
-| PATCH | `/api/v1/llm/configs/toggle-model` | 模型启停（按厂商+模型批量） |
+| PATCH | `/api/v1/llm/configs/toggle-model` | 模型/能力启停（`capability` 可选：有则单能力，无则按模型批量） |
 | PUT | `/api/v1/llm/configs/effective` | 按能力选生效模型 |
 | GET | `/api/v1/llm/configs/default` | 取某能力实际生效配置（用户自配优先，缺省回退 LinkRag 系统预设） |
 | PATCH | `/api/v1/llm/configs/{id}/default` | 设某能力用户自配生效 |
@@ -80,7 +80,7 @@
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
 > `provider_type=linkrag` 是系统服务厂商：不出现在用户侧可添加厂商列表，用户也不能调用 `setup-provider` 配置它的 Key（返回 `SYSTEM_PROVIDER_READONLY(10016/400)`）；但会作为 `GET /configs` 的只读配置项返回，用户可以选择使用。
 >
-> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力唯一）。`providerType=linkrag` 时，`PUT /configs/effective` 清空该能力用户自配默认，使 LinkRag 只读配置生效。`PATCH /configs/toggle-model` 独立启停用户自配模型；LinkRag 不可编辑/删除/启停。`GET /configs/default` 返回 `EffectiveLLMConfigDTO`，字段 `source` 为 `USER` 或 `SYSTEM`，供执行端按来源表读取；前端配置页优先使用 `GET /configs` 的 `isDefault` 展示当前生效项。`GET /configs` 支持 `capability` / `isActive` 过滤，返回用户自配配置 + LinkRag 只读配置；`UserLLMConfigDTO.isEditable=false` 表示只读，不允许编辑、删除、启停或改 Key。错误码：系统服务厂商不可自配 `10016`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
+> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力唯一）。`providerType=linkrag` 时，`PUT /configs/effective` 清空该能力用户自配默认，使 LinkRag 只读配置生效。`PATCH /configs/toggle-model` 独立启停用户自配配置：请求体 `capability` 存在时只启停该 `providerType + modelName + capability` 自配行，不存在时兼容旧前端，按 `providerType + modelName` 批量启停该模型全部用户自配能力；若关闭的是当前能力用户默认配置，后端清除该默认标记，使实际生效配置回退 LinkRag 系统默认。LinkRag 不可编辑/删除/启停。`GET /configs/default` 返回 `EffectiveLLMConfigDTO`，字段 `source` 为 `USER` 或 `SYSTEM`，供执行端按来源表读取；前端配置页优先使用 `GET /configs` 的 `isDefault` 展示当前生效项。`GET /configs` 支持 `capability` / `isActive` 过滤，返回用户自配配置 + LinkRag 只读配置；`UserLLMConfigDTO.isEditable=false` 表示只读，不允许编辑、删除、启停或改 Key。错误码：系统服务厂商不可自配/启停 `10016`、能力级启停找不到用户自配配置 `10004`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
 
 > **LLM 协议改造字段变更（破坏性 + 加法）**，详见下文「LLM 协议与入口契约」：
 > - `GET /api/v1/llm/providers`：`ModelCapabilityDTO.capabilities` 由 `List<String>`（能力名）**升级为** `List<ModelCapabilityDetailDTO>`，每元素为 `{ capability, protocol, apiBaseUrl }`（**破坏性，前端需同批适配**）。`apiBaseUrl` 为**完整端点 URL**（见下「base 形态约定」）。例：`{"modelName":"qwen-max","capabilities":[{"capability":"CHAT","protocol":"openai","apiBaseUrl":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"}]}`。
