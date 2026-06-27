@@ -156,7 +156,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 ### 4.12 线程池（THREAD_POOL_*）
 
-线程池按池名嵌套配置 `thread-pool.<池名>.*`（每业务一个专用池，互不共用）。`document-upload` 池（bean `documentUploadExecutor`）拒绝时把上传记录置 `failed`，不退回请求线程同步执行；`conversation-title` 池（bean `conversationTitleExecutor`）拒绝时保留首问临时标题，不影响主对话落库。以下环境变量映射到 `thread-pool.document-upload.*`：
+线程池按池名嵌套配置 `thread-pool.<池名>.*`（每业务一个专用池，互不共用）。`document-upload` 池（bean `documentUploadExecutor`）拒绝时把上传记录置 `failed`，不退回请求线程同步执行。以下环境变量映射到 `thread-pool.document-upload.*`：
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
@@ -166,22 +166,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `THREAD_POOL_KEEP_ALIVE_SECONDS` | 线程空闲存活秒数 | 否 | `60` | `60` |
 | `THREAD_POOL_THREAD_NAME_PREFIX` | 线程名前缀 | 否 | `document-file-upload-` | `document-file-upload-` |
 
-`conversation-title` 默认值：`core-pool-size=1`、`max-pool-size=2`、`queue-capacity=50`、`keep-alive-seconds=60`、`thread-name-prefix=conversation-title-`；如需调整，在 yml 中覆盖 `thread-pool.conversation-title.*`。
-
-### 4.12.1 对话标题生成（tolink.chat.title-generation.*）
-
-首轮 `chat_turn` 落库时先写入首问临时标题；事务提交后，Java 使用用户本轮 Chat 配置（不可用则回退默认 CHAT 配置）的 OpenAI-compatible chat completions 异步生成自然短标题。失败、池满拒绝、配置不可用或用户已手动改成其它标题时保留当前标题。
-
-| 配置项 | 用途 | 默认值 |
-|------|------|--------|
-| `tolink.chat.title-generation.enabled` | 是否启用模型标题生成；关闭时仅使用首问临时标题 | `true` |
-| `tolink.chat.title-generation.max-length` | 标题清洗后的最大字符数 | `30` |
-| `tolink.chat.title-generation.timeout-ms` | 模型 HTTP 调用连接/读/写超时 | `3000` |
-| `tolink.chat.title-generation.max-tokens` | 标题生成最大输出 token | `32` |
-| `tolink.chat.title-generation.temperature` | 标题生成温度 | `0.2` |
-| `tolink.chat.title-generation.max-answer-chars` | 标题生成时最多携带的首轮回答字符数 | `800` |
-
-### 4.12.2 文档上传异步化（tolink.document-file.upload-async.*）
+### 4.12.1 文档上传异步化（tolink.document-file.upload-async.*）
 
 文档上传异步化的兜底配置（无对应 `THREAD_POOL_*` 环境变量，按需在 yml 覆盖）：
 

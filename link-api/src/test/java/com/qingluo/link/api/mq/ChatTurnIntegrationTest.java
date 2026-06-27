@@ -113,6 +113,7 @@ class ChatTurnIntegrationTest {
                 "\"conversation_id\":" + conversationId + ",\"turn_id\":\"" + turnId + "\","
                 + "\"request_id\":\"req-gen-1\",\"user_id\":" + userId + ","
                 + "\"query\":\"什么是RAG\",\"answer\":\"RAG 是检索增强生成，结合检索与大模型。\","
+                + "\"title\":\"RAG 入门\","
                 + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
                 + "\"references\":[\"chunk-1\",\"chunk-2\",\"chunk-3\"],\"latency_ms\":1350,\"status\":\"COMPLETED\""));
 
@@ -137,7 +138,7 @@ class ChatTurnIntegrationTest {
                 "SELECT * FROM chat_conversation WHERE id = ?", conversationId);
         assertThat(conv.get("last_config_id")).isEqualTo(7L);
         assertThat(conv.get("last_model_name")).isEqualTo("gpt-4");
-        assertThat(conv.get("title")).isEqualTo("什么是RAG");
+        assertThat(conv.get("title")).isEqualTo("RAG 入门");
     }
 
     @Test

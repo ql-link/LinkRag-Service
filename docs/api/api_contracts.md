@@ -133,7 +133,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 >
 > 消息列表（`MessageDTO`）暴露轮次状态供前端重载判定（chat-stream-resilient-persist）：`status` = `GENERATING` / `COMPLETED` / `FAILED`，`errorCode` / `errorMessage` 仅 `FAILED` 非空，`turnId` 为前端每轮稳定 UUID（轮次幂等键）。列表**返回在途 `GENERATING` 消息**（带部分 `answer`），不做状态过滤，按 `createdAt` 升序。
 >
-> 会话创建时默认标题为“新对话”；首轮 `chat_turn` 落库时先用首问清洗截断为临时标题，随后 Java 在事务提交后异步调用用户本轮 Chat 配置（不可用则回退用户默认 CHAT 配置）的 OpenAI-compatible chat completions 生成自然短标题。标题生成失败、线程池拒绝或配置不可用时保留临时标题；异步回写前若用户已改成其它标题则跳过，不覆盖用户手动标题。
+> 会话创建时默认标题为“新对话”；对话标题由 Python 问答链路生成并随 `tolink.rag.chat_turn.title` 上报。Java 不再发起标题 LLM 调用，也不再用首问生成临时标题；仅在当前标题为空或仍为默认“新对话”时落库上游标题，用户已手动改成其它标题则跳过，不覆盖。
 >
 > `POST /api/v1/knowledge/chunks/batch` 请求体为 `{"chunkIds":["chunk-1","chunk-2"]}`，单次最多 100 个。响应 `data` 数组元素含 `chunkId` / `documentId` / `fileName` / `content` / `score`；当前历史现查不保存召回分数，`score` 为 `null`。接口按当前登录用户过滤 `kb_document_chunk.user_id` 且只返回 `lifecycle_status='ACTIVE'`、正文非空的片段；不存在、越权或已移除的 chunk 会被跳过，返回顺序与请求中的可返回 chunk 顺序一致。
 

@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
- * 线程池多池就绪测试，覆盖 S17（独立专用池 / 无 customThreadPool）、S18（嵌套 key 绑定）、S20（非法配置启动失败）。
+ * 线程池配置测试，覆盖 S17（独立专用池 / 无 customThreadPool）、S18（嵌套 key 绑定）、S20（非法配置启动失败）。
  */
 class ThreadPoolConfigTest {
 
@@ -25,23 +25,15 @@ class ThreadPoolConfigTest {
                 "thread-pool.document-upload.max-pool-size=10",
                 "thread-pool.document-upload.queue-capacity=50",
                 "thread-pool.document-upload.keep-alive-seconds=60",
-                "thread-pool.document-upload.thread-name-prefix=document-file-upload-",
-                "thread-pool.conversation-title.core-pool-size=1",
-                "thread-pool.conversation-title.max-pool-size=2",
-                "thread-pool.conversation-title.queue-capacity=10",
-                "thread-pool.conversation-title.thread-name-prefix=conversation-title-")
+                "thread-pool.document-upload.thread-name-prefix=document-file-upload-")
             .run(ctx -> {
                 assertThat(ctx).hasBean("documentUploadExecutor");
-                assertThat(ctx).hasBean("conversationTitleExecutor");
+                assertThat(ctx).doesNotHaveBean("conversationTitleExecutor");
                 assertThat(ctx).doesNotHaveBean("customThreadPool");
                 Executor executor = (Executor) ctx.getBean("documentUploadExecutor");
                 assertThat(executor).isInstanceOf(ThreadPoolTaskExecutor.class);
                 assertThat(((ThreadPoolTaskExecutor) executor).getThreadNamePrefix())
                     .isEqualTo("document-file-upload-");
-                Executor titleExecutor = (Executor) ctx.getBean("conversationTitleExecutor");
-                assertThat(titleExecutor).isInstanceOf(ThreadPoolTaskExecutor.class);
-                assertThat(((ThreadPoolTaskExecutor) titleExecutor).getThreadNamePrefix())
-                    .isEqualTo("conversation-title-");
             });
     }
 
