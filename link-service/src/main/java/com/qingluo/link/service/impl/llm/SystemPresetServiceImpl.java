@@ -1,16 +1,14 @@
 package com.qingluo.link.service.impl.llm;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
-import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
-import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.enums.ErrorCode;
@@ -22,17 +20,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 /**
  * 系统预设服务实现。
  *
- * <p>预设以平台 Key 形式集中维护；注册时复制进用户配置表。预设与用户配置字段对齐，
- * provider_type/protocol/api_base_url 在创建预设时从模型能力层复制并自带，镜像时直接平移，
- * 不再 join 厂商表；api_key 密文原样搬运（仅在真正调用 LLM 时才解密）。</p>
+ * <p>预设以 LinkRag 平台 Key 形式集中维护；用户没有自配生效模型时由
+ * {@link EffectiveLLMConfigServiceImpl} 回退读取。本服务在事务内保证同一能力同时只有一条
+ * active + default 的系统兜底预设。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -40,54 +36,9 @@ public class SystemPresetServiceImpl implements SystemPresetService {
 
     private final SystemPresetMapper systemPresetMapper;
     private final SystemProviderMapper systemProviderMapper;
-    private final UserLLMConfigMapper userLLMConfigMapper;
     private final ProviderModelService providerModelService;
     private final LLMCapabilityService llmCapabilityService;
     private final ApiKeyEncryptService apiKeyEncryptService;
-
-    @Override
-    @Transactional
-    /**
-     * 注册时复制全部 active 预设进用户配置表。
-     *
-     * <p>同一能力只让首条预设 is_default=true（生效唯一），其余作为常备备选；
-     * 已存在同预设行则跳过，保证注册写入（含重试触发多次）幂等不重复。</p>
-     */
-    public void applyPresetsForNewUser(Long userId) {
-        List<SystemPreset> presets = systemPresetMapper.selectList(
-                new LambdaQueryWrapper<SystemPreset>().eq(SystemPreset::getIsActive, true)
-        );
-
-        Set<String> defaultedCapabilities = new HashSet<>();
-        for (SystemPreset preset : presets) {
-            SystemProvider provider = systemProviderMapper.selectById(preset.getProviderId());
-            if (provider == null) {
-                // 预设关联的厂商已被删除，跳过该条，不阻断整体注册
-                continue;
-            }
-            if (presetAlreadyApplied(userId, preset)) {
-                continue;
-            }
-
-            // 同一能力仅首条预设设为生效，避免单能力出现多个生效
-            boolean asDefault = defaultedCapabilities.add(preset.getCapability());
-
-            // 预设自带 provider_type/protocol/api_base_url 事实，直接平移，不再 join 厂商表取值
-            UserLLMConfig config = new UserLLMConfig();
-            config.setUserId(userId);
-            config.setProviderId(preset.getProviderId());
-            config.setProviderType(preset.getProviderType());
-            config.setApiKey(preset.getApiKey());
-            config.setApiBaseUrl(preset.getApiBaseUrl());
-            config.setProtocol(preset.getProtocol());
-            config.setModelName(preset.getModelName());
-            config.setCapability(preset.getCapability());
-            config.setIsActive(true);
-            config.setIsDefault(asDefault);
-            config.setIsSystemPreset(true);
-            userLLMConfigMapper.insert(config);
-        }
-    }
 
     @Override
     @Transactional
@@ -117,6 +68,10 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         preset.setApiBaseUrl(model.getApiBaseUrl());
         preset.setApiKey(apiKeyEncryptService.encrypt(request.getApiKey()));
         preset.setIsActive(true);
+        preset.setIsDefault(Boolean.TRUE.equals(request.getIsDefault()));
+        if (Boolean.TRUE.equals(preset.getIsDefault())) {
+            clearDefaultForCapability(capability, null);
+        }
         systemPresetMapper.insert(preset);
         return preset;
     }
@@ -151,7 +106,19 @@ public class SystemPresetServiceImpl implements SystemPresetService {
             preset.setApiKey(apiKeyEncryptService.encrypt(request.getApiKey()));
         }
         if (request.getIsActive() != null) {
+            if (Boolean.FALSE.equals(request.getIsActive()) && Boolean.TRUE.equals(preset.getIsDefault())) {
+                throw new BusinessException(400, "当前系统默认预设不能直接禁用，请先指定替代默认预设", 400);
+            }
             preset.setIsActive(request.getIsActive());
+        }
+        if (request.getIsDefault() != null) {
+            if (Boolean.TRUE.equals(request.getIsDefault())) {
+                if (!Boolean.TRUE.equals(preset.getIsActive())) {
+                    throw new BusinessException(400, "禁用的系统预设不能设为默认", 400);
+                }
+                clearDefaultForCapability(preset.getCapability(), preset.getId());
+            }
+            preset.setIsDefault(request.getIsDefault());
         }
 
         systemPresetMapper.updateById(preset);
@@ -162,7 +129,22 @@ public class SystemPresetServiceImpl implements SystemPresetService {
     @Transactional
     public void togglePreset(Long id, boolean isActive) {
         SystemPreset preset = requirePreset(id);
+        if (!isActive && Boolean.TRUE.equals(preset.getIsDefault())) {
+            throw new BusinessException(400, "当前系统默认预设不能直接禁用，请先指定替代默认预设", 400);
+        }
         preset.setIsActive(isActive);
+        systemPresetMapper.updateById(preset);
+    }
+
+    @Override
+    @Transactional
+    public void setDefaultPreset(Long id) {
+        SystemPreset preset = requirePreset(id);
+        if (!Boolean.TRUE.equals(preset.getIsActive())) {
+            throw new BusinessException(400, "禁用的系统预设不能设为默认", 400);
+        }
+        clearDefaultForCapability(preset.getCapability(), preset.getId());
+        preset.setIsDefault(true);
         systemPresetMapper.updateById(preset);
     }
 
@@ -206,17 +188,14 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         preset.setApiBaseUrl(model.getApiBaseUrl());
     }
 
-    /**
-     * 判断该用户是否已存在同 (厂商,模型,能力) 的预设行，用于注册写入幂等。
-     */
-    private boolean presetAlreadyApplied(Long userId, SystemPreset preset) {
-        return userLLMConfigMapper.selectCount(
-                new LambdaQueryWrapper<UserLLMConfig>()
-                        .eq(UserLLMConfig::getUserId, userId)
-                        .eq(UserLLMConfig::getProviderId, preset.getProviderId())
-                        .eq(UserLLMConfig::getModelName, preset.getModelName())
-                        .eq(UserLLMConfig::getCapability, preset.getCapability())
-                        .eq(UserLLMConfig::getIsSystemPreset, true)
-        ) > 0;
+    private void clearDefaultForCapability(String capability, Long excludeId) {
+        LambdaUpdateWrapper<SystemPreset> wrapper = new LambdaUpdateWrapper<SystemPreset>()
+                .eq(SystemPreset::getCapability, capability)
+                .eq(SystemPreset::getIsDefault, true)
+                .set(SystemPreset::getIsDefault, false);
+        if (excludeId != null) {
+            wrapper.ne(SystemPreset::getId, excludeId);
+        }
+        systemPresetMapper.update(null, wrapper);
     }
 }

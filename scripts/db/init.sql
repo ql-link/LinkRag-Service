@@ -56,24 +56,26 @@ CREATE TABLE IF NOT EXISTS llm_provider_model (
     INDEX idx_provider_cap (provider_id, capability)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '厂商模型能力目录表';
 
--- 2.2 系统预设表（管理员预配整套可用配置，自带平台 Key，注册时复制进用户配置表）
+-- 2.2 系统预设表（LinkRag 平台兜底配置，自带平台 Key；用户无自配默认时按能力回退读取）
 CREATE TABLE IF NOT EXISTS llm_system_preset (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
     provider_id     BIGINT UNSIGNED NOT NULL COMMENT '关联 llm_system_provider.id',
     model_name      VARCHAR(128)    NOT NULL COMMENT '模型名',
     capability      VARCHAR(32)     NOT NULL COMMENT '能力标识',
-    provider_type   VARCHAR(32)     COMMENT '厂商类型（与用户配置对齐，镜像免 join）',
+    provider_type   VARCHAR(32)     COMMENT '厂商类型快照（LinkRag 系统兜底解析直接读取）',
     protocol        VARCHAR(32)     COMMENT '调用协议（创建预设时复制自模型能力层）',
     api_base_url    VARCHAR(512)    COMMENT '调用入口完整端点 URL（复制自模型能力层）',
     api_key         VARCHAR(512)    NOT NULL COMMENT '平台 Key（加密）',
-    is_active       BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否对新用户下发',
+    is_active       BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否启用为系统兜底候选',
+    is_default      BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '是否为该能力的系统兜底默认配置',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    UNIQUE KEY uk_preset_provider_model_cap (provider_id, model_name, capability)
+    UNIQUE KEY uk_preset_provider_model_cap (provider_id, model_name, capability),
+    INDEX idx_system_preset_default (provider_type, capability, is_active, is_default)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '系统预设表';
 
--- 3. 用户级 LLM 配置表（下游唯一生效源，Python 直读；系统预设与用户自配统一汇入）
+-- 3. 用户级 LLM 配置表（仅用户自配；系统兜底读取 llm_system_preset）
 CREATE TABLE IF NOT EXISTS llm_user_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
@@ -86,7 +88,7 @@ CREATE TABLE IF NOT EXISTS llm_user_config (
     capability          VARCHAR(32)     NOT NULL DEFAULT 'CHAT' COMMENT '专用能力标识：CHAT/EMBEDDING/SPARSE_EMBEDDING/RERANK 等',
     is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '模型启停 + 生效过滤',
     is_default          BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '该能力是否生效（单用户单能力唯一）',
-    is_system_preset    BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '系统预设行（只读）',
+    is_system_preset    BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '历史兼容字段；新用户不再写系统预设镜像行',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 

@@ -21,7 +21,7 @@ toLink-Service/
 
 ## 构建与测试
 
-根 `pom.xml` 统一配置 Maven Surefire `2.22.2`，使各模块 JUnit 5 测试按相同方式执行。提交前运行：
+根 `pom.xml` 统一配置 Maven Surefire `2.22.2`，使各模块 JUnit 5 测试按相同方式执行；同时在 dependencyManagement 中锁定 OkHttp `4.12.0` / Okio `3.6.0`，避免 Spring Boot 2.5 默认的 OkHttp 3.x 与 MinIO 8.5.x 运行期 API 不兼容。提交前运行：
 
 ```bash
 mvn clean test

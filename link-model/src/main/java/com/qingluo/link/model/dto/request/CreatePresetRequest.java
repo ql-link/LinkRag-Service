@@ -8,8 +8,8 @@ import javax.validation.constraints.NotNull;
 /**
  * 创建系统预设请求（管理端）
  *
- * <p>预配一条整套可用配置：指定厂商下某模型的某能力，并附平台 Key（入库前加密）。
- * 用户注册时按 active 预设复制进用户配置表，实现开箱即用。</p>
+ * <p>预配一条系统兜底配置：指定厂商下某模型的某能力，并附平台 Key（入库前加密）。
+ * 当用户没有自配生效模型时，Java 回退到对应能力的 active + default 系统预设。</p>
  */
 @Data
 @Schema(description = "创建系统预设请求")
@@ -30,4 +30,7 @@ public class CreatePresetRequest {
     @NotBlank(message = "平台 Key 不能为空")
     @Schema(description = "平台 Key（明文，入库前加密）", example = "sk-platform-xxxxx")
     private String apiKey;
+
+    @Schema(description = "是否设为该能力的系统兜底默认配置", example = "false")
+    private Boolean isDefault;
 }

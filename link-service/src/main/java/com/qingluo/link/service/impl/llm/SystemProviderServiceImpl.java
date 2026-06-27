@@ -42,6 +42,8 @@ public class SystemProviderServiceImpl implements SystemProviderService {
     private final ProviderModelService providerModelService;
     private final ProviderCatalogCacheService providerCatalogCacheService;
 
+    private static final String LINKRAG_PROVIDER_TYPE = "linkrag";
+
     @Override
     /**
      * 查询所有启用中的系统厂商配置。
@@ -96,6 +98,7 @@ public class SystemProviderServiceImpl implements SystemProviderService {
                 .filter(model -> normalizedCapability == null || normalizedCapability.equals(model.getCapability()))
                 .collect(Collectors.groupingBy(ProviderModel::getProviderId));
         return providers.stream()
+                .filter(provider -> !LINKRAG_PROVIDER_TYPE.equals(provider.getProviderType()))
                 .map(provider -> toProviderModelDTO(provider, modelsByProvider.getOrDefault(provider.getId(), List.of())))
                 .filter(dto -> !dto.getModels().isEmpty())
                 .toList();

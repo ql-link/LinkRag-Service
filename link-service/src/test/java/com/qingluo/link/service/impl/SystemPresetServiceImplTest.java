@@ -1,40 +1,42 @@
 package com.qingluo.link.service.impl;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.config.GlobalConfig;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
-import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
-import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.impl.llm.SystemPresetServiceImpl;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * {@link SystemPresetServiceImpl} 单元测试，承接 acceptance 预设字段对齐与注册写入类。
+ * {@link SystemPresetServiceImpl} 单元测试，承接系统兜底预设字段对齐与单能力默认唯一。
  */
 @ExtendWith(MockitoExtension.class)
 class SystemPresetServiceImplTest {
@@ -43,8 +45,6 @@ class SystemPresetServiceImplTest {
     private SystemPresetMapper systemPresetMapper;
     @Mock
     private SystemProviderMapper systemProviderMapper;
-    @Mock
-    private UserLLMConfigMapper userLLMConfigMapper;
     @Mock
     private ProviderModelService providerModelService;
     @Mock
@@ -55,60 +55,12 @@ class SystemPresetServiceImplTest {
     @InjectMocks
     private SystemPresetServiceImpl service;
 
-    @Test
-    @DisplayName("注册镜像预设：直接平移预设自带 provider_type/protocol/api_base_url（不 join 厂商取值）")
-    void applyPresetsForNewUser_movesPresetSelfCarriedFacts() {
-        SystemPreset preset = preset(1L, 5L, "gte-rerank", "RERANK",
-                "aliyun", "dashscope", "https://dashscope.aliyuncs.com/api/v1", "ENC_PLATFORM");
-        given(systemPresetMapper.selectList(any())).willReturn(List.of(preset));
-        // 厂商存在性检查仍保留（跳过孤儿预设），但字段值取自 preset 而非 provider
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "aliyun", "https://other"));
-        given(userLLMConfigMapper.selectCount(any())).willReturn(0L);
-
-        service.applyPresetsForNewUser(100L);
-
-        ArgumentCaptor<UserLLMConfig> captor = ArgumentCaptor.forClass(UserLLMConfig.class);
-        verify(userLLMConfigMapper).insert(captor.capture());
-        UserLLMConfig written = captor.getValue();
-        assertThat(written.getIsSystemPreset()).isTrue();
-        assertThat(written.getIsDefault()).isTrue();
-        assertThat(written.getApiKey()).isEqualTo("ENC_PLATFORM");
-        assertThat(written.getProviderType()).isEqualTo("aliyun");
-        assertThat(written.getProtocol()).isEqualTo("dashscope");
-        assertThat(written.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
-        assertThat(written.getUserId()).isEqualTo(100L);
-    }
-
-    @Test
-    @DisplayName("注册写入幂等：已存在同预设行则跳过，不重复灌入")
-    void applyPresetsForNewUser_idempotent() {
-        SystemPreset preset = preset(1L, 5L, "deepseek-chat", "CHAT",
-                "deepseek", "openai", "https://api.deepseek.com/v1", "ENC");
-        given(systemPresetMapper.selectList(any())).willReturn(List.of(preset));
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "url"));
-        given(userLLMConfigMapper.selectCount(any())).willReturn(1L);
-
-        service.applyPresetsForNewUser(100L);
-
-        verify(userLLMConfigMapper, never()).insert(any());
-    }
-
-    @Test
-    @DisplayName("同一能力多条预设只让首条生效，避免单能力多生效")
-    void applyPresetsForNewUser_singleDefaultPerCapability() {
-        SystemPreset p1 = preset(1L, 5L, "deepseek-chat", "CHAT",
-                "deepseek", "openai", "https://api.deepseek.com/v1", "ENC1");
-        SystemPreset p2 = preset(2L, 5L, "deepseek-coder", "CHAT",
-                "deepseek", "openai", "https://api.deepseek.com/v1", "ENC2");
-        given(systemPresetMapper.selectList(any())).willReturn(List.of(p1, p2));
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "url"));
-        given(userLLMConfigMapper.selectCount(any())).willReturn(0L);
-
-        service.applyPresetsForNewUser(100L);
-
-        ArgumentCaptor<UserLLMConfig> captor = ArgumentCaptor.forClass(UserLLMConfig.class);
-        verify(userLLMConfigMapper, times(2)).insert(captor.capture());
-        assertThat(captor.getAllValues()).filteredOn(c -> Boolean.TRUE.equals(c.getIsDefault())).hasSize(1);
+    @BeforeAll
+    static void initTableInfoCache() {
+        MybatisConfiguration configuration = new MybatisConfiguration();
+        GlobalConfigUtils.setGlobalConfig(configuration,
+                new GlobalConfig().setDbConfig(new GlobalConfig.DbConfig()));
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), SystemPreset.class);
     }
 
     @Test
@@ -133,6 +85,30 @@ class SystemPresetServiceImplTest {
         assertThat(result.getProtocol()).isEqualTo("dashscope");
         assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
         assertThat(result.getProviderType()).isEqualTo("aliyun");
+        assertThat(result.getIsDefault()).isFalse();
+    }
+
+    @Test
+    @DisplayName("创建默认预设：清理同能力其他系统默认")
+    void createPreset_asDefaultClearsOtherDefaults() {
+        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "linkrag", "https://linkrag"));
+        given(providerModelService.findActiveModelCapability(5L, "linkrag-chat", "CHAT"))
+                .willReturn(model("openai", "https://linkrag/v1/chat/completions"));
+        given(apiKeyEncryptService.encrypt("sk-platform")).willReturn("ENC_P");
+
+        CreatePresetRequest request = new CreatePresetRequest();
+        request.setProviderId(5L);
+        request.setModelName("linkrag-chat");
+        request.setCapability("CHAT");
+        request.setApiKey("sk-platform");
+        request.setIsDefault(true);
+
+        SystemPreset result = service.createPreset(request);
+
+        assertThat(result.getProviderType()).isEqualTo("linkrag");
+        assertThat(result.getIsDefault()).isTrue();
+        verify(systemPresetMapper).update(eq(null), any(LambdaUpdateWrapper.class));
+        verify(systemPresetMapper).insert(any(SystemPreset.class));
     }
 
     @Test
@@ -184,6 +160,23 @@ class SystemPresetServiceImplTest {
     }
 
     @Test
+    @DisplayName("更新预设为默认：清理同能力其他系统默认")
+    void updatePreset_setsDefaultAndClearsOthers() {
+        SystemPreset existing = preset(1L, 5L, "linkrag-chat", "CHAT",
+                "linkrag", "openai", "https://old", "ENC_OLD");
+        given(systemPresetMapper.selectById(1L)).willReturn(existing);
+
+        UpdatePresetRequest request = new UpdatePresetRequest();
+        request.setIsDefault(true);
+
+        SystemPreset result = service.updatePreset(1L, request);
+
+        assertThat(result.getIsDefault()).isTrue();
+        verify(systemPresetMapper).update(eq(null), any(LambdaUpdateWrapper.class));
+        verify(systemPresetMapper).updateById(existing);
+    }
+
+    @Test
     @DisplayName("启停预设：仅更新 is_active")
     void togglePreset_updatesActiveFlag() {
         SystemPreset existing = preset(1L, 5L, "deepseek-chat", "CHAT",
@@ -193,6 +186,34 @@ class SystemPresetServiceImplTest {
         service.togglePreset(1L, false);
 
         assertThat(existing.getIsActive()).isFalse();
+        verify(systemPresetMapper).updateById(existing);
+    }
+
+    @Test
+    @DisplayName("禁用当前系统默认预设时拒绝，避免兜底缺口")
+    void togglePreset_rejectsDisablingDefaultPreset() {
+        SystemPreset existing = preset(1L, 5L, "linkrag-chat", "CHAT",
+                "linkrag", "openai", "https://old", "ENC_OLD");
+        existing.setIsDefault(true);
+        given(systemPresetMapper.selectById(1L)).willReturn(existing);
+
+        assertThatThrownBy(() -> service.togglePreset(1L, false))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前系统默认预设不能直接禁用，请先指定替代默认预设");
+        verify(systemPresetMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("显式设置系统默认预设：清理同能力其他默认并更新目标")
+    void setDefaultPreset_setsDefault() {
+        SystemPreset existing = preset(1L, 5L, "linkrag-chat", "CHAT",
+                "linkrag", "openai", "https://old", "ENC_OLD");
+        given(systemPresetMapper.selectById(1L)).willReturn(existing);
+
+        service.setDefaultPreset(1L);
+
+        assertThat(existing.getIsDefault()).isTrue();
+        verify(systemPresetMapper).update(eq(null), any(LambdaUpdateWrapper.class));
         verify(systemPresetMapper).updateById(existing);
     }
 
@@ -208,6 +229,7 @@ class SystemPresetServiceImplTest {
         preset.setApiBaseUrl(apiBaseUrl);
         preset.setApiKey(encKey);
         preset.setIsActive(true);
+        preset.setIsDefault(false);
         return preset;
     }
 

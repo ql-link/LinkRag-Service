@@ -40,7 +40,8 @@
 | GET | `/api/v1/admin/system-presets` | 系统预设列表（平台 Key 脱敏） |
 | POST | `/api/v1/admin/system-presets` | 新增系统预设（平台 Key 加密入库） |
 | PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（变更厂商/模型/能力时复制模型能力层协议与入口） |
-| PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（控制是否下发给新用户） |
+| PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（当前默认需先指定替代项） |
+| PATCH | `/api/v1/admin/system-presets/{id}/default` | 设为该能力的 LinkRag 系统兜底默认 |
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
@@ -50,13 +51,14 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/llm/providers` | 可用厂商与模型能力（来源 `llm_provider_model`） |
-| GET | `/api/v1/llm/configs` | 用户配置列表（含系统预设行） |
+| GET | `/api/v1/llm/configs` | 用户可用配置列表（用户自配 + LinkRag 只读配置） |
 | POST | `/api/v1/llm/configs/setup-provider` | 配置厂商：选厂商+填厂商级 Key，自动展开整厂商模型 |
 | PATCH | `/api/v1/llm/configs/toggle-model` | 模型启停（按厂商+模型批量） |
 | PUT | `/api/v1/llm/configs/effective` | 按能力选生效模型 |
-| GET | `/api/v1/llm/configs/default` | 取某能力生效配置 |
-| PATCH | `/api/v1/llm/configs/{id}/default` | 设某能力生效（含切换到/切回系统预设） |
-| DELETE | `/api/v1/llm/configs/{id}` | 删除配置（系统预设只读，拒删） |
+| GET | `/api/v1/llm/configs/default` | 取某能力实际生效配置（用户自配优先，缺省回退 LinkRag 系统预设） |
+| PATCH | `/api/v1/llm/configs/{id}/default` | 设某能力用户自配生效 |
+| PATCH | `/api/v1/llm/configs/default/system` | 兼容接口：清空某能力用户自配默认，恢复 LinkRag 配置 |
+| DELETE | `/api/v1/llm/configs/{id}` | 删除用户自配配置 |
 | GET | `/api/v1/llm/usage/summary` | 用量汇总 |
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
@@ -76,15 +78,17 @@
 > `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
+> `provider_type=linkrag` 是系统服务厂商：不出现在用户侧可添加厂商列表，用户也不能调用 `setup-provider` 配置它的 Key（返回 `SYSTEM_PROVIDER_READONLY(10016/400)`）；但会作为 `GET /configs` 的只读配置项返回，用户可以选择使用。
 >
-> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力生效唯一）。`PATCH /configs/toggle-model` 独立启停模型（关停后按能力选生效时不展示）。系统预设注册时写入用户配置（`is_system_preset=true`、`is_default=true`），常备只读，仅可经 `PATCH /configs/{id}/default` 按能力切换是否选其生效。`GET /configs` 支持 `capability` / `isActive` 过滤。错误码：删除预设 `10013`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
+> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力唯一）。`providerType=linkrag` 时，`PUT /configs/effective` 清空该能力用户自配默认，使 LinkRag 只读配置生效。`PATCH /configs/toggle-model` 独立启停用户自配模型；LinkRag 不可编辑/删除/启停。`GET /configs/default` 返回 `EffectiveLLMConfigDTO`，字段 `source` 为 `USER` 或 `SYSTEM`，供执行端按来源表读取；前端配置页优先使用 `GET /configs` 的 `isDefault` 展示当前生效项。`GET /configs` 支持 `capability` / `isActive` 过滤，返回用户自配配置 + LinkRag 只读配置；`UserLLMConfigDTO.isEditable=false` 表示只读，不允许编辑、删除、启停或改 Key。错误码：系统服务厂商不可自配 `10016`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
 
 > **LLM 协议改造字段变更（破坏性 + 加法）**，详见下文「LLM 协议与入口契约」：
 > - `GET /api/v1/llm/providers`：`ModelCapabilityDTO.capabilities` 由 `List<String>`（能力名）**升级为** `List<ModelCapabilityDetailDTO>`，每元素为 `{ capability, protocol, apiBaseUrl }`（**破坏性，前端需同批适配**）。`apiBaseUrl` 为**完整端点 URL**（见下「base 形态约定」）。例：`{"modelName":"qwen-max","capabilities":[{"capability":"CHAT","protocol":"openai","apiBaseUrl":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"}]}`。
-> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `protocol`（运行快照，复制自模型能力层）；`SetupProviderRequest` 请求体不变。
+> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `protocol`（运行快照，复制自模型能力层）与 `isEditable`（LinkRag 为 `false`）；`SetupProviderRequest` 请求体不变。
 > - `POST /api/v1/admin/providers/{providerId}/models`：`AddProviderModelRequest` 新增 `protocol`（`NotBlank`，须为 5 协议枚举）、`apiBaseUrl`（`NotBlank`）；缺失或非法分别返回 `10014` / `10015`（400）。
 > - `POST /api/v1/admin/providers`：`CreateProviderRequest` 新增 `defaultProtocol`（厂商默认协议模板）。
-> - `POST /api/v1/admin/system-presets`：请求体不变；`createPreset` 内部按 (providerId, modelName, capability) 查 `llm_provider_model` 复制 `protocol` / `api_base_url`（事实来源单一，不接受管理员手填）。
+> - `GET /api/v1/llm/configs/default`：响应由 `UserLLMConfigDTO` 改为 `EffectiveLLMConfigDTO`，新增 `source` 与 `configId`，用于 Python 按来源表读取最终配置。
+> - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；`createPreset` 内部按 (providerId, modelName, capability) 查 `llm_provider_model` 复制 `protocol` / `api_base_url`（事实来源单一，不接受管理员手填）。当 `isDefault=true` 时自动解除同能力其他系统默认。
 
 ### LLM 协议与入口契约
 

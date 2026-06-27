@@ -9,10 +9,9 @@ import java.time.LocalDateTime;
  * 系统预设表
  * 对应表：llm_system_preset
  *
- * <p>管理员预配的整套可用配置模板，自带平台 Key（加密）。用户注册时按本表 active 行
- * 复制进 llm_user_config（is_system_preset=true），实现开箱即用。与 llm_user_config 字段对齐：
- * provider_type/protocol/api_base_url 自带事实字段（创建预设时从 llm_provider_model 复制），
- * 镜像时直接平移，不再 join 厂商表补全。</p>
+ * <p>管理员预配的系统兜底模型配置，自带平台 Key（加密）。用户没有自配生效模型时，
+ * Java 按能力回退到本表 active + default 的 LinkRag 系统预设。与 llm_user_config 字段对齐：
+ * provider_type/protocol/api_base_url 自带事实字段（创建预设时从 llm_provider_model 复制）。</p>
  */
 @Data
 @TableName("llm_system_preset")
@@ -35,17 +34,17 @@ public class SystemPreset {
     @TableField("capability")
     private String capability;
 
-    /** 与用户配置对齐：厂商类型快照，下沉自包含，镜像免 join。 */
+    /** 厂商类型快照：系统兜底解析直接读取，不再回查厂商表补齐运行字段。 */
     @Schema(description = "厂商类型", example = "openai")
     @TableField("provider_type")
     private String providerType;
 
-    /** 与用户配置对齐：复制自模型能力层事实，镜像时平移给 llm_user_config。 */
+    /** 复制自模型能力层事实，作为系统兜底运行快照。 */
     @Schema(description = "调用协议", example = "openai")
     @TableField("protocol")
     private String protocol;
 
-    /** 与用户配置对齐：复制自模型能力层事实，镜像时平移给 llm_user_config。 */
+    /** 复制自模型能力层事实，作为系统兜底运行快照。 */
     @Schema(description = "调用入口基地址", example = "https://api.openai.com/v1")
     @TableField("api_base_url")
     private String apiBaseUrl;
@@ -54,9 +53,13 @@ public class SystemPreset {
     @TableField("api_key")
     private String apiKey;
 
-    @Schema(description = "是否对新用户下发", example = "true")
+    @Schema(description = "是否启用为系统兜底候选", example = "true")
     @TableField("is_active")
     private Boolean isActive = true;
+
+    @Schema(description = "是否为该能力的系统兜底默认配置", example = "false")
+    @TableField("is_default")
+    private Boolean isDefault = false;
 
     @Schema(description = "创建时间")
     @TableField("created_at")

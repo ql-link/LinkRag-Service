@@ -46,6 +46,8 @@
         <fastjson.version>1.2.83</fastjson.version>
         <mybatis-plus-boot-starter.version>3.4.2</mybatis-plus-boot-starter.version>
         <maven-surefire-plugin.version>2.22.2</maven-surefire-plugin.version>
+        <okhttp.version>4.12.0</okhttp.version>
+        <okio.version>3.6.0</okio.version>
 
         <sa-token-spring-boot-starter.version>1.39.0</sa-token-spring-boot-starter.version>
         <okhttp.version>4.12.0</okhttp.version>
@@ -174,6 +176,11 @@
                 <groupId>com.squareup.okhttp3</groupId>
                 <artifactId>okhttp</artifactId>
                 <version>${okhttp.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okio</groupId>
+                <artifactId>okio</artifactId>
+                <version>${okio.version}</version>
             </dependency>
 
         </dependencies>

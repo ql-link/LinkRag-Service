@@ -266,7 +266,7 @@ public class AdminController {
      * 新增系统预设（平台 Key 入库前加密）。
      */
     @PostMapping("/system-presets")
-    @Operation(summary = "新增系统预设", description = "预配一条整套可用配置，平台 Key 入库前加密")
+    @Operation(summary = "新增系统预设", description = "预配一条 LinkRag 系统兜底配置，平台 Key 入库前加密")
     public Result<Void> createSystemPreset(@RequestBody @Validated CreatePresetRequest request) {
         systemPresetService.createPreset(request);
         return Result.success(null);
@@ -287,11 +287,21 @@ public class AdminController {
      * 启用/禁用系统预设。
      */
     @PatchMapping("/system-presets/{id}/active")
-    @Operation(summary = "启用/禁用系统预设", description = "控制该预设是否下发给新用户")
+    @Operation(summary = "启用/禁用系统预设", description = "控制该预设是否可作为系统兜底候选；当前默认预设需先指定替代项再禁用")
     public Result<Void> toggleSystemPreset(
             @Parameter(description = "预设ID") @PathVariable Long id,
             @Parameter(description = "是否启用") @RequestParam boolean isActive) {
         systemPresetService.togglePreset(id, isActive);
+        return Result.success(null);
+    }
+
+    /**
+     * 设置某条系统预设为其能力的系统兜底默认。
+     */
+    @PatchMapping("/system-presets/{id}/default")
+    @Operation(summary = "设置系统默认预设", description = "将该预设设为其能力的 LinkRag 系统兜底默认，并解除同能力其他默认")
+    public Result<Void> setDefaultSystemPreset(@Parameter(description = "预设ID") @PathVariable Long id) {
+        systemPresetService.setDefaultPreset(id);
         return Result.success(null);
     }
 

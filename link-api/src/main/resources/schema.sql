@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS llm_system_preset (
     api_base_url    VARCHAR(512),
     api_key         VARCHAR(512) NOT NULL,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    is_default      BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

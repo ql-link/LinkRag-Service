@@ -10,9 +10,11 @@ import com.qingluo.link.components.redis.service.CacheConsistencyService;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
+import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.UserLLMConfigMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.UserLLMConfig;
 import com.qingluo.link.model.dto.request.SelectEffectiveModelRequest;
 import com.qingluo.link.model.dto.request.SetupProviderRequest;
@@ -38,7 +40,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -53,6 +54,8 @@ class UserLLMConfigServiceImplTest {
 
     @Mock
     private UserLLMConfigMapper userLLMConfigMapper;
+    @Mock
+    private SystemPresetMapper systemPresetMapper;
     @Mock
     private SystemProviderService systemProviderService;
     @Mock
@@ -77,6 +80,7 @@ class UserLLMConfigServiceImplTest {
         GlobalConfigUtils.setGlobalConfig(configuration,
                 new GlobalConfig().setDbConfig(new GlobalConfig.DbConfig()));
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), UserLLMConfig.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), SystemPreset.class);
     }
 
     // ============ 二、配置厂商 ============
@@ -214,6 +218,20 @@ class UserLLMConfigServiceImplTest {
         verify(userLLMConfigMapper, never()).insert(any());
     }
 
+    @Test
+    @DisplayName("二·LinkRag 是系统兜底厂商，不允许用户配置 Key")
+    void setupProvider_rejectsLinkRag() {
+        SetupProviderRequest request = new SetupProviderRequest();
+        request.setProviderType("linkrag");
+        request.setApiKey("sk-user");
+
+        assertThatThrownBy(() -> service.setupProvider(7L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", ErrorCode.SYSTEM_PROVIDER_READONLY.getCode());
+        verify(systemProviderService, never()).getActiveByProviderType(any());
+        verify(userLLMConfigMapper, never()).insert(any());
+    }
+
     // ============ 三、模型启停 ============
 
     @Test
@@ -254,6 +272,20 @@ class UserLLMConfigServiceImplTest {
     }
 
     @Test
+    @DisplayName("四·选择 LinkRag 只读配置时清空用户默认并回退系统兜底")
+    void selectEffectiveModel_linkRagClearsUserDefault() {
+        SystemPreset preset = linkRagPreset(100L, "CHAT", "linkrag-chat");
+        given(systemPresetMapper.selectOne(any())).willReturn(preset);
+
+        SelectEffectiveModelRequest request = effectiveReq("chat", "linkrag", "linkrag-chat");
+        service.selectEffectiveModel(7L, request);
+
+        verify(userLLMConfigMapper).update(eq(null), any(LambdaUpdateWrapper.class));
+        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
+        verify(systemProviderService, never()).getActiveByProviderType(any());
+    }
+
+    @Test
     @DisplayName("四·不能选择已关闭的模型作为生效（MODEL_DISABLED）")
     void selectEffectiveModel_rejectsDisabledModel() {
         SystemProvider provider = providerOf(5L, "openai", "url");
@@ -286,36 +318,7 @@ class UserLLMConfigServiceImplTest {
         verify(userLLMConfigMapper, never()).updateById(any());
     }
 
-    // ============ 五、系统预设只读 ============
-
-    @Test
-    @DisplayName("五·删除系统预设被拒（PRESET_READONLY）")
-    void deleteConfig_rejectsSystemPreset() {
-        UserLLMConfig preset = config(11L, 7L, "deepseek", "deepseek-chat", "CHAT");
-        preset.setIsSystemPreset(true);
-        given(userLLMConfigMapper.selectOne(any())).willReturn(preset);
-
-        assertThatThrownBy(() -> service.deleteConfig(7L, 11L))
-                .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("code", ErrorCode.PRESET_READONLY.getCode());
-        verify(userLLMConfigMapper, never()).deleteById(anyLong());
-    }
-
-    @Test
-    @DisplayName("五·按能力切换到预设：放行 is_active 恒真的预设行设为生效")
-    void setDefaultConfig_switchesToPreset() {
-        UserLLMConfig preset = config(20L, 7L, "deepseek", "deepseek-chat", "CHAT");
-        preset.setIsSystemPreset(true);
-        given(userLLMConfigMapper.selectOne(any())).willReturn(preset);
-
-        service.setDefaultConfig(7L, 20L, "CHAT");
-
-        assertThat(preset.getIsDefault()).isTrue();
-        verify(userLLMConfigMapper).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(userLLMConfigMapper).updateById(preset);
-    }
-
-    // ============ 六、删除自配 + 取生效 ============
+    // ============ 五、删除自配 + 取自配默认 ============
 
     @Test
     @DisplayName("删除自配行成功并失效缓存")
@@ -327,6 +330,15 @@ class UserLLMConfigServiceImplTest {
 
         verify(userLLMConfigMapper).deleteById(11L);
         verify(cacheConsistencyService).evict(CacheEvictTarget.LLM_CONFIG, 11L);
+        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
+    }
+
+    @Test
+    @DisplayName("清空某能力用户自配默认，后续有效配置解析回退系统兜底")
+    void clearDefaultConfig_clearsUserDefault() {
+        service.clearDefaultConfig(7L, "chat");
+
+        verify(userLLMConfigMapper).update(eq(null), any(LambdaUpdateWrapper.class));
         verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
@@ -365,11 +377,53 @@ class UserLLMConfigServiceImplTest {
         List<UserLLMConfigDTO> cached = List.of(toDto(chat), toDto(embedding));
         given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any()))
                 .willReturn(cached);
+        given(systemPresetMapper.selectList(any())).willReturn(List.of());
 
         List<UserLLMConfigDTO> result = service.getConfigs(7L, "openai", "CHAT", true);
 
         assertThat(result).extracting(UserLLMConfigDTO::getModelName).containsExactly("gpt-4o");
         verify(userLLMConfigMapper, never()).selectList(any());
+    }
+
+    @Test
+    @DisplayName("读取配置列表合并 LinkRag 只读配置，用户无默认时 LinkRag 为生效")
+    void getConfigs_appendsReadonlyLinkRagConfig() {
+        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of());
+        given(systemPresetMapper.selectList(any())).willReturn(List.of(linkRagPreset(100L, "CHAT", "linkrag-chat")));
+        given(apiKeyEncryptService.maskApiKey("ENC_SYS")).willReturn("SY****");
+
+        List<UserLLMConfigDTO> result = service.getConfigs(7L, null, "chat", true);
+
+        assertThat(result).hasSize(1);
+        UserLLMConfigDTO linkRag = result.get(0);
+        assertThat(linkRag.getProviderType()).isEqualTo("linkrag");
+        assertThat(linkRag.getModelName()).isEqualTo("linkrag-chat");
+        assertThat(linkRag.getIsEditable()).isFalse();
+        assertThat(linkRag.getIsDefault()).isTrue();
+        assertThat(linkRag.getApiKeyMasked()).isEqualTo("SY****");
+    }
+
+    @Test
+    @DisplayName("读取配置列表存在用户默认时 LinkRag 可用但不是当前生效")
+    void getConfigs_linkRagNotDefaultWhenUserDefaultExists() {
+        UserLLMConfig userDefault = config(11L, 7L, "openai", "gpt-4o", "CHAT");
+        userDefault.setIsDefault(true);
+        given(apiKeyEncryptService.maskApiKey("ENC")).willReturn("EN****");
+        UserLLMConfigDTO userDefaultDto = toDto(userDefault);
+        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of(userDefaultDto));
+        given(systemPresetMapper.selectList(any())).willReturn(List.of(linkRagPreset(100L, "CHAT", "linkrag-chat")));
+        given(apiKeyEncryptService.maskApiKey("ENC_SYS")).willReturn("SY****");
+
+        List<UserLLMConfigDTO> result = service.getConfigs(7L, null, "chat", true);
+
+        assertThat(result).extracting(UserLLMConfigDTO::getProviderType)
+                .containsExactlyInAnyOrder("openai", "linkrag");
+        UserLLMConfigDTO linkRag = result.stream()
+                .filter(dto -> "linkrag".equals(dto.getProviderType()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(linkRag.getIsEditable()).isFalse();
+        assertThat(linkRag.getIsDefault()).isFalse();
     }
 
     // ============ helpers ============
@@ -426,7 +480,23 @@ class UserLLMConfigServiceImplTest {
         dto.setIsActive(config.getIsActive());
         dto.setIsDefault(config.getIsDefault());
         dto.setIsSystemPreset(config.getIsSystemPreset());
+        dto.setIsEditable(true);
         return dto;
+    }
+
+    private SystemPreset linkRagPreset(Long id, String capability, String modelName) {
+        SystemPreset preset = new SystemPreset();
+        preset.setId(id);
+        preset.setProviderId(99L);
+        preset.setProviderType("linkrag");
+        preset.setModelName(modelName);
+        preset.setCapability(capability);
+        preset.setApiKey("ENC_SYS");
+        preset.setApiBaseUrl("https://api.linkrag.local/v1");
+        preset.setProtocol("openai");
+        preset.setIsActive(true);
+        preset.setIsDefault(true);
+        return preset;
     }
 
     private SelectEffectiveModelRequest effectiveReq(String capability, String type, String model) {

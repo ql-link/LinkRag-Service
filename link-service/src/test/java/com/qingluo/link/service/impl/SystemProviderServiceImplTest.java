@@ -85,6 +85,20 @@ class SystemProviderServiceImplTest {
     }
 
     @Test
+    @DisplayName("一·用户侧可选厂商列表过滤 LinkRag 系统兜底厂商")
+    void getActiveProviderModels_hidesLinkRagProvider() {
+        givenCacheHit(new ProviderCatalogSnapshot(
+                List.of(ref(5L, "linkrag"), ref(6L, "openai")),
+                List.of(pm(5L, "linkrag-chat", "CHAT"), pm(6L, "gpt-4o", "CHAT"))));
+
+        List<ProviderModelDTO> result = service.getActiveProviderModels("CHAT");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getProviderType()).isEqualTo("openai");
+    }
+
+
+    @Test
     @DisplayName("一·一个模型的多种能力聚合为能力列表")
     void getActiveProviderModels_groupsMultiCapability() {
         givenCacheHit(new ProviderCatalogSnapshot(
