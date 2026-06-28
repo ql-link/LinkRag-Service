@@ -31,6 +31,12 @@ public class DatasetParseConfig {
     @TableField("dataset_id")
     private Long datasetId;
 
+    @TableField("sparse_embedding_config_id")
+    private Long sparseEmbeddingConfigId;
+
+    @TableField("dense_embedding_config_id")
+    private Long denseEmbeddingConfigId;
+
     @TableField(value = "chunking_config", typeHandler = JacksonTypeHandler.class)
     private ChunkingConfig chunkingConfig;
 

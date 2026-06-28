@@ -48,6 +48,8 @@ class DatasetControllerTest {
     private PasswordEncoder passwordEncoder;
 
     private static final Long TEST_USER_ID = 99989L;
+    private static final Long SPARSE_CONFIG_ID = 99891L;
+    private static final Long DENSE_CONFIG_ID = 99892L;
 
     private String token;
     private Long datasetId;
@@ -57,7 +59,9 @@ class DatasetControllerTest {
         jdbcTemplate.update("DELETE FROM chat_message");
         jdbcTemplate.update("DELETE FROM chat_conversation");
         jdbcTemplate.update("DELETE FROM document_original_file");
+        jdbcTemplate.update("DELETE FROM dataset_parse_config");
         jdbcTemplate.update("DELETE FROM dataset");
+        jdbcTemplate.update("DELETE FROM llm_user_config");
         jdbcTemplate.update("DELETE FROM sys_user");
 
         SysUser user = new SysUser();
@@ -69,9 +73,21 @@ class DatasetControllerTest {
         user.setRole("USER");
         user.setStatus(1);
         sysUserMapper.insert(user);
+        insertEmbeddingConfig(SPARSE_CONFIG_ID, TEST_USER_ID, "qwen-sparse", "SPARSE_EMBEDDING");
+        insertEmbeddingConfig(DENSE_CONFIG_ID, TEST_USER_ID, "text-embedding-v4", "EMBEDDING");
 
         StpUtil.login(TEST_USER_ID);
         token = StpUtil.getTokenValue();
+    }
+
+    private void insertEmbeddingConfig(Long id, Long userId, String modelName, String capability) {
+        jdbcTemplate.update("""
+            INSERT INTO llm_user_config (
+                id, user_id, provider_id, provider_type, api_key, api_base_url, protocol,
+                model_name, capability, is_active, is_default, is_system_preset
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, false)
+            """, id, userId, 1L, "aliyun", "encrypted-key",
+            "https://example.com/embeddings", "openai", modelName, capability);
     }
 
     @Test
@@ -79,7 +95,7 @@ class DatasetControllerTest {
     @DisplayName("创建数据集")
     void Should_CreateDataset_When_RequestValid() throws Exception {
         String requestJson = """
-            {"name":"测试数据集","description":"用于接口测试"}
+            {"name":"测试数据集","description":"用于接口测试","sparse_embedding_config_id":99891,"dense_embedding_config_id":99892}
             """;
 
         mockMvc.perform(post("/api/v1/datasets")

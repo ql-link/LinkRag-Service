@@ -10,6 +10,7 @@ import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
+import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetParseConfigService;
 import com.qingluo.link.service.DatasetService;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
 
     private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final DatasetService datasetService;
+    private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
     @Override
     public DatasetParseConfigResponse getConfig(Long userId, Long datasetId) {
@@ -51,13 +53,14 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         datasetService.detail(userId, datasetId);
         DatasetParseConfig existing = selectByOwner(userId, datasetId);
         if (existing != null) {
-            return overwriteRow(existing.getId(), request);
+            return overwriteRow(userId, existing, request);
         }
 
         DatasetParseConfig created = new DatasetParseConfig();
         created.setUserId(userId);
         created.setDatasetId(datasetId);
         created.setIsActive(true);
+        applyModelBindings(userId, created, null, request);
         applyConfigs(created, request);
         try {
             datasetParseConfigMapper.insert(created);
@@ -65,7 +68,7 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         } catch (DataIntegrityViolationException e) {
             // 并发下唯一键 uk_user_dataset 撞行：转为更新已存在的行。
             DatasetParseConfig concurrent = selectByOwner(userId, datasetId);
-            return overwriteRow(concurrent.getId(), request);
+            return overwriteRow(userId, concurrent, request);
         }
     }
 
@@ -74,9 +77,11 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
      * 若把 select 出的旧 updated_at 一并 updateById，会以旧值显式赋值，抑制 DB 的
      * ON UPDATE CURRENT_TIMESTAMP 自动刷新，导致「最后更新时间」不变。
      */
-    private DatasetParseConfigResponse overwriteRow(Long id, UpdateDatasetParseConfigRequest request) {
+    private DatasetParseConfigResponse overwriteRow(Long userId, DatasetParseConfig existing,
+                                                    UpdateDatasetParseConfigRequest request) {
         DatasetParseConfig update = new DatasetParseConfig();
-        update.setId(id);
+        update.setId(existing.getId());
+        applyModelBindings(userId, update, existing, request);
         applyConfigs(update, request);
         datasetParseConfigMapper.updateById(update);
         return assembleResponse(update);
@@ -101,6 +106,8 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     private DatasetParseConfigResponse assembleResponse(DatasetParseConfig entity) {
         DatasetParseConfigResponse resp = new DatasetParseConfigResponse();
         resp.setChunking(entity.getChunkingConfig() != null ? entity.getChunkingConfig() : new ChunkingConfig());
+        resp.setSparseEmbeddingConfigId(entity.getSparseEmbeddingConfigId());
+        resp.setDenseEmbeddingConfigId(entity.getDenseEmbeddingConfigId());
         resp.setEnhancement(entity.getEnhancementConfig() != null
             ? entity.getEnhancementConfig() : new EnhancementConfig());
         resp.setPdf(entity.getPdfConfig() != null ? entity.getPdfConfig() : new PdfConfig());
@@ -111,6 +118,8 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     private DatasetParseConfigResponse emptyResponse() {
         DatasetParseConfigResponse resp = new DatasetParseConfigResponse();
         resp.setChunking(new ChunkingConfig());
+        resp.setSparseEmbeddingConfigId(null);
+        resp.setDenseEmbeddingConfigId(null);
         resp.setEnhancement(new EnhancementConfig());
         resp.setPdf(new PdfConfig());
         resp.setRecall(fillRecallDefaults(new RecallConfig()));
@@ -125,6 +134,19 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         normalized.setRecallEnabledSources(normalizeRecallSources(source.getRecallEnabledSources()));
         validateRerankTopN(source.getRerankTopN());
         return normalized;
+    }
+
+    private void applyModelBindings(Long userId, DatasetParseConfig target, DatasetParseConfig existing,
+                                    UpdateDatasetParseConfigRequest request) {
+        Long sparse = request.getSparseEmbeddingConfigId() != null
+            ? request.getSparseEmbeddingConfigId()
+            : existing != null ? existing.getSparseEmbeddingConfigId() : null;
+        Long dense = request.getDenseEmbeddingConfigId() != null
+            ? request.getDenseEmbeddingConfigId()
+            : existing != null ? existing.getDenseEmbeddingConfigId() : null;
+        embeddingConfigValidator.validateBindingPair(userId, sparse, dense);
+        target.setSparseEmbeddingConfigId(sparse);
+        target.setDenseEmbeddingConfigId(dense);
     }
 
     private List<String> normalizeRecallSources(List<String> sources) {

@@ -5,17 +5,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.security.RecallSessionJwtSigner;
+import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.mapper.SysUserMapper;
+import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.RecallSessionRequest;
 import com.qingluo.link.model.dto.response.RecallSessionResponse;
 import com.qingluo.link.model.enums.ErrorCode;
+import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.config.RecallProperties;
 import java.time.Instant;
 import java.util.List;
@@ -38,11 +43,15 @@ class RecallSessionServiceImplTest {
     @Mock
     private SysUserMapper sysUserMapper;
     @Mock
+    private DatasetParseConfigMapper datasetParseConfigMapper;
+    @Mock
     private RecallScopeResolver scopeResolver;
     @Mock
     private RecallSessionJwtSigner sessionJwtSigner;
     @Mock
     private RecallProperties properties;
+    @Mock
+    private DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
     @InjectMocks
     private RecallSessionServiceImpl service;
@@ -62,11 +71,20 @@ class RecallSessionServiceImplTest {
         return u;
     }
 
+    private DatasetParseConfig parseConfig(Long datasetId) {
+        DatasetParseConfig config = new DatasetParseConfig();
+        config.setDatasetId(datasetId);
+        config.setSparseEmbeddingConfigId(11L);
+        config.setDenseEmbeddingConfigId(12L);
+        return config;
+    }
+
     @Test
     @DisplayName("Should_IssueTokenWithStreamUrl_When_UserActiveAndScopeOwned")
     void Should_IssueTokenWithStreamUrl_When_UserActiveAndScopeOwned() {
         given(sysUserMapper.selectById(USER_ID)).willReturn(activeUser());
         given(scopeResolver.resolve(eq(USER_ID), any())).willReturn(ResolvedScope.of(List.of(1L, 2L)));
+        given(datasetParseConfigMapper.selectList(any())).willReturn(List.of(parseConfig(1L), parseConfig(2L)));
         given(sessionJwtSigner.sign(anyLong(), any(), any(Instant.class))).willReturn("signed-token");
         given(properties.getSessionJwtExpSeconds()).willReturn(30L);
         given(properties.getSessionStreamBaseUrl()).willReturn("https://rag.example.com/");
@@ -78,6 +96,22 @@ class RecallSessionServiceImplTest {
         // 末尾斜杠被规整，拼接 /api/v1/rag/stream。
         assertThat(resp.getStreamUrl()).isEqualTo("https://rag.example.com/api/v1/rag/stream");
         verify(sessionJwtSigner).sign(eq(USER_ID), eq(List.of(1L, 2L)), any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("Should_RejectAndNotSign_When_DatasetEmbeddingBindingMissing")
+    void Should_RejectAndNotSign_When_DatasetEmbeddingBindingMissing() {
+        given(sysUserMapper.selectById(USER_ID)).willReturn(activeUser());
+        given(scopeResolver.resolve(eq(USER_ID), any())).willReturn(ResolvedScope.of(List.of(1L)));
+        given(datasetParseConfigMapper.selectList(any())).willReturn(List.of());
+        willThrow(new BusinessException(400, "数据集缺少稀疏/稠密向量模型绑定，请先补全解析配置", 400))
+            .given(embeddingConfigValidator).validateStoredBindings(eq(USER_ID), isNull());
+
+        assertThatThrownBy(() -> service.issue(USER_ID, request))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("向量模型绑定");
+
+        verify(sessionJwtSigner, never()).sign(anyLong(), any(), any());
     }
 
     @Test
