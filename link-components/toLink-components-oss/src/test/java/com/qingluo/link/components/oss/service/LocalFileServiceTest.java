@@ -48,6 +48,16 @@ class LocalFileServiceTest {
     }
 
     @Test
+    void Should_ReturnObjectKeyAndWriteRawFile_When_UploadRawFile() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "source.pdf", "application/pdf", "raw".getBytes());
+
+        String result = localFileService.upload2PreviewUrl(OssSavePlaceEnum.RAW, file, "document/source.pdf");
+
+        assertThat(result).isEqualTo("document/source.pdf");
+        assertThat(Files.readString(tempDir.resolve("raw/document/source.pdf"))).isEqualTo("raw");
+    }
+
+    @Test
     void Should_CopyStoredFile_When_DownloadFile() throws Exception {
         Path source = Path.of(ossProperties.getFilePrivatePath(), "cert/test.pem");
         Files.createDirectories(source.getParent());
@@ -62,6 +72,7 @@ class LocalFileServiceTest {
 
     @Test
     void Should_ReturnLogicalBucketName_When_ResolvePrivateBucket() {
+        assertThat(localFileService.getBucketName(OssSavePlaceEnum.RAW)).isEqualTo("local-raw");
         assertThat(localFileService.getBucketName(OssSavePlaceEnum.PRIVATE)).isEqualTo("local-private");
     }
 

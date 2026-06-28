@@ -117,12 +117,13 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `MINIO_ENDPOINT` | MinIO 服务地址（host:port） | 是* | 无 | `localhost:9000` |
 | `MINIO_ACCESS_KEY` | MinIO 访问密钥 | 是* | 无 | `your-minio-access-key-here` |
 | `MINIO_SECRET_KEY` | MinIO 密钥 | 是* | 无 | `your-minio-secret-key-here` |
-| `MINIO_PRIVATE_BUCKET` | MinIO 私有存储桶名（RAG 知识库文档） | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
+| `MINIO_RAW_BUCKET` | MinIO 原文件私有桶名（用户上传原文件，Java 写入，Python 只读） | 否 | `tolink-rag-raw` | `tolink-rag-raw` |
+| `MINIO_PRIVATE_BUCKET` | MinIO 解析产物私有桶名（Python 写入 Markdown/图片，Java 只读） | 否 | `tolink-rag-docs` | `tolink-rag-docs` |
 | `MINIO_PUBLIC_BUCKET` | MinIO 公开桶名（用户头像 + 博客图片/Markdown 正文 + 反馈附件，需配置匿名读） | 否 | `tolink-public` | `tolink-public` |
 
 > \* MinIO 变量在 `OSS_SERVICE_TYPE=minio` 时必需
 >
-> 三桶已收敛为两桶：私有桶 `tolink-rag-docs`（RAG 文档）+ 公开桶 `tolink-public`（所有不敏感资源）。原博客专用桶 `tolink-blog` 已合并入公开桶，`MINIO_BLOG_BUCKET` 配置项废弃，部署侧待服务稳定后删除旧桶。
+> 当前 MinIO 使用三桶：原文件私有桶 `tolink-rag-raw`、解析产物私有桶 `tolink-rag-docs`、公开桶 `tolink-public`。原博客专用桶 `tolink-blog` 已合并入公开桶，`MINIO_BLOG_BUCKET` 配置项废弃，部署侧待服务稳定后删除旧桶。
 > 头像与反馈附件不新增独立桶配置，复用 `MINIO_PUBLIC_BUCKET` 公开桶。头像对象 key 格式为 `avatar/{userId}/{uuid}.{suffix}`，完整公开 URL 写入 `sys_user.avatar_url`；反馈附件对象 key 由 Java 生成，格式为 `feedback/yyyy/MM/{uuid}.{suffix}`（精度到月），数据库只存 object key，可访问 URL 由后端按公开桶拼装。
 
 ### 4.8 阿里云 OSS（ALIYUN_OSS_*）
@@ -338,6 +339,7 @@ services:
 | `OSS_MINIO_ENDPOINT` | `MINIO_ENDPOINT` | 简化前缀 |
 | `OSS_MINIO_ACCESS_KEY` | `MINIO_ACCESS_KEY` | 简化前缀 |
 | `OSS_MINIO_SECRET_KEY` | `MINIO_SECRET_KEY` | 简化前缀 |
+| `OSS_MINIO_RAW_BUCKET` | `MINIO_RAW_BUCKET` | 简化前缀 |
 | `OSS_MINIO_PRIVATE_BUCKET` | `MINIO_PRIVATE_BUCKET` | 简化前缀 |
 | `MINIO_BLOG_BUCKET` | `MINIO_PUBLIC_BUCKET` | 博客专用桶 `tolink-blog` 已并入公开桶 `tolink-public` |
 | `OSS_ALIYUN_ENDPOINT` | `ALIYUN_OSS_ENDPOINT` | 统一阿里云前缀 |

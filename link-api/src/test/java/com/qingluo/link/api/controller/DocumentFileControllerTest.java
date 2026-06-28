@@ -156,7 +156,7 @@ class DocumentFileControllerTest {
         LocalDate today = LocalDate.now();
         assertThat(objectKey).isEqualTo("%d/%d/%04d/%02d/%02d/%s".formatted(
             userId, datasetId, today.getYear(), today.getMonthValue(), today.getDayOfMonth(), "guide.MD"));
-        assertThat(bucketName).isEqualTo("local-private");
+        assertThat(bucketName).isEqualTo("local-raw");
     }
 
     @Test

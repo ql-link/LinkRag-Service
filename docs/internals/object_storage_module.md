@@ -39,21 +39,23 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 
 ## 桶命名规范
 
-三桶已收敛为两桶（一私一公）：
+当前 MinIO 使用三桶（一公、原文件私有、解析产物私有）：
 
 | 桶名 | 用途 | 访问策略 |
 | --- | --- | --- |
-| `tolink-rag-docs` | RAG 知识库原始文档（私有） | 无匿名访问 |
+| `tolink-rag-raw` | RAG 用户上传原文件（私有，Java 写入，Python 只读） | 无匿名访问 |
+| `tolink-rag-docs` | RAG 解析产物（私有，Python 写入，Java 只读） | 无匿名访问 |
 | `tolink-public` | 所有不敏感资源：用户头像 + 博客图片/Markdown 正文 + 反馈附件 | 匿名读（anonymous download） |
 
 > 原博客专用桶 `tolink-blog` 与从未落地的 `PUBLIC` 占位桶已合并为单一公开桶 `tolink-public`；存量博客对象不迁移，旧桶 `tolink-blog` 待服务稳定后由运维删除。
 
-`OssSavePlaceEnum` 枚举值与桶的对应关系（仅两值）：
+`OssSavePlaceEnum` 枚举值与桶的对应关系：
 
 | 枚举值 | 目标桶 | 返回值 |
 | --- | --- | --- |
-| `PRIVATE` | `tolink-rag-docs` | 对象 key（字符串路径，私有桶不可匿名访问） |
 | `PUBLIC` | `tolink-public` | 完整公开 URL（匿名可读） |
+| `RAW` | `tolink-rag-raw` | 对象 key（字符串路径，私有桶不可匿名访问） |
+| `PRIVATE` | `tolink-rag-docs` | 对象 key（字符串路径，私有桶不可匿名访问） |
 
 ## 用户头像对象规则
 
