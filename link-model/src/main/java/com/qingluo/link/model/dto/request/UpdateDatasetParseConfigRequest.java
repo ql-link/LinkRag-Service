@@ -1,5 +1,7 @@
 package com.qingluo.link.model.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.qingluo.link.model.dto.config.ChunkingConfig;
 import com.qingluo.link.model.dto.config.EnhancementConfig;
 import com.qingluo.link.model.dto.config.PdfConfig;
@@ -17,6 +19,16 @@ import lombok.Data;
 @Data
 @Schema(description = "数据集解析/检索配置全量更新请求")
 public class UpdateDatasetParseConfigRequest {
+
+    @JsonProperty("sparse_embedding_config_id")
+    @JsonAlias("sparseEmbeddingConfigId")
+    @Schema(description = "稀疏向量模型配置 ID（llm_user_config.id，能力必须为 SPARSE_EMBEDDING）；不传则保留原绑定")
+    private Long sparseEmbeddingConfigId;
+
+    @JsonProperty("dense_embedding_config_id")
+    @JsonAlias("denseEmbeddingConfigId")
+    @Schema(description = "稠密向量模型配置 ID（llm_user_config.id，能力必须为 EMBEDDING）；不传则保留原绑定")
+    private Long denseEmbeddingConfigId;
 
     @Valid
     @Schema(description = "分块策略配置")

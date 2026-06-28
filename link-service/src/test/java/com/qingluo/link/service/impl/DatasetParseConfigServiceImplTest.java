@@ -17,6 +17,7 @@ import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
+import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -40,6 +41,9 @@ class DatasetParseConfigServiceImplTest {
 
     @Mock
     private DatasetService datasetService;
+
+    @Mock
+    private DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
     @InjectMocks
     private DatasetParseConfigServiceImpl service;

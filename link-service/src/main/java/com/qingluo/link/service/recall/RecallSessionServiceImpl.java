@@ -1,15 +1,23 @@
 package com.qingluo.link.service.recall;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.security.RecallSessionJwtSigner;
+import com.qingluo.link.mapper.DatasetParseConfigMapper;
 import com.qingluo.link.mapper.SysUserMapper;
+import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.RecallSessionRequest;
 import com.qingluo.link.model.dto.response.RecallSessionResponse;
 import com.qingluo.link.model.enums.ErrorCode;
+import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.RecallSessionService;
 import com.qingluo.link.service.config.RecallProperties;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,9 +39,11 @@ public class RecallSessionServiceImpl implements RecallSessionService {
     private static final String STREAM_PATH = "/api/v1/rag/stream";
 
     private final SysUserMapper sysUserMapper;
+    private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final RecallScopeResolver scopeResolver;
     private final RecallSessionJwtSigner sessionJwtSigner;
     private final RecallProperties properties;
+    private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
     @Override
     public RecallSessionResponse issue(Long userId, RecallSessionRequest request) {
@@ -47,6 +57,7 @@ public class RecallSessionServiceImpl implements RecallSessionService {
         // 归属校验：datasetIds 由 DTO @NotEmpty 保证非空，走 resolver 的归属校验分支
         // （全部归属当前用户且未软删，否则抛 RECALL_SCOPE_FORBIDDEN）；不会触发空入参全库展开。
         ResolvedScope scope = scopeResolver.resolve(userId, request.getDatasetIds());
+        assertDatasetEmbeddingBindings(userId, scope.datasetIds());
 
         // claim dataset_ids 写已校验的显式 id，绝不为空（杜绝 Python 误判全库授权）。
         String token = sessionJwtSigner.sign(userId, scope.datasetIds(), Instant.now());
@@ -60,6 +71,17 @@ public class RecallSessionServiceImpl implements RecallSessionService {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null || user.getStatus() == null || user.getStatus() != 1) {
             throw new BusinessException(ErrorCode.AUTH_DISABLED);
+        }
+    }
+
+    private void assertDatasetEmbeddingBindings(Long userId, List<Long> datasetIds) {
+        List<DatasetParseConfig> configs = datasetParseConfigMapper.selectList(new LambdaQueryWrapper<DatasetParseConfig>()
+            .eq(DatasetParseConfig::getUserId, userId)
+            .in(DatasetParseConfig::getDatasetId, datasetIds));
+        Map<Long, DatasetParseConfig> byDatasetId = configs.stream()
+            .collect(Collectors.toMap(DatasetParseConfig::getDatasetId, Function.identity(), (left, right) -> left));
+        for (Long datasetId : datasetIds) {
+            embeddingConfigValidator.validateStoredBindings(userId, byDatasetId.get(datasetId));
         }
     }
 

@@ -50,6 +50,10 @@ class DatasetParseConfigControllerTest {
 
     private static final Long ALICE_ID = 99988L;
     private static final Long BOB_ID = 99987L;
+    private static final Long ALICE_SPARSE_CONFIG_ID = 99781L;
+    private static final Long ALICE_DENSE_CONFIG_ID = 99782L;
+    private static final Long BOB_SPARSE_CONFIG_ID = 99783L;
+    private static final Long BOB_DENSE_CONFIG_ID = 99784L;
 
     private String token;
     private Long d1;
@@ -58,11 +62,16 @@ class DatasetParseConfigControllerTest {
     @BeforeAll
     void setup() {
         jdbcTemplate.update("DELETE FROM dataset_parse_config");
+        jdbcTemplate.update("DELETE FROM llm_user_config WHERE user_id IN (?, ?)", ALICE_ID, BOB_ID);
         jdbcTemplate.update("DELETE FROM dataset WHERE user_id IN (?, ?)", ALICE_ID, BOB_ID);
         jdbcTemplate.update("DELETE FROM sys_user WHERE id IN (?, ?)", ALICE_ID, BOB_ID);
 
         insertUser(ALICE_ID, "pc_alice");
         insertUser(BOB_ID, "pc_bob");
+        insertEmbeddingConfig(ALICE_SPARSE_CONFIG_ID, ALICE_ID, "alice-sparse", "SPARSE_EMBEDDING");
+        insertEmbeddingConfig(ALICE_DENSE_CONFIG_ID, ALICE_ID, "alice-dense", "EMBEDDING");
+        insertEmbeddingConfig(BOB_SPARSE_CONFIG_ID, BOB_ID, "bob-sparse", "SPARSE_EMBEDDING");
+        insertEmbeddingConfig(BOB_DENSE_CONFIG_ID, BOB_ID, "bob-dense", "EMBEDDING");
 
         jdbcTemplate.update("INSERT INTO dataset (user_id, name, status) VALUES (?, 'PC配置-D1', 'ACTIVE')", ALICE_ID);
         d1 = jdbcTemplate.queryForObject(
@@ -93,6 +102,16 @@ class DatasetParseConfigControllerTest {
         sysUserMapper.insert(user);
     }
 
+    private void insertEmbeddingConfig(Long id, Long userId, String modelName, String capability) {
+        jdbcTemplate.update("""
+            INSERT INTO llm_user_config (
+                id, user_id, provider_id, provider_type, api_key, api_base_url, protocol,
+                model_name, capability, is_active, is_default, is_system_preset
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, false)
+            """, id, userId, 1L, "aliyun", "encrypted-key",
+            "https://example.com/embeddings", "openai", modelName, capability);
+    }
+
     private Integer configCount(Long datasetId) {
         return jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM dataset_parse_config WHERE dataset_id = ?", Integer.class, datasetId);
@@ -107,8 +126,18 @@ class DatasetParseConfigControllerTest {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", datasetId)
                 .header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
+                .content(withBindings(body)))
             .andExpect(status().isOk());
+    }
+
+    private String withBindings(String body) {
+        String trimmed = body.trim();
+        String prefix = "\"sparse_embedding_config_id\":" + ALICE_SPARSE_CONFIG_ID
+            + ",\"dense_embedding_config_id\":" + ALICE_DENSE_CONFIG_ID;
+        if ("{}".equals(trimmed)) {
+            return "{" + prefix + "}";
+        }
+        return trimmed.replaceFirst("\\{", "{" + prefix + ",");
     }
 
     // ===== 创建期 =====
@@ -119,7 +148,9 @@ class DatasetParseConfigControllerTest {
         mockMvc.perform(post("/api/v1/datasets")
                 .header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"建集默认配置\",\"description\":\"\"}"))
+                .content("{\"name\":\"建集默认配置\",\"description\":\"\","
+                    + "\"sparse_embedding_config_id\":" + ALICE_SPARSE_CONFIG_ID + ","
+                    + "\"dense_embedding_config_id\":" + ALICE_DENSE_CONFIG_ID + "}"))
             .andExpect(status().isOk());
 
         Long newId = jdbcTemplate.queryForObject(
@@ -129,6 +160,12 @@ class DatasetParseConfigControllerTest {
             .contains("recall_enabled_sources")
             .contains("rerank_top_n")
             .contains("recall_strict");
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT sparse_embedding_config_id FROM dataset_parse_config WHERE dataset_id = ?",
+            Long.class, newId)).isEqualTo(ALICE_SPARSE_CONFIG_ID);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT dense_embedding_config_id FROM dataset_parse_config WHERE dataset_id = ?",
+            Long.class, newId)).isEqualTo(ALICE_DENSE_CONFIG_ID);
     }
 
     // ===== 读取 =====
@@ -272,7 +309,7 @@ class DatasetParseConfigControllerTest {
         for (String ok : new String[] {"auto", "mineru", "opendataloader", "naive"}) {
             mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"pdf\":{\"pdf_parser_backend\":\"" + ok + "\"}}"))
+                    .content(withBindings("{\"pdf\":{\"pdf_parser_backend\":\"" + ok + "\"}}")))
                 .andExpect(status().isOk());
         }
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
@@ -288,7 +325,7 @@ class DatasetParseConfigControllerTest {
     @DisplayName("JSON 字段类型非法被拒绝")
     void Should_Reject_When_FieldTypeInvalid() throws Exception {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"chunking\":{\"overlap_tokens\":\"abc\"}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"chunking\":{\"overlap_tokens\":\"abc\"}}")))
             .andExpect(status().isBadRequest());
         assertThat(configCount(d1)).isZero();
     }
@@ -323,7 +360,7 @@ class DatasetParseConfigControllerTest {
     void Should_Reject_When_RecallSourceUnknown() throws Exception {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"recall\":{\"recall_enabled_sources\":[\"bm25\",\"unknown\"]}}"))
+                .content(withBindings("{\"recall\":{\"recall_enabled_sources\":[\"bm25\",\"unknown\"]}}")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message", containsString("recall_enabled_sources")));
         assertThat(configCount(d1)).isZero();
@@ -334,7 +371,7 @@ class DatasetParseConfigControllerTest {
     void Should_Reject_When_RerankTopNNotPositive() throws Exception {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"recall\":{\"rerank_top_n\":0}}"))
+                .content(withBindings("{\"recall\":{\"rerank_top_n\":0}}")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message", containsString("rerank_top_n")));
         assertThat(configCount(d1)).isZero();
@@ -366,7 +403,7 @@ class DatasetParseConfigControllerTest {
     void Should_NotBlock_When_EnhancementOnWithoutModel() throws Exception {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"enhancement\":{\"enable_table_enhancement\":true}}"))
+                .content(withBindings("{\"enhancement\":{\"enable_table_enhancement\":true}}")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.enhancement.enable_table_enhancement").value(true));
     }

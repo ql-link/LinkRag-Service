@@ -1,5 +1,6 @@
 package com.qingluo.link.model.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.qingluo.link.model.dto.config.ChunkingConfig;
 import com.qingluo.link.model.dto.config.EnhancementConfig;
 import com.qingluo.link.model.dto.config.PdfConfig;
@@ -16,6 +17,14 @@ import lombok.Data;
 @Data
 @Schema(description = "数据集解析/检索配置")
 public class DatasetParseConfigResponse {
+
+    @JsonProperty("sparse_embedding_config_id")
+    @Schema(description = "稀疏向量模型配置 ID（llm_user_config.id）")
+    private Long sparseEmbeddingConfigId;
+
+    @JsonProperty("dense_embedding_config_id")
+    @Schema(description = "稠密向量模型配置 ID（llm_user_config.id）")
+    private Long denseEmbeddingConfigId;
 
     @Schema(description = "分块策略配置")
     private ChunkingConfig chunking;

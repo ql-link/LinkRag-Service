@@ -34,6 +34,8 @@ class RecallSessionControllerTest {
     private static final Long DISABLED_USER_ID = 99972L;
     private static final Long DS1 = 990001L;
     private static final Long DS2 = 990002L;
+    private static final Long SPARSE_CONFIG_ID = 990011L;
+    private static final Long DENSE_CONFIG_ID = 990012L;
 
     @Autowired
     private MockMvc mockMvc;
@@ -49,14 +51,20 @@ class RecallSessionControllerTest {
 
     @BeforeAll
     void setup() {
+        jdbcTemplate.update("DELETE FROM dataset_parse_config");
+        jdbcTemplate.update("DELETE FROM llm_user_config WHERE user_id IN (?, ?)", ACTIVE_USER_ID, DISABLED_USER_ID);
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM dataset");
         jdbcTemplate.update("DELETE FROM sys_user");
 
         insertUser(ACTIVE_USER_ID, "sessionactive", 1);
         insertUser(DISABLED_USER_ID, "sessiondisabled", 0);
+        insertEmbeddingConfig(SPARSE_CONFIG_ID, ACTIVE_USER_ID, "session-sparse", "SPARSE_EMBEDDING");
+        insertEmbeddingConfig(DENSE_CONFIG_ID, ACTIVE_USER_ID, "session-dense", "EMBEDDING");
         insertDataset(DS1, ACTIVE_USER_ID, "库1");
         insertDataset(DS2, ACTIVE_USER_ID, "库2");
+        insertParseConfig(DS1);
+        insertParseConfig(DS2);
 
         StpUtil.login(ACTIVE_USER_ID);
         activeToken = StpUtil.getTokenValue();
@@ -81,6 +89,25 @@ class RecallSessionControllerTest {
             "INSERT INTO dataset (id, user_id, name, status, is_deleted, deleted_seq, created_at, updated_at) "
                 + "VALUES (?, ?, ?, 'ACTIVE', false, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             id, userId, name);
+    }
+
+    private void insertEmbeddingConfig(Long id, Long userId, String modelName, String capability) {
+        jdbcTemplate.update("""
+            INSERT INTO llm_user_config (
+                id, user_id, provider_id, provider_type, api_key, api_base_url, protocol,
+                model_name, capability, is_active, is_default, is_system_preset
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, false)
+            """, id, userId, 1L, "aliyun", "encrypted-key",
+            "https://example.com/embeddings", "openai", modelName, capability);
+    }
+
+    private void insertParseConfig(Long datasetId) {
+        jdbcTemplate.update("""
+            INSERT INTO dataset_parse_config (
+                user_id, dataset_id, sparse_embedding_config_id, dense_embedding_config_id,
+                chunking_config, enhancement_config, pdf_config, recall_config, is_active
+            ) VALUES (?, ?, ?, ?, '{}', '{}', '{}', '{}', true)
+            """, ACTIVE_USER_ID, datasetId, SPARSE_CONFIG_ID, DENSE_CONFIG_ID);
     }
 
     @Test

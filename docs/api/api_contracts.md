@@ -145,7 +145,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/v1/datasets` | 创建数据集 |
+| POST | `/api/v1/datasets` | 创建数据集（必须绑定稀疏/稠密向量模型配置） |
 | GET | `/api/v1/datasets` | 数据集列表 |
 | GET | `/api/v1/datasets/{datasetId}` | 数据集详情 |
 | PATCH | `/api/v1/datasets/{datasetId}` | 更新数据集 |
@@ -162,7 +162,9 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
 
-> 解析/检索配置（`/parse-config`，LINK-149/LINK-170）：请求/响应为四类嵌套结构 `{chunking, enhancement, pdf, recall}`，字段名 snake_case，与 Python `dataset_config` Pydantic 模型对齐（15 项：chunking 3 / enhancement 2 开关 / pdf 1 / recall 9）。Java 只做存/改/回显，**PUT 为整行全量覆盖**（前端整页保存）。`recall` 新增 3 项会在读取时补齐默认：`recall_enabled_sources=["bm25","sparse","dense"]`、`rerank_top_n=8`、`recall_strict=false`；创建数据集时同步写入默认配置行。关键校验即时拦截 400：`overlap_tokens` 0–64、`min_candidate_chunk_tokens` 128–256、`pdf_parser_backend` ∈ {`auto`,`mineru`,`opendataloader`,`naive`}；recall 历史 6 项范围不在 Java 拦截，LINK-170 新增项中 `recall_enabled_sources` 仅允许 `bm25`/`sparse`/`dense`（写入去空白、去空项、去重，允许空数组），`rerank_top_n` 必须为正整数，`recall_strict` 为布尔。增强仅两个开关（`enable_table_enhancement`/`enable_image_enhancement`），历史残留的 `table_model`/`vision_model` 落库时丢弃；增强模型由 Python 取发起用户默认 CHAT/VISION（依赖 LINK-148 PR #190）。越权/不存在 404、未登录 401。
+> 创建数据集：`POST /api/v1/datasets` 请求体除 `name`/`description` 外，必须提供 `sparse_embedding_config_id` 与 `dense_embedding_config_id`。两者分别指向当前用户启用中的 `llm_user_config.id`，能力必须为 `SPARSE_EMBEDDING` / `EMBEDDING`；不存在、停用、越权或能力不匹配均返回 400。创建成功时 Java 同步写入 `dataset_parse_config` 默认行并固化这两个绑定，后续解析构建向量与召回都以该数据集绑定为准，不再按用户“当前默认模型”漂移。
+
+> 解析/检索配置（`/parse-config`，LINK-149/LINK-170）：请求/响应为 `{sparse_embedding_config_id, dense_embedding_config_id, chunking, enhancement, pdf, recall}`，字段名 snake_case，与 Python `dataset_config` Pydantic 模型对齐（JSON 配置 15 项：chunking 3 / enhancement 2 开关 / pdf 1 / recall 9）。Java 只做存/改/回显，**PUT 为整行全量覆盖四类 JSON 配置**；两个模型绑定字段可随 PUT 重绑，未传则保留原绑定，首次为无配置行创建时必须能解析出完整绑定。`recall` 新增 3 项会在读取时补齐默认：`recall_enabled_sources=["bm25","sparse","dense"]`、`rerank_top_n=8`、`recall_strict=false`。关键校验即时拦截 400：模型绑定必须属于当前用户且能力匹配；`overlap_tokens` 0–64、`min_candidate_chunk_tokens` 128–256、`pdf_parser_backend` ∈ {`auto`,`mineru`,`opendataloader`,`naive`}；recall 历史 6 项范围不在 Java 拦截，LINK-170 新增项中 `recall_enabled_sources` 仅允许 `bm25`/`sparse`/`dense`（写入去空白、去空项、去重，允许空数组），`rerank_top_n` 必须为正整数，`recall_strict` 为布尔。增强仅两个开关（`enable_table_enhancement`/`enable_image_enhancement`），历史残留的 `table_model`/`vision_model` 落库时丢弃；增强模型由 Python 取发起用户默认 CHAT/VISION（依赖 LINK-148 PR #190）。越权/不存在 404、未登录 401。
 
 ## OSS / Internal
 
@@ -218,7 +220,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 
 ### POST /api/v1/recall/sessions（前端直连签发）
 
-> 「前端直连 Python 召回 SSE」链路（LINK-104）：Java 只做 Sa-Token 鉴权 + 用户状态（`status==1`）+ `datasetIds` 归属校验，签发短期 HS256 session token；**不代理/中转 SSE 流内容**，资源滥用由 Python「按用户并发上限」兜底。
+> 「前端直连 Python 召回 SSE」链路（LINK-104）：Java 只做 Sa-Token 鉴权 + 用户状态（`status==1`）+ `datasetIds` 归属校验 + 数据集稀疏/稠密向量模型绑定校验，签发短期 HS256 session token；**不代理/中转 SSE 流内容**，资源滥用由 Python「按用户并发上限」兜底。历史数据集若缺少任一绑定，或绑定的用户配置已停用/删除/能力不匹配，拒绝签发。
 >
 > **请求体**（camelCase）：`{ "datasetIds": [1,2] }`。`datasetIds` **必须显式非空**（每个 id 为当前用户有权访问的库）；空列表/缺省返回 400——避免下发空 `dataset_ids` claim 被 Python 误判为全库授权造成越权放大。本接口只签发，**不接收 query**（query 在前端直连 Python 时随 stream 请求体提交）。
 >

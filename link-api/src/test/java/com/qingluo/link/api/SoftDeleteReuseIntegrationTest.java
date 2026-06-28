@@ -46,6 +46,8 @@ class SoftDeleteReuseIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     private static final Long USER_ID = 99977L;
+    private static final Long SPARSE_CONFIG_ID = 999771L;
+    private static final Long DENSE_CONFIG_ID = 999772L;
     private Long datasetId;
 
     @BeforeEach
@@ -56,7 +58,11 @@ class SoftDeleteReuseIntegrationTest {
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM chat_message");
         jdbcTemplate.update("DELETE FROM chat_conversation");
+        jdbcTemplate.update("DELETE FROM dataset_parse_config");
         jdbcTemplate.update("DELETE FROM dataset");
+        jdbcTemplate.update("DELETE FROM llm_user_config WHERE user_id = ?", USER_ID);
+        insertEmbeddingConfig(SPARSE_CONFIG_ID, "soft-delete-sparse", "SPARSE_EMBEDDING");
+        insertEmbeddingConfig(DENSE_CONFIG_ID, "soft-delete-dense", "EMBEDDING");
 
         Dataset ds = new Dataset();
         ds.setUserId(USER_ID);
@@ -110,6 +116,8 @@ class SoftDeleteReuseIntegrationTest {
     void Should_AllowRecreateSameDatasetName_AfterSoftDelete() {
         CreateDatasetRequest req = new CreateDatasetRequest();
         req.setName("财务");
+        req.setSparseEmbeddingConfigId(SPARSE_CONFIG_ID);
+        req.setDenseEmbeddingConfigId(DENSE_CONFIG_ID);
         DatasetDTO d1 = datasetService.create(USER_ID, req);
         datasetService.delete(USER_ID, d1.getId());
 
@@ -153,6 +161,16 @@ class SoftDeleteReuseIntegrationTest {
         file.setIsUploadSuccess(true);
         documentOriginalFileMapper.insert(file);
         return file.getId();
+    }
+
+    private void insertEmbeddingConfig(Long id, String modelName, String capability) {
+        jdbcTemplate.update("""
+            INSERT INTO llm_user_config (
+                id, user_id, provider_id, provider_type, api_key, api_base_url, protocol,
+                model_name, capability, is_active, is_default, is_system_preset
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, false)
+            """, id, USER_ID, 1L, "aliyun", "encrypted-key",
+            "https://example.com/embeddings", "openai", modelName, capability);
     }
 
     private Integer activeCount(String filename) {
