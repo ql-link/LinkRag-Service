@@ -34,7 +34,7 @@ mvn -pl link-service test
 - 外部 MySQL、Redis、Kafka、MinIO、第三方 API 在单元测试中默认 Mock。
 - 用户资料类 multipart 上传接口在 `UserControllerTest` 用 local OSS 测试配置承接端到端回写断言；对应 Service 单测用 `OssApplicationService` mock 覆盖 OSS 返回值、数据库更新和用户缓存失效。
 - 全局最近文档等跨数据集查询应在 Controller/集成测试中覆盖当前用户权限隔离、稳定排序、分页和空列表返回。
-- 数据集解析/检索配置测试：`DatasetParseConfigControllerTest` 覆盖 GET/PUT 往返、旧 `recall_config` 新增项回落默认、创建数据集写默认配置行并固化 `sparse_embedding_config_id` / `dense_embedding_config_id`、模型绑定能力校验、`recall_enabled_sources` 清洗去重与非法值拒绝、`rerank_top_n` 正整数校验；`DatasetParseConfigServiceImplTest` 覆盖无行/旧行默认补齐、写入归一化和 Mapper insert/update 分支。
+- 数据集解析/检索配置测试：`DatasetParseConfigControllerTest` 覆盖 GET/PUT 往返、旧 `recall_config` 新增项回落默认、创建数据集写默认配置行并固化 `sparse_embedding_config_id` / `dense_embedding_config_id`、模型绑定能力校验与不可重绑、`chunking` token 边界、`recall_enabled_sources` 清洗去重与非法值拒绝、召回正整数/阈值/融合权重/融合策略校验；`DatasetParseConfigServiceImplTest` 覆盖无行/旧行默认补齐、写入归一化和 Mapper insert/update 分支。
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级，以及同步删缓存失败的错误传播，不能用降级行为掩盖写路径一致性失败。
 - 缓存一致性组件改造优先在 `link-service/src/test/java/com/qingluo/link/service/cache/CacheConsistencyServiceTest.java` 承接，至少覆盖：事务提交后首删、事务回滚不删、无事务立即删、首删失败不改请求结果、补偿第二删强失败语义，以及同事务多次触发下的 key 去重结果。
 - 文档文件上传配置运行时来源为 Redis；Controller 测试应 Mock 或重置 `DocumentFileConfigCacheService`，不再依赖数据库配置表。

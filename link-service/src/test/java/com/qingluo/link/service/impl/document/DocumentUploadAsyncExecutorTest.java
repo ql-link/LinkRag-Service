@@ -47,7 +47,7 @@ class DocumentUploadAsyncExecutorTest {
     @Test
     @DisplayName("S5 OSS 上传成功 → 回写 success 并清理临时文件")
     void runUpload_success() {
-        given(ossService.upload2PreviewUrl(eq(OssSavePlaceEnum.PRIVATE), any(File.class), eq("text/plain"), eq("u/d/test.txt")))
+        given(ossService.upload2PreviewUrl(eq(OssSavePlaceEnum.RAW), any(File.class), eq("text/plain"), eq("u/d/test.txt")))
             .willReturn("u/d/test.txt");
 
         asyncExecutor.runUpload(task());
@@ -102,7 +102,7 @@ class DocumentUploadAsyncExecutorTest {
 
         asyncExecutor.submit(task());
 
-        verify(ossService).upload2PreviewUrl(eq(OssSavePlaceEnum.PRIVATE), any(File.class), eq("text/plain"), eq("u/d/test.txt"));
+        verify(ossService).upload2PreviewUrl(eq(OssSavePlaceEnum.RAW), any(File.class), eq("text/plain"), eq("u/d/test.txt"));
         verify(statusWriter).markUploadSuccess(7L, "u/d/test.txt", true, 100L);
     }
 }

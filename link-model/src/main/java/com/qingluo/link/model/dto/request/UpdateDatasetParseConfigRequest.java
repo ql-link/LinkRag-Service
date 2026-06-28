@@ -22,12 +22,12 @@ public class UpdateDatasetParseConfigRequest {
 
     @JsonProperty("sparse_embedding_config_id")
     @JsonAlias("sparseEmbeddingConfigId")
-    @Schema(description = "稀疏向量模型配置 ID（llm_user_config.id，能力必须为 SPARSE_EMBEDDING）；不传则保留原绑定")
+    @Schema(description = "稀疏向量模型配置 ID（llm_user_config.id，能力必须为 SPARSE_EMBEDDING）；已有绑定不可修改")
     private Long sparseEmbeddingConfigId;
 
     @JsonProperty("dense_embedding_config_id")
     @JsonAlias("denseEmbeddingConfigId")
-    @Schema(description = "稠密向量模型配置 ID（llm_user_config.id，能力必须为 EMBEDDING）；不传则保留原绑定")
+    @Schema(description = "稠密向量模型配置 ID（llm_user_config.id，能力必须为 EMBEDDING）；已有绑定不可修改")
     private Long denseEmbeddingConfigId;
 
     @Valid

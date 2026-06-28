@@ -16,6 +16,8 @@ import com.qingluo.link.service.DatasetService;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -32,7 +34,9 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     private static final List<String> DEFAULT_RECALL_ENABLED_SOURCES = List.of("bm25", "sparse", "dense");
     private static final int DEFAULT_RERANK_TOP_N = 8;
     private static final boolean DEFAULT_RECALL_STRICT = false;
+    private static final Set<String> ALLOWED_STAGE_TWO_ALGORITHMS = Set.of("noop", "semantic_depth_window");
     private static final Set<String> ALLOWED_RECALL_SOURCES = Set.of("bm25", "sparse", "dense");
+    private static final Set<String> ALLOWED_RECALL_FUSION_STRATEGIES = Set.of("rrf", "weighted_score");
 
     private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final DatasetService datasetService;
@@ -97,7 +101,7 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
      * PUT 全量：四类列整体按请求重写，请求未提供的类写空对象（序列化为 {@code {}}），不补字段默认。
      */
     private void applyConfigs(DatasetParseConfig entity, UpdateDatasetParseConfigRequest req) {
-        entity.setChunkingConfig(req.getChunking() != null ? req.getChunking() : new ChunkingConfig());
+        entity.setChunkingConfig(normalizeChunking(req.getChunking()));
         entity.setEnhancementConfig(req.getEnhancement() != null ? req.getEnhancement() : new EnhancementConfig());
         entity.setPdfConfig(req.getPdf() != null ? req.getPdf() : new PdfConfig());
         entity.setRecallConfig(normalizeForStorage(req.getRecall()));
@@ -132,7 +136,20 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         }
         RecallConfig normalized = copyRecall(source);
         normalized.setRecallEnabledSources(normalizeRecallSources(source.getRecallEnabledSources()));
-        validateRerankTopN(source.getRerankTopN());
+        normalized.setRecallFusionStrategy(normalizeEnum(
+            source.getRecallFusionStrategy(),
+            ALLOWED_RECALL_FUSION_STRATEGIES,
+            "recall_fusion_strategy 仅支持 rrf/weighted_score"));
+        validatePositive("recall_result_limit", source.getRecallResultLimit());
+        validatePositive("bm25_top_k", source.getBm25TopK());
+        validatePositive("sparse_top_k", source.getSparseTopK());
+        validatePositive("dense_top_k", source.getDenseTopK());
+        validatePositive("rerank_top_n", source.getRerankTopN());
+        validateNonNegativeFinite("sparse_score_threshold", source.getSparseScoreThreshold());
+        validateNonNegativeFinite("dense_score_threshold", source.getDenseScoreThreshold());
+        validateNonNegativeFinite("fusion_bm25_weight", source.getFusionBm25Weight());
+        validateNonNegativeFinite("fusion_sparse_weight", source.getFusionSparseWeight());
+        validateNonNegativeFinite("fusion_dense_weight", source.getFusionDenseWeight());
         return normalized;
     }
 
@@ -144,9 +161,49 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         Long dense = request.getDenseEmbeddingConfigId() != null
             ? request.getDenseEmbeddingConfigId()
             : existing != null ? existing.getDenseEmbeddingConfigId() : null;
+        if (existing != null) {
+            validateBindingImmutable("sparse_embedding_config_id", existing.getSparseEmbeddingConfigId(), sparse);
+            validateBindingImmutable("dense_embedding_config_id", existing.getDenseEmbeddingConfigId(), dense);
+        }
         embeddingConfigValidator.validateBindingPair(userId, sparse, dense);
         target.setSparseEmbeddingConfigId(sparse);
         target.setDenseEmbeddingConfigId(dense);
+    }
+
+    private ChunkingConfig normalizeChunking(ChunkingConfig source) {
+        if (source == null) {
+            return new ChunkingConfig();
+        }
+        ChunkingConfig normalized = copyChunking(source);
+        normalized.setStageTwoAlgorithm(normalizeEnum(
+            source.getStageTwoAlgorithm(),
+            ALLOWED_STAGE_TWO_ALGORITHMS,
+            "stage_two_algorithm 仅支持 noop/semantic_depth_window"));
+        validateChunkBounds(source);
+        return normalized;
+    }
+
+    private void validateChunkBounds(ChunkingConfig chunking) {
+        Integer min = chunking.getMinCandidateChunkTokens();
+        Integer max = chunking.getMaxChunkTokens();
+        Integer hardMax = chunking.getHardMaxTokens();
+        if (min != null && max != null && max < min) {
+            throw new BusinessException(400, "max_chunk_tokens 必须大于等于 min_candidate_chunk_tokens", 400);
+        }
+        if (max != null && hardMax != null && hardMax < max) {
+            throw new BusinessException(400, "hard_max_tokens 必须大于等于 max_chunk_tokens", 400);
+        }
+    }
+
+    private String normalizeEnum(String value, Set<String> allowed, String message) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (!allowed.contains(normalized)) {
+            throw new BusinessException(400, message, 400);
+        }
+        return normalized;
     }
 
     private List<String> normalizeRecallSources(List<String> sources) {
@@ -162,17 +219,30 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
             if (trimmed.isEmpty()) {
                 continue;
             }
-            if (!ALLOWED_RECALL_SOURCES.contains(trimmed)) {
+            String sourceName = trimmed.toLowerCase(Locale.ROOT);
+            if (!ALLOWED_RECALL_SOURCES.contains(sourceName)) {
                 throw new BusinessException(400, "recall_enabled_sources 仅支持 bm25/sparse/dense", 400);
             }
-            normalized.add(trimmed);
+            normalized.add(sourceName);
         }
         return new ArrayList<>(normalized);
     }
 
-    private void validateRerankTopN(Integer rerankTopN) {
-        if (rerankTopN != null && rerankTopN <= 0) {
-            throw new BusinessException(400, "rerank_top_n 必须为正整数", 400);
+    private void validatePositive(String fieldName, Integer value) {
+        if (value != null && value <= 0) {
+            throw new BusinessException(400, fieldName + " 必须为正整数", 400);
+        }
+    }
+
+    private void validateNonNegativeFinite(String fieldName, Double value) {
+        if (value != null && (!Double.isFinite(value) || value < 0)) {
+            throw new BusinessException(400, fieldName + " 必须是不小于 0 的有限数", 400);
+        }
+    }
+
+    private void validateBindingImmutable(String fieldName, Long existingId, Long requestedId) {
+        if (existingId != null && !Objects.equals(existingId, requestedId)) {
+            throw new BusinessException(400, fieldName + " 已绑定，不能修改", 400);
         }
     }
 
@@ -190,15 +260,32 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         return filled;
     }
 
+    private ChunkingConfig copyChunking(ChunkingConfig source) {
+        ChunkingConfig copy = new ChunkingConfig();
+        copy.setHeadingBreakLevel(source.getHeadingBreakLevel());
+        copy.setMinCandidateChunkTokens(source.getMinCandidateChunkTokens());
+        copy.setOverlapTokens(source.getOverlapTokens());
+        copy.setMaxChunkTokens(source.getMaxChunkTokens());
+        copy.setHardMaxTokens(source.getHardMaxTokens());
+        copy.setStageTwoAlgorithm(source.getStageTwoAlgorithm());
+        copy.setProtectedNeighborOverlap(source.getProtectedNeighborOverlap());
+        return copy;
+    }
+
     private RecallConfig copyRecall(RecallConfig source) {
         RecallConfig copy = new RecallConfig();
         copy.setRecallResultLimit(source.getRecallResultLimit());
         copy.setRecallContextTokenBudget(source.getRecallContextTokenBudget());
+        copy.setBm25TopK(source.getBm25TopK());
         copy.setSparseTopK(source.getSparseTopK());
         copy.setSparseScoreThreshold(source.getSparseScoreThreshold());
         copy.setDenseTopK(source.getDenseTopK());
         copy.setDenseScoreThreshold(source.getDenseScoreThreshold());
         copy.setRecallEnabledSources(source.getRecallEnabledSources());
+        copy.setRecallFusionStrategy(source.getRecallFusionStrategy());
+        copy.setFusionBm25Weight(source.getFusionBm25Weight());
+        copy.setFusionSparseWeight(source.getFusionSparseWeight());
+        copy.setFusionDenseWeight(source.getFusionDenseWeight());
         copy.setRerankTopN(source.getRerankTopN());
         copy.setRecallStrict(source.getRecallStrict());
         return copy;

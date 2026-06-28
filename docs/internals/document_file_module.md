@@ -19,7 +19,7 @@
 
 ## 上传异步化
 
-上传接口（`POST /api/v1/datasets/{datasetId}/files`）同步阶段只做鉴权、数据集归属、格式/大小/文件名校验、同名处理、物化临时文件、落 `uploading` 记录并**立即返回 `uploadStatus=UPLOADING`**；OSS 上传、终态回写（`success`/`failed`）、`parseImmediately=true` 时的解析投递都移到 `documentUploadExecutor` 专用线程池，在事务提交后（afterCommit）异步执行。前端按 `uploadStatus` 轮询 list/detail 获取终态（**跨端依赖：前端需配合改为轮询**）。
+上传接口（`POST /api/v1/datasets/{datasetId}/files`）同步阶段只做鉴权、数据集归属、格式/大小/文件名校验、同名处理、物化临时文件、落 `uploading` 记录并**立即返回 `uploadStatus=UPLOADING`**；OSS 上传（原文件写入 RAW 私有桶 `tolink-rag-raw`，Java 写 / Python 只读，桶名落 `document_original_file.bucket_name` 并随解析任务 MQ 的 `source_bucket` 下发）、终态回写（`success`/`failed`）、`parseImmediately=true` 时的解析投递都移到 `documentUploadExecutor` 专用线程池，在事务提交后（afterCommit）异步执行。前端按 `uploadStatus` 轮询 list/detail 获取终态（**跨端依赖：前端需配合改为轮询**）。
 
 - **失败可见性**：OSS 失败/池满拒绝/`uploading` 超时都落 `failed` + `failureReason`，由轮询发现，不以上传接口 HTTP 错误暴露。
 - **同名重试**：受唯一约束 `uk_dataset_user_name_suffix` 约束，撞到的同名记录为 `failed` 则复用该行重置为 `uploading`（不插新行），为 `uploading`/`success` 则 400 拦截。

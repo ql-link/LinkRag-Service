@@ -360,17 +360,17 @@ CREATE TABLE IF NOT EXISTS user_feedback (
     INDEX idx_feedback_type_created (type, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '匿名用户反馈表';
 
--- 16. 数据集解析/检索参数配置表（跨端共享：Java 读写、Python 直读；与 Python migration 0017 对齐，字段名/默认值/索引保持一致）
+-- 16. 数据集解析/检索参数配置表（跨端共享：Java 读写、Python 直读；与 Python migration 0017/0030 对齐，字段名/默认值/索引保持一致）
 CREATE TABLE IF NOT EXISTS dataset_parse_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',
     dataset_id          BIGINT UNSIGNED NOT NULL COMMENT '所属数据集 ID，对应 dataset.id',
     sparse_embedding_config_id BIGINT UNSIGNED DEFAULT NULL COMMENT '稀疏向量模型配置 ID，对应 llm_user_config.id，能力为 SPARSE_EMBEDDING',
     dense_embedding_config_id  BIGINT UNSIGNED DEFAULT NULL COMMENT '稠密向量模型配置 ID，对应 llm_user_config.id，能力为 EMBEDDING',
-    chunking_config     JSON            NOT NULL COMMENT '分块配置（3 项：heading_break_level / min_candidate_chunk_tokens / overlap_tokens）',
-    enhancement_config  JSON            NOT NULL COMMENT 'Markdown 增强配置（2 项开关：enable_table_enhancement / enable_image_enhancement；增强模型不在此选择，统一用发起用户 CHAT/VISION 默认模型）',
+    chunking_config     JSON            NOT NULL COMMENT '分块配置（7 项：heading_break_level / min_candidate_chunk_tokens / overlap_tokens / max_chunk_tokens / hard_max_tokens / stage_two_algorithm / protected_neighbor_overlap）',
+    enhancement_config  JSON            NOT NULL COMMENT 'Markdown 增强配置（3 项开关：enable_table_enhancement / enable_image_enhancement / enable_heading_hierarchy；增强模型不在此选择，统一用发起用户 CHAT/VISION 默认模型）',
     pdf_config          JSON            NOT NULL COMMENT 'PDF 解析配置（1 项：pdf_parser_backend）',
-    recall_config       JSON            NOT NULL COMMENT '召回检索配置（9 项：recall_result_limit / recall_context_token_budget / sparse_top_k / sparse_score_threshold / dense_top_k / dense_score_threshold / recall_enabled_sources / rerank_top_n / recall_strict）',
+    recall_config       JSON            NOT NULL COMMENT '召回检索配置（14 项：recall_result_limit / recall_context_token_budget / bm25_top_k / sparse_top_k / sparse_score_threshold / dense_top_k / dense_score_threshold / recall_enabled_sources / recall_fusion_strategy / fusion_bm25_weight / fusion_sparse_weight / fusion_dense_weight / rerank_top_n / recall_strict）',
     is_active           BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否启用',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

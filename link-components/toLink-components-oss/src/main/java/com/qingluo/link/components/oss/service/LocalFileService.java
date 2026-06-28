@@ -27,6 +27,7 @@ public class LocalFileService implements IOssService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalFileService.class);
     private static final String LOCAL_PUBLIC_BUCKET = "local-public";
+    private static final String LOCAL_RAW_BUCKET = "local-raw";
     private static final String LOCAL_PRIVATE_BUCKET = "local-private";
 
     private final OssProperties ossProperties;
@@ -105,6 +106,7 @@ public class LocalFileService implements IOssService {
     public String getBucketName(OssSavePlaceEnum ossSavePlaceEnum) {
         return switch (ossSavePlaceEnum) {
             case PUBLIC -> LOCAL_PUBLIC_BUCKET;
+            case RAW -> LOCAL_RAW_BUCKET;
             case PRIVATE -> LOCAL_PRIVATE_BUCKET;
         };
     }
@@ -115,7 +117,7 @@ public class LocalFileService implements IOssService {
     }
 
     private static boolean returnsObjectKeyOnly(OssSavePlaceEnum place) {
-        return place == OssSavePlaceEnum.PRIVATE;
+        return place == OssSavePlaceEnum.RAW || place == OssSavePlaceEnum.PRIVATE;
     }
 
     private Path resolveStoragePath(OssSavePlaceEnum place, String objectKey) throws IOException {
@@ -124,6 +126,7 @@ public class LocalFileService implements IOssService {
         }
         String basePath = switch (place) {
             case PUBLIC -> ossProperties.getFilePublicPath();
+            case RAW -> Path.of(ossProperties.getFileRootPath(), "raw").toString();
             case PRIVATE -> ossProperties.getFilePrivatePath();
         };
         Path base = Path.of(basePath).toAbsolutePath().normalize();
