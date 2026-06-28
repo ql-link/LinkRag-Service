@@ -58,7 +58,7 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
     public static final String TRIGGER_MANUAL_RETRY = "manual_retry";
 
     private static final String UPLOAD_SUCCESS = "success";
-    private static final String MD_BUCKET = "rag-md";
+    private static final String MD_BUCKET = "tolink-rag-docs";
     private static final Set<String> PDF_PARSER_BACKENDS = Set.of("auto", "mineru", "opendataloader", "naive");
 
     private final DatasetMapper datasetMapper;
