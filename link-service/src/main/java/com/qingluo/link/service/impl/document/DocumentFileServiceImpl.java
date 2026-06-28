@@ -142,7 +142,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
                 .set(DocumentOriginalFile::getFileUrl, null)
                 .set(DocumentOriginalFile::getFileSize, file.getSize())
                 .set(DocumentOriginalFile::getContentType, file.getContentType())
-                .set(DocumentOriginalFile::getBucketName, ossService.getBucketName(OssSavePlaceEnum.PRIVATE)));
+                .set(DocumentOriginalFile::getBucketName, ossService.getBucketName(OssSavePlaceEnum.RAW)));
             if (reused == 0) {
                 // 并发：旧行已被他人复用或改状态。
                 throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
@@ -163,7 +163,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         record.setFileSuffix(suffix);
         record.setFileSize(file.getSize());
         record.setContentType(file.getContentType());
-        record.setBucketName(ossService.getBucketName(OssSavePlaceEnum.PRIVATE));
+        record.setBucketName(ossService.getBucketName(OssSavePlaceEnum.RAW));
         record.setUploadStatus(UPLOADING);
         record.setIsUploadSuccess(false);
         try {
@@ -269,7 +269,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         if (!StringUtils.hasText(record.getObjectKey())) {
             throw new BusinessException(404, "文件不存在", 404);
         }
-        File file = privateFileResolver.getPrivateFile(record.getObjectKey());
+        File file = privateFileResolver.getPrivateFile(OssSavePlaceEnum.RAW, record.getObjectKey());
         if (!file.exists() || !file.isFile()) {
             throw new BusinessException(404, "文件不存在", 404);
         }

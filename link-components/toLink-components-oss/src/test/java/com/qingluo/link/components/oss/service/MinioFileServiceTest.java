@@ -17,8 +17,9 @@ class MinioFileServiceTest {
         OssProperties ossProperties = new OssProperties();
         ossProperties.setServiceType("minio");
         ossProperties.getMinio().setEndpoint("http://127.0.0.1:9000");
-        ossProperties.getMinio().setPublicBucketName("rag-public");
-        ossProperties.getMinio().setPrivateBucketName("rag-raw");
+        ossProperties.getMinio().setPublicBucketName("tolink-public");
+        ossProperties.getMinio().setRawBucketName("tolink-rag-raw");
+        ossProperties.getMinio().setPrivateBucketName("tolink-rag-docs");
         ossProperties.getMinio().setAccessKey("root");
         ossProperties.getMinio().setSecretKey("secret123");
 
@@ -27,45 +28,50 @@ class MinioFileServiceTest {
     }
 
     @Test
-    void Should_RejectMinioClient_When_PublicAndPrivateBucketsAreSame() {
+    void Should_RejectMinioClient_When_AnyTwoBucketsHaveSameName() {
         OssProperties ossProperties = new OssProperties();
         ossProperties.setServiceType("minio");
         ossProperties.getMinio().setEndpoint("http://127.0.0.1:9000");
-        ossProperties.getMinio().setPublicBucketName("rag-raw");
-        ossProperties.getMinio().setPrivateBucketName("rag-raw");
+        ossProperties.getMinio().setPublicBucketName("same-bucket");
+        ossProperties.getMinio().setRawBucketName("same-bucket");
+        ossProperties.getMinio().setPrivateBucketName("different-bucket");
         ossProperties.getMinio().setAccessKey("root");
         ossProperties.getMinio().setSecretKey("secret123");
 
         assertThatThrownBy(() -> new MinioFileService(ossProperties))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessage("MinIO public and private buckets must be different");
+            .hasMessageContaining("must be unique")
+            .hasMessageContaining("same-bucket");
     }
 
     @Test
     void Should_ReturnConfiguredPrivateBucketName_When_ResolvePrivateBucket() {
-        OssProperties ossProperties = new OssProperties();
-        ossProperties.setServiceType("minio");
-        ossProperties.getMinio().setEndpoint("http://127.0.0.1:9000");
-        ossProperties.getMinio().setPublicBucketName("public-bucket");
-        ossProperties.getMinio().setPrivateBucketName("private-bucket");
-        ossProperties.getMinio().setAccessKey("root");
-        ossProperties.getMinio().setSecretKey("secret123");
-
-        MinioFileService service = new MinioFileService(ossProperties);
+        MinioFileService service = new MinioFileService(
+            minioProperties("public-bucket", "raw-bucket", "private-bucket"));
 
         assertThat(service.getBucketName(OssSavePlaceEnum.PRIVATE)).isEqualTo("private-bucket");
     }
 
     @Test
+    void Should_ReturnConfiguredRawBucketName_When_ResolveRawBucket() {
+        MinioFileService service = new MinioFileService(
+            minioProperties("tolink-public", "tolink-rag-raw", "tolink-rag-docs"));
+
+        assertThat(service.getBucketName(OssSavePlaceEnum.RAW)).isEqualTo("tolink-rag-raw");
+    }
+
+    @Test
     void Should_ResolveConfiguredPublicBucketName_When_ResolvePublicBucket() {
-        MinioFileService service = new MinioFileService(minioProperties("tolink-public", "tolink-rag-docs"));
+        MinioFileService service = new MinioFileService(
+            minioProperties("tolink-public", "tolink-rag-raw", "tolink-rag-docs"));
 
         assertThat(service.getBucketName(OssSavePlaceEnum.PUBLIC)).isEqualTo("tolink-public");
     }
 
     @Test
     void Should_BuildPublicUrl_When_ResolvePublicUrlForPublicBucket() {
-        MinioFileService service = new MinioFileService(minioProperties("tolink-public", "tolink-rag-docs"));
+        MinioFileService service = new MinioFileService(
+            minioProperties("tolink-public", "tolink-rag-raw", "tolink-rag-docs"));
 
         assertThat(service.resolvePublicUrl(OssSavePlaceEnum.PUBLIC, "feedback/2026/06/abc.png"))
             .isEqualTo("http://127.0.0.1:9000/tolink-public/feedback/2026/06/abc.png");
@@ -73,7 +79,8 @@ class MinioFileServiceTest {
 
     @Test
     void Should_FailFast_When_PublicBucketIsNotConfigured() {
-        MinioFileService service = new MinioFileService(minioProperties(null, "tolink-rag-docs"));
+        MinioFileService service = new MinioFileService(
+            minioProperties(null, "tolink-rag-raw", "tolink-rag-docs"));
 
         assertThatThrownBy(() -> service.getBucketName(OssSavePlaceEnum.PUBLIC))
             .isInstanceOf(IllegalStateException.class)
@@ -81,11 +88,12 @@ class MinioFileServiceTest {
             .hasMessageContaining("PUBLIC");
     }
 
-    private static OssProperties minioProperties(String publicBucket, String privateBucket) {
+    private static OssProperties minioProperties(String publicBucket, String rawBucket, String privateBucket) {
         OssProperties ossProperties = new OssProperties();
         ossProperties.setServiceType("minio");
         ossProperties.getMinio().setEndpoint("http://127.0.0.1:9000");
         ossProperties.getMinio().setPublicBucketName(publicBucket);
+        ossProperties.getMinio().setRawBucketName(rawBucket);
         ossProperties.getMinio().setPrivateBucketName(privateBucket);
         ossProperties.getMinio().setAccessKey("root");
         ossProperties.getMinio().setSecretKey("secret123");

@@ -167,6 +167,7 @@ public class MinioFileService implements IOssService {
         OssProperties.Minio minio = ossProperties.getMinio();
         String bucket = switch (place) {
             case PUBLIC -> minio.getPublicBucketName();
+            case RAW -> minio.getRawBucketName();
             case PRIVATE -> minio.getPrivateBucketName();
         };
         if (!StringUtils.hasText(bucket)) {
@@ -176,16 +177,18 @@ public class MinioFileService implements IOssService {
     }
 
     private static boolean returnsObjectKeyOnly(OssSavePlaceEnum place) {
-        return place == OssSavePlaceEnum.PRIVATE;
+        return place == OssSavePlaceEnum.RAW || place == OssSavePlaceEnum.PRIVATE;
     }
 
     private void validateBucketNames(OssProperties.Minio minio) {
         String publicBucket = minio.getPublicBucketName();
+        String rawBucket = minio.getRawBucketName();
         String privateBucket = minio.getPrivateBucketName();
-        if (StringUtils.hasText(publicBucket)
-            && StringUtils.hasText(privateBucket)
-            && publicBucket.equals(privateBucket)) {
-            throw new IllegalStateException("MinIO public and private buckets must be different");
+        Set<String> configured = new java.util.HashSet<>();
+        for (String b : new String[]{publicBucket, rawBucket, privateBucket}) {
+            if (StringUtils.hasText(b) && !configured.add(b)) {
+                throw new IllegalStateException("MinIO bucket names must be unique; duplicate: " + b);
+            }
         }
     }
 

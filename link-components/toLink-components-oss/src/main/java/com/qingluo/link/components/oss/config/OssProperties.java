@@ -149,6 +149,9 @@ public class OssProperties {
 
         private String endpoint;
         private String publicBucketName;
+        /** 原文件桶：用户上传的源文件，Java 写入，Python 只读（tolink-rag-raw）。 */
+        private String rawBucketName;
+        /** 解析产物桶：Python 写入 Markdown 与图片，Java 只读（tolink-rag-docs）。 */
         private String privateBucketName;
         private String accessKey;
         private String secretKey;
@@ -167,6 +170,14 @@ public class OssProperties {
 
         public void setPublicBucketName(String publicBucketName) {
             this.publicBucketName = publicBucketName;
+        }
+
+        public String getRawBucketName() {
+            return rawBucketName;
+        }
+
+        public void setRawBucketName(String rawBucketName) {
+            this.rawBucketName = rawBucketName;
         }
 
         public String getPrivateBucketName() {
