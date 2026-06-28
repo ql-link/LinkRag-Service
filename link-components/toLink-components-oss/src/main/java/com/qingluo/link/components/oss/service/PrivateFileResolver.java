@@ -25,6 +25,10 @@ public class PrivateFileResolver {
     }
 
     public File getPrivateFile(String objectKey) {
+        return getPrivateFile(OssSavePlaceEnum.PRIVATE, objectKey);
+    }
+
+    public File getPrivateFile(OssSavePlaceEnum place, String objectKey) {
         Path target = resolvePrivatePath(objectKey);
         if (Files.exists(target) || OssServiceTypeEnum.LOCAL.getServiceName().equals(ossProperties.getServiceType())) {
             return target.toFile();
@@ -37,7 +41,7 @@ public class PrivateFileResolver {
 
         try {
             Files.createDirectories(target.getParent());
-            if (ossService.downloadFile(OssSavePlaceEnum.PRIVATE, objectKey, target.toString())) {
+            if (ossService.downloadFile(place, objectKey, target.toString())) {
                 return target.toFile();
             }
             Files.createFile(marker);

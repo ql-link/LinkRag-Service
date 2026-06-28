@@ -269,7 +269,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         if (!StringUtils.hasText(record.getObjectKey())) {
             throw new BusinessException(404, "文件不存在", 404);
         }
-        File file = privateFileResolver.getPrivateFile(record.getObjectKey());
+        File file = privateFileResolver.getPrivateFile(OssSavePlaceEnum.RAW, record.getObjectKey());
         if (!file.exists() || !file.isFile()) {
             throw new BusinessException(404, "文件不存在", 404);
         }
