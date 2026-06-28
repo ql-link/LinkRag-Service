@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.mapper.ChatMessageMapper;
+import com.qingluo.link.model.dto.response.ConversationDTO;
 import com.qingluo.link.model.dto.entity.ChatMessage;
+import com.qingluo.link.service.ChatService;
 import com.qingluo.link.service.mq.ChatTurnKafkaReceiver;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +43,7 @@ class ChatTurnIntegrationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private ChatTurnKafkaReceiver receiver;
     @Autowired private ChatMessageMapper chatMessageMapper;
+    @Autowired private ChatService chatService;
 
     private Long userId;
     private Long otherUserId;
@@ -158,6 +161,40 @@ class ChatTurnIntegrationTest {
         assertThat(msg.get("status")).isEqualTo("COMPLETED");
         assertThat(msg.get("answer")).isEqualTo("RAG 是检索增强生成，结合检索与大模型。");
         assertThat(usageRowCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("recent order: new turn refreshes updated_at even when metadata is unchanged")
+    void Should_MoveConversationFirst_When_NewTurnUsesSameMetadata() {
+        jdbcTemplate.update("""
+            UPDATE chat_conversation
+            SET updated_at = '2000-01-01 00:00:00', last_config_id = 7, last_model_name = 'gpt-4'
+            WHERE id = ?
+            """, conversationId);
+        jdbcTemplate.update("""
+            INSERT INTO chat_conversation (user_id, dataset_id, title, is_pinned, updated_at)
+            VALUES (?, ?, 'newer-order-conversation', FALSE, '2020-01-01 00:00:00')
+            """, userId, datasetId);
+        Long newerConversationId = jdbcTemplate.queryForObject(
+                "SELECT id FROM chat_conversation WHERE title = 'newer-order-conversation'", Long.class);
+
+        assertThat(chatService.getConversations(userId, 1, 20).getItems())
+                .extracting(ConversationDTO::getId)
+                .startsWith(newerConversationId);
+
+        receiver.receive(envelope(
+                "\"conversation_id\":" + conversationId + ",\"turn_id\":\"turn-order-1\","
+                + "\"request_id\":\"req-order-1\",\"user_id\":" + userId + ","
+                + "\"query\":\"same metadata\",\"answer\":\"done\","
+                + "\"config_id\":7,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
+                + "\"references\":[],\"latency_ms\":100,\"status\":\"COMPLETED\""));
+
+        String updatedAt = jdbcTemplate.queryForObject(
+                "SELECT updated_at FROM chat_conversation WHERE id = ?", String.class, conversationId);
+        assertThat(updatedAt).doesNotStartWith("2000");
+        assertThat(chatService.getConversations(userId, 1, 20).getItems())
+                .extracting(ConversationDTO::getId)
+                .startsWith(conversationId);
     }
 
     @Test
