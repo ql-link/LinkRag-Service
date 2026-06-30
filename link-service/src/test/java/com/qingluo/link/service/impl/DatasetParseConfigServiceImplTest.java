@@ -17,6 +17,7 @@ import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
+import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -40,6 +41,9 @@ class DatasetParseConfigServiceImplTest {
 
     @Mock
     private DatasetService datasetService;
+
+    @Mock
+    private DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
     @InjectMocks
     private DatasetParseConfigServiceImpl service;
@@ -110,6 +114,11 @@ class DatasetParseConfigServiceImplTest {
         UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
         ChunkingConfig chunking = new ChunkingConfig();
         chunking.setOverlapTokens(16);
+        chunking.setMinCandidateChunkTokens(128);
+        chunking.setMaxChunkTokens(768);
+        chunking.setHardMaxTokens(1400);
+        chunking.setStageTwoAlgorithm(" Semantic_Depth_Window ");
+        chunking.setProtectedNeighborOverlap(true);
         req.setChunking(chunking);
 
         service.updateConfig(1L, 10L, req);
@@ -121,6 +130,10 @@ class DatasetParseConfigServiceImplTest {
         assertThat(saved.getDatasetId()).isEqualTo(10L);
         assertThat(saved.getIsActive()).isTrue();
         assertThat(saved.getChunkingConfig().getOverlapTokens()).isEqualTo(16);
+        assertThat(saved.getChunkingConfig().getMaxChunkTokens()).isEqualTo(768);
+        assertThat(saved.getChunkingConfig().getHardMaxTokens()).isEqualTo(1400);
+        assertThat(saved.getChunkingConfig().getStageTwoAlgorithm()).isEqualTo("semantic_depth_window");
+        assertThat(saved.getChunkingConfig().getProtectedNeighborOverlap()).isEqualTo(true);
         // 未提交字段不补默认
         assertThat(saved.getChunkingConfig().getHeadingBreakLevel()).isNull();
         // 未提交类写空对象（非 null，序列化为 {}）
@@ -137,7 +150,17 @@ class DatasetParseConfigServiceImplTest {
 
         UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
         RecallConfig recall = new RecallConfig();
-        recall.setRecallEnabledSources(java.util.List.of(" dense ", "", "bm25", "dense"));
+        recall.setRecallResultLimit(20);
+        recall.setBm25TopK(30);
+        recall.setSparseTopK(10);
+        recall.setSparseScoreThreshold(0.1);
+        recall.setDenseTopK(12);
+        recall.setDenseScoreThreshold(0.2);
+        recall.setRecallEnabledSources(java.util.List.of(" DENSE ", "", "bm25", "dense"));
+        recall.setRecallFusionStrategy(" Weighted_Score ");
+        recall.setFusionBm25Weight(1.0);
+        recall.setFusionSparseWeight(0.8);
+        recall.setFusionDenseWeight(1.2);
         recall.setRerankTopN(3);
         recall.setRecallStrict(true);
         req.setRecall(recall);
@@ -147,7 +170,11 @@ class DatasetParseConfigServiceImplTest {
         ArgumentCaptor<DatasetParseConfig> captor = ArgumentCaptor.forClass(DatasetParseConfig.class);
         verify(datasetParseConfigMapper).insert(captor.capture());
         assertThat(captor.getValue().getRecallConfig().getRecallEnabledSources()).containsExactly("dense", "bm25");
+        assertThat(captor.getValue().getRecallConfig().getRecallFusionStrategy()).isEqualTo("weighted_score");
+        assertThat(captor.getValue().getRecallConfig().getBm25TopK()).isEqualTo(30);
+        assertThat(captor.getValue().getRecallConfig().getFusionDenseWeight()).isEqualTo(1.2);
         assertThat(resp.getRecall().getRecallEnabledSources()).containsExactly("dense", "bm25");
+        assertThat(resp.getRecall().getRecallFusionStrategy()).isEqualTo("weighted_score");
         assertThat(resp.getRecall().getRerankTopN()).isEqualTo(3);
         assertThat(resp.getRecall().getRecallStrict()).isTrue();
     }
@@ -191,10 +218,70 @@ class DatasetParseConfigServiceImplTest {
     }
 
     @Test
+    @DisplayName("Should_RejectChunkBounds_When_MaxLessThanMin")
+    void Should_RejectChunkBounds_When_MaxLessThanMin() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        ChunkingConfig chunking = new ChunkingConfig();
+        chunking.setMinCandidateChunkTokens(256);
+        chunking.setMaxChunkTokens(128);
+        req.setChunking(chunking);
+
+        assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("max_chunk_tokens");
+
+        verify(datasetParseConfigMapper, never()).insert(any());
+        verify(datasetParseConfigMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("Should_RejectRecallFusionWeight_When_Negative")
+    void Should_RejectRecallFusionWeight_When_Negative() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        RecallConfig recall = new RecallConfig();
+        recall.setFusionDenseWeight(-0.1);
+        req.setRecall(recall);
+
+        assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("fusion_dense_weight");
+
+        verify(datasetParseConfigMapper, never()).insert(any());
+        verify(datasetParseConfigMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("Should_RejectRecallFusionStrategy_When_Unknown")
+    void Should_RejectRecallFusionStrategy_When_Unknown() {
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        RecallConfig recall = new RecallConfig();
+        recall.setRecallFusionStrategy("unknown");
+        req.setRecall(recall);
+
+        assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("recall_fusion_strategy");
+
+        verify(datasetParseConfigMapper, never()).insert(any());
+        verify(datasetParseConfigMapper, never()).updateById(any());
+    }
+
+    @Test
     @DisplayName("Should_UpdateExistingRow_When_RowExists")
     void Should_UpdateExistingRow_When_RowExists() {
         DatasetParseConfig existing = new DatasetParseConfig();
         existing.setId(5L);
+        existing.setSparseEmbeddingConfigId(11L);
+        existing.setDenseEmbeddingConfigId(12L);
         given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
         given(datasetParseConfigMapper.selectOne(any())).willReturn(existing);
 
@@ -210,10 +297,34 @@ class DatasetParseConfigServiceImplTest {
         verify(datasetParseConfigMapper, never()).insert(any());
         DatasetParseConfig updated = captor.getValue();
         assertThat(updated.getId()).isEqualTo(5L);
+        assertThat(updated.getSparseEmbeddingConfigId()).isEqualTo(11L);
+        assertThat(updated.getDenseEmbeddingConfigId()).isEqualTo(12L);
         assertThat(updated.getChunkingConfig().getOverlapTokens()).isEqualTo(20);
         // 修复「最后更新时间不变」：更新只写主键+四类，不显式写时间字段，交 DB ON UPDATE 刷新 updated_at
         assertThat(updated.getUpdatedAt()).isNull();
         assertThat(updated.getCreatedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("Should_RejectModelRebind_When_ExistingBindingDiffers")
+    void Should_RejectModelRebind_When_ExistingBindingDiffers() {
+        DatasetParseConfig existing = new DatasetParseConfig();
+        existing.setId(5L);
+        existing.setSparseEmbeddingConfigId(11L);
+        existing.setDenseEmbeddingConfigId(12L);
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        given(datasetParseConfigMapper.selectOne(any())).willReturn(existing);
+
+        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
+        req.setSparseEmbeddingConfigId(11L);
+        req.setDenseEmbeddingConfigId(13L);
+
+        assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("dense_embedding_config_id");
+
+        verify(datasetParseConfigMapper, never()).insert(any());
+        verify(datasetParseConfigMapper, never()).updateById(any());
     }
 
     @Test

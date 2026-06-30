@@ -9,9 +9,9 @@ import java.time.LocalDateTime;
  * 用户级 LLM 配置表
  * 对应表：llm_user_config
  *
- * <p>下游 Python 直读本表，按 (user_id, capability, is_default, is_active) 取生效配置。
- * 系统预设与用户自配统一汇入本表，是唯一生效源。一个 (用户,厂商,模型,能力) 一行，
- * 同厂商多行共用同一个厂商级 api_key。</p>
+ * <p>本表只保存用户自配配置。Java 先按 (user_id, capability, is_default, is_active)
+ * 查用户自配默认；没有时再回退到 llm_system_preset 的 LinkRag 系统默认。
+ * 一个 (用户,厂商,模型,能力) 一行，同厂商多行共用同一个厂商级 api_key。</p>
  */
 @Data
 @TableName("llm_user_config")
@@ -65,8 +65,8 @@ public class UserLLMConfig {
     @TableField("is_default")
     private Boolean isDefault = false;
 
-    /** 系统预设行：只读常备备选，禁止删除/改内容，仅可按能力切换是否生效。 */
-    @Schema(description = "是否为系统预设行（只读）", example = "false")
+    /** 历史兼容字段：新注册用户不再写系统预设镜像行，正常用户自配行恒为 false。 */
+    @Schema(description = "历史兼容字段；新用户自配配置恒为 false", example = "false")
     @TableField("is_system_preset")
     private Boolean isSystemPreset = false;
 

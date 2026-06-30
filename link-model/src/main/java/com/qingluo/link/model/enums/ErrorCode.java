@@ -31,6 +31,7 @@ public enum ErrorCode {
     PRESET_READONLY(10013, "系统预设为只读，不可修改或删除", 403),
     MODEL_CONFIG_INCOMPLETE(10014, "模型能力缺少协议或入口，无法保存或展开", 400),
     INVALID_PROTOCOL(10015, "协议不在支持范围内", 400),
+    SYSTEM_PROVIDER_READONLY(10016, "系统服务厂商不支持用户自配", 400),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),

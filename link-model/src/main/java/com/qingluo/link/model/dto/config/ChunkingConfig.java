@@ -10,7 +10,7 @@ import javax.validation.constraints.Min;
 import lombok.Data;
 
 /**
- * 分块策略配置（3 项），字段名与 Python {@code ChunkingConfig} Pydantic 模型对齐。
+ * 分块策略配置（7 项），字段名与 Python {@code ChunkingConfig} Pydantic 模型对齐。
  *
  * <p>包装类型 + {@code NON_NULL}：用户未提交的字段不写入 JSON，由 Python 消费时按模型补默认
  * （Java 不持有默认值）。{@code ignoreUnknown}：容忍 Python 后续新增字段，避免反序列化失败。
@@ -35,4 +35,21 @@ public class ChunkingConfig {
     @Max(value = 64, message = "overlap_tokens 必须在 0-64 之间")
     @Schema(description = "块间重叠 token", example = "64")
     private Integer overlapTokens;
+
+    @Min(value = 256, message = "max_chunk_tokens 必须在 256-2048 之间")
+    @Max(value = 2048, message = "max_chunk_tokens 必须在 256-2048 之间")
+    @Schema(description = "目标块最大 token", example = "768")
+    private Integer maxChunkTokens;
+
+    @Min(value = 512, message = "hard_max_tokens 必须在 512-8192 之间")
+    @Max(value = 8192, message = "hard_max_tokens 必须在 512-8192 之间")
+    @Schema(description = "硬切分最大 token", example = "1400")
+    private Integer hardMaxTokens;
+
+    @Schema(description = "二阶段分块算法", example = "semantic_depth_window",
+        allowableValues = {"noop", "semantic_depth_window"})
+    private String stageTwoAlgorithm;
+
+    @Schema(description = "含受保护元素（表格/代码块/公式）的 chunk 是否参与 neighbor overlap", example = "false")
+    private Boolean protectedNeighborOverlap;
 }

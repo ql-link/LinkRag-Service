@@ -42,6 +42,8 @@ public class SystemProviderServiceImpl implements SystemProviderService {
     private final ProviderModelService providerModelService;
     private final ProviderCatalogCacheService providerCatalogCacheService;
 
+    private static final String LINKRAG_PROVIDER_TYPE = "linkrag";
+
     @Override
     /**
      * 查询所有启用中的系统厂商配置。
@@ -96,6 +98,7 @@ public class SystemProviderServiceImpl implements SystemProviderService {
                 .filter(model -> normalizedCapability == null || normalizedCapability.equals(model.getCapability()))
                 .collect(Collectors.groupingBy(ProviderModel::getProviderId));
         return providers.stream()
+                .filter(provider -> !LINKRAG_PROVIDER_TYPE.equals(provider.getProviderType()))
                 .map(provider -> toProviderModelDTO(provider, modelsByProvider.getOrDefault(provider.getId(), List.of())))
                 .filter(dto -> !dto.getModels().isEmpty())
                 .toList();
@@ -135,15 +138,21 @@ public class SystemProviderServiceImpl implements SystemProviderService {
      */
     private ProviderModelDTO toProviderModelDTO(ProviderRef provider, List<ProviderModel> rows) {
         Map<String, List<ModelCapabilityDetailDTO>> grouped = new LinkedHashMap<>();
+        Map<String, String> displayNames = new LinkedHashMap<>();
         for (ProviderModel row : rows) {
             // 暴露每个 (模型,能力) 的协议与入口事实值，让前端/管理端看到「这个能力实际怎么调」
             grouped.computeIfAbsent(row.getModelName(), k -> new ArrayList<>())
                     .add(new ModelCapabilityDetailDTO(row.getCapability(), row.getProtocol(), row.getApiBaseUrl()));
+            displayNames.computeIfAbsent(row.getModelName(), k -> resolveDisplayName(row));
         }
         List<ModelCapabilityDTO> models = grouped.entrySet().stream()
-                .map(entry -> new ModelCapabilityDTO(entry.getKey(), entry.getValue()))
+                .map(entry -> new ModelCapabilityDTO(entry.getKey(), displayNames.get(entry.getKey()), entry.getValue()))
                 .toList();
         return new ProviderModelDTO(provider.getProviderType(), provider.getProviderName(), models);
+    }
+
+    private String resolveDisplayName(ProviderModel model) {
+        return StringUtils.hasText(model.getDisplayName()) ? model.getDisplayName() : model.getModelName();
     }
 
     /**

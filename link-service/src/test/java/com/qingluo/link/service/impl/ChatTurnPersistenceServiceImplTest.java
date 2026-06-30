@@ -7,12 +7,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.qingluo.link.components.mq.model.ChatTurnMQ;
 import com.qingluo.link.mapper.ChatConversationMapper;
 import com.qingluo.link.mapper.ChatMessageMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
+import java.util.Collection;
 import java.util.List;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -86,6 +88,21 @@ class ChatTurnPersistenceServiceImplTest {
         return m;
     }
 
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private LambdaUpdateWrapper<ChatConversation> captureConversationUpdate() {
+        ArgumentCaptor<LambdaUpdateWrapper> updateCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(conversationMapper).update(any(), updateCaptor.capture());
+        return updateCaptor.getValue();
+    }
+
+    private Collection<Object> conversationUpdateValues() {
+        return captureConversationUpdate().getParamNameValuePairs().values();
+    }
+
+    private void assertForcesUpdatedAt() {
+        assertThat(captureConversationUpdate().getSqlSet()).contains("updated_at = CURRENT_TIMESTAMP");
+    }
+
     @Test
     @DisplayName("Should_InsertRowAndConversation_When_FreshCompleted")
     void Should_PersistAll_When_FreshCompleted() {
@@ -104,12 +121,10 @@ class ChatTurnPersistenceServiceImplTest {
         assertThat(saved.getRequestId()).isEqualTo("req-1");
         assertThat(saved.getStatus()).isEqualTo("COMPLETED");
 
-        ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
-        verify(conversationMapper).updateById(convCaptor.capture());
-        ChatConversation conv = convCaptor.getValue();
-        assertThat(conv.getLastConfigId()).isEqualTo(7L);
-        assertThat(conv.getLastModelName()).isEqualTo("gpt-4");
-        assertThat(conv.getTitle()).isEqualTo("RAG 入门");
+        LambdaUpdateWrapper<ChatConversation> updateWrapper = captureConversationUpdate();
+        assertThat(updateWrapper.getSqlSet()).contains("updated_at = CURRENT_TIMESTAMP");
+        assertThat(updateWrapper.getParamNameValuePairs().values())
+                .contains(7L, "gpt-4", payload("COMPLETED").getTitle());
     }
 
     @Test
@@ -127,9 +142,7 @@ class ChatTurnPersistenceServiceImplTest {
         ArgumentCaptor<ChatMessage> msgCaptor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(messageMapper).insert(msgCaptor.capture());
         assertThat(msgCaptor.getValue().getStatus()).isEqualTo("GENERATING");
-        ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
-        verify(conversationMapper).updateById(convCaptor.capture());
-        assertThat(convCaptor.getValue().getTitle()).isEqualTo("新对话");
+        assertForcesUpdatedAt();
     }
 
     @Test
@@ -182,7 +195,7 @@ class ChatTurnPersistenceServiceImplTest {
 
         verify(messageMapper, never()).insert(any());
         verify(messageMapper, never()).updateById(any());
-        verify(conversationMapper, never()).updateById(any());
+        verify(conversationMapper, never()).update(any(), any());
     }
 
     @Test
@@ -218,7 +231,7 @@ class ChatTurnPersistenceServiceImplTest {
 
         verify(messageMapper, never()).selectOne(any());
         verify(messageMapper, never()).insert(any());
-        verify(conversationMapper, never()).updateById(any());
+        verify(conversationMapper, never()).update(any(), any());
     }
 
     @Test
@@ -241,9 +254,7 @@ class ChatTurnPersistenceServiceImplTest {
 
         service.persist(payload("COMPLETED"));
 
-        ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
-        verify(conversationMapper).updateById(convCaptor.capture());
-        assertThat(convCaptor.getValue().getTitle()).isEqualTo("用户手动标题");
+        assertThat(conversationUpdateValues()).doesNotContain(payload("COMPLETED").getTitle());
     }
 
     @Test
@@ -256,9 +267,7 @@ class ChatTurnPersistenceServiceImplTest {
 
         service.persist(payload("COMPLETED"));
 
-        ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
-        verify(conversationMapper).updateById(convCaptor.capture());
-        assertThat(convCaptor.getValue().getTitle()).isEqualTo("RAG 入门");
+        assertThat(conversationUpdateValues()).contains(payload("COMPLETED").getTitle());
     }
 
     @Test
@@ -271,8 +280,6 @@ class ChatTurnPersistenceServiceImplTest {
 
         service.persist(p);
 
-        ArgumentCaptor<ChatConversation> convCaptor = ArgumentCaptor.forClass(ChatConversation.class);
-        verify(conversationMapper).updateById(convCaptor.capture());
-        assertThat(convCaptor.getValue().getTitle()).hasSize(255);
+        assertThat(conversationUpdateValues()).anySatisfy(value -> assertThat(value).asString().hasSize(255));
     }
 }

@@ -18,7 +18,6 @@ import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.OssApplicationService;
-import com.qingluo.link.service.SystemPresetService;
 import com.qingluo.link.service.cache.UserCacheService;
 import com.qingluo.link.service.oss.UploadResult;
 import org.junit.jupiter.api.AfterEach;
@@ -52,9 +51,6 @@ class AuthServiceImplTest {
 
     @Mock
     private UserCacheService userCacheService;
-
-    @Mock
-    private SystemPresetService systemPresetService;
 
     @Mock
     private OssApplicationService ossApplicationService;
@@ -126,8 +122,6 @@ class AuthServiceImplTest {
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).insert(captor.capture());
         assertThat(captor.getValue().getLastLoginAt()).isNotNull();
-        // 注册即写入系统预设，实现开箱即用
-        verify(systemPresetService).applyPresetsForNewUser(captor.getValue().getId());
         verify(userCacheService).put(eq(captor.getValue().getId()), any(UserProfileDTO.class));
     }
 

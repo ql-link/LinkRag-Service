@@ -57,7 +57,7 @@ public class DocumentUploadAsyncExecutor {
     void runUpload(UploadTask task) {
         try {
             String result = ossService.upload2PreviewUrl(
-                OssSavePlaceEnum.PRIVATE, task.tempFile().toFile(), task.contentType(), task.objectKey());
+                OssSavePlaceEnum.RAW, task.tempFile().toFile(), task.contentType(), task.objectKey());
             if (!StringUtils.hasText(result)) {
                 statusWriter.markUploadFailed(task.recordId(), "文件上传失败，请稍后重试");
                 return;

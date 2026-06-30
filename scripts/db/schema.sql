@@ -3,6 +3,7 @@
 -- ===============================================
 INSERT INTO llm_system_provider (provider_type, provider_name, api_base_url, is_active, priority)
 VALUES
+    ('linkrag', 'LinkRag', 'https://api.linkrag.local/v1', TRUE, 110),
     ('openai', 'OpenAI', 'https://api.openai.com/v1', TRUE, 100),
     ('claude', 'Anthropic Claude', 'https://api.anthropic.com/v1', TRUE, 95),
     ('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', TRUE, 90),
@@ -33,13 +34,13 @@ JOIN (
 ) m ON m.provider_type = p.provider_type;
 
 -- ===============================================
--- 1.2 初始化系统预设（可选；自带平台 Key，注册时复制进用户配置表，开箱即用）
+-- 1.2 初始化系统预设（可选；LinkRag 系统兜底配置，自带平台 Key）
 -- 注：api_key 必须填 AES-256-GCM 加密后的密文（密钥见 tolink.llm.api-key.secret）；
 --     明文会在真正调用 LLM 时 decrypt 失败。故此处给注释示例，运维替换密文后再启用。
 -- ===============================================
--- INSERT INTO llm_system_preset (provider_id, model_name, capability, api_key, is_active)
--- SELECT id, 'deepseek-v3', 'CHAT', '<加密后的平台Key密文>', TRUE
--- FROM llm_system_provider WHERE provider_type = 'deepseek';
+-- INSERT INTO llm_system_preset (provider_id, provider_type, model_name, capability, protocol, api_base_url, api_key, is_active, is_default)
+-- SELECT id, 'linkrag', 'linkrag-chat', 'CHAT', 'openai', 'https://api.linkrag.local/v1/chat/completions', '<加密后的平台Key密文>', TRUE, TRUE
+-- FROM llm_system_provider WHERE provider_type = 'linkrag';
 
 -- ===============================================
 -- 2. 初始化管理员账户 (密码: admin123)

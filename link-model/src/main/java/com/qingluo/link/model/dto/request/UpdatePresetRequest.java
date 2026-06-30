@@ -22,6 +22,9 @@ public class UpdatePresetRequest {
     @Schema(description = "平台 Key（明文，入库前加密）", example = "sk-platform-xxxxx")
     private String apiKey;
 
-    @Schema(description = "是否对新用户下发", example = "true")
+    @Schema(description = "是否启用为系统兜底候选", example = "true")
     private Boolean isActive;
+
+    @Schema(description = "是否设为该能力的系统兜底默认配置", example = "false")
+    private Boolean isDefault;
 }

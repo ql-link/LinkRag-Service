@@ -18,6 +18,7 @@ import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
+import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import java.util.List;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -53,6 +54,9 @@ class DatasetServiceImplTest {
 
     @Mock
     private DocumentDeleteNotifier deleteNotifier;
+
+    @Mock
+    private DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
     @InjectMocks
     private DatasetServiceImpl datasetService;

@@ -9,8 +9,8 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `sys_user` | `SysUser` | 用户、角色、状态 |
 | `llm_system_provider` | `SystemProvider` | 系统 LLM 厂商（瘦身，去 `supported_models`/`config_schema`） |
 | `llm_provider_model` | `ProviderModel` | 厂商→模型→能力目录（取代 `supported_models` JSON） |
-| `llm_system_preset` | `SystemPreset` | 系统预设模板（自带加密平台 Key） |
-| `llm_user_config` | `UserLLMConfig` | 用户 LLM 配置（下游唯一生效源；预设与自配统一汇入） |
+| `llm_system_preset` | `SystemPreset` | LinkRag 系统兜底预设（自带加密平台 Key） |
+| `llm_user_config` | `UserLLMConfig` | 用户自配 LLM 配置 |
 | `llm_usage_log` | `UsageLog` | 全链路模型调用账本（含 `stage` / `operation`，瘦身后无对话级关联键；全部模型调用用量统一经 `usage_report` 通道写入） |
 | `chat_conversation` | `ChatConversation` | 对话 |
 | `chat_message` | `ChatMessage` | 对话消息（一行一轮：`query` + `answer` 同行；含 `turn_id`(幂等键，唯一索引) / `references`(JSON) / `request_id` / `status` / `error_code` / `error_message`） |
@@ -35,8 +35,9 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
 - `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。`OCR` 已移除，不再作为独立模型能力；存量环境可执行 `scripts/db/remove_ocr_capability.sql` 清理 `llm_provider_model` / `llm_system_preset` / `llm_user_config` 中的 OCR 行。
 - 厂商→模型→能力目录迁至 `llm_provider_model`（一个模型多能力=多行，唯一键 `uk_provider_model_cap (provider_id, model_name, capability)`），`llm_system_provider` 已去掉 `supported_models` / `config_schema` JSON。用户「配置厂商」即按该表展开整厂商 (模型, 能力) 写入 `llm_user_config`。
-- `llm_system_preset`（自带加密平台 Key，唯一键 `uk_preset_provider_model_cap`）在用户注册时复制进 `llm_user_config`（`is_system_preset=true`、`is_default=true`），作为常备只读备选；预设已自带 `provider_type` / `protocol` / `api_base_url` 事实字段（见下「协议与入口三层语义」），注册镜像时直接平移这三列，不再 join 厂商表补全。
-- `llm_user_config` 一条配置按 (模型, 能力) 展开为多行，唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability, is_system_preset)`（含 `is_system_preset`，使同 (厂商,模型,能力) 的平台预设行与用户自配行可并存）。`is_active` 兼表「模型启停」与「生效过滤」，`is_default` 表按能力生效（单用户单能力唯一），`is_system_preset` 标记只读预设行；`api_base_url`（原 `custom_api_base_url`）由展开时复制自模型能力层事实值（不再灌厂商默认，见下「协议与入口三层语义」）。已删字段：`provider_name` / `config_name` / `priority` / `timeout_ms` / `max_retries` / `stream_enabled` / `extra_config`。按能力切换查询由 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑。
+- `llm_system_provider.provider_type='linkrag'` 是系统服务厂商，供管理端维护 LinkRag 系统兜底预设；用户侧可添加厂商列表会过滤 LinkRag，用户 `setup-provider` 也拒绝配置该厂商，但配置列表会把 LinkRag 作为只读配置项返回。
+- `llm_system_preset`（自带加密平台 Key，唯一键 `uk_preset_provider_model_cap`）已升级为 LinkRag 系统兜底预设，不再注册镜像到 `llm_user_config`。新增 `is_default BOOLEAN NOT NULL DEFAULT FALSE`：同一 `capability` 原则上只能有一条 `provider_type='linkrag' AND is_active=true AND is_default=true` 的系统默认预设，由 `SystemPresetServiceImpl` 在事务内清理同能力其他默认。有效配置解析命中系统兜底时，Java 返回 `source=SYSTEM` 与 `configId=llm_system_preset.id`，Python 按该引用读取本表。
+- `llm_user_config` 一条配置按 (模型, 能力) 展开为多行，唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability, is_system_preset)`；新用户只写用户自配行（`is_system_preset=false`），`is_system_preset` 仅作历史兼容字段。`is_active` 兼表「模型启停」与「生效过滤」，`is_default` 表用户自配按能力默认（单用户单能力自配默认唯一）；`api_base_url`（原 `custom_api_base_url`）由展开时复制自模型能力层事实值（不再灌厂商默认，见下「协议与入口三层语义」）。已删字段：`provider_name` / `config_name` / `priority` / `timeout_ms` / `max_retries` / `stream_enabled` / `extra_config`。按能力切换查询由 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑。用户无自配默认时，Java 回退读取 `llm_system_preset`。
 
 ### 协议与入口字段（LLM 模型能力协议改造）
 
@@ -47,9 +48,12 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `llm_system_provider` | `default_protocol` | `VARCHAR(32)` | `NOT NULL DEFAULT 'openai'` | 厂商默认协议模板，仅用于管理端展示与新增模型能力时预填，**不参与运行决策** |
 | `llm_provider_model` | `protocol` | `VARCHAR(32)` | 当前 nullable（服务层保证非空，回填后收紧 `NOT NULL`） | 事实来源：本 (模型,能力) 真实调用协议，下游按 `protocol + capability` 选 adapter |
 | `llm_provider_model` | `api_base_url` | `VARCHAR(512)` | 当前 nullable（服务层保证非空，回填后收紧） | 事实来源：**完整端点 URL**（Python 直打、不拼后缀，如 `.../v1/chat/completions`）；`google` 例外存 base 到 `/v1beta`，见下「base 形态」 |
-| `llm_system_preset` | `provider_type` | `VARCHAR(32)` | 当前 nullable | 厂商类型快照，下沉对齐用户配置，镜像免 join |
+| `llm_provider_model` | `display_name` | `VARCHAR(64)` | nullable | 模型展示名；真实调用仍使用 `model_name`，为空时展示层回退 `model_name` |
+| `llm_system_preset` | `provider_type` | `VARCHAR(32)` | 当前 nullable | 厂商类型快照，系统兜底解析直接读取 |
 | `llm_system_preset` | `protocol` | `VARCHAR(32)` | 当前 nullable | 创建预设时复制自模型能力层 |
 | `llm_system_preset` | `api_base_url` | `VARCHAR(512)` | 当前 nullable | 创建预设时复制自模型能力层 |
+| `llm_system_preset` | `is_default` | `BOOLEAN` | `NOT NULL DEFAULT FALSE` | 是否为该能力的 LinkRag 系统兜底默认 |
+| `llm_system_preset` | `display_name` | `VARCHAR(64)` | nullable | 系统兜底模型展示名；创建/重绑预设时复制自模型能力层 |
 | `llm_user_config` | `protocol` | `VARCHAR(32)` | 当前 nullable | 运行快照：复制自模型能力层，下游按 `protocol + capability` 选 adapter，不再查厂商/模型表 |
 
 > `llm_user_config.api_base_url` 为既有列，本次仅改写入来源（厂商默认 → 模型能力事实），不新增列。存量库迁移策略：先以 nullable 加列 → 运行 seed/import 回填重点厂商 → 再 `ALTER ... NOT NULL`，避免锁表失败；全新 init 已直接带这些列。Python 执行端已确认 `protocol` 视为必填、运行期对 NULL fail-fast，故回填清理后 `llm_provider_model` / `llm_system_preset` / `llm_user_config` 的 `protocol` 应收紧为 `NOT NULL`（DB 约束 + 执行端 fail-fast 双保险）。共享库 schema 演进由 Python Alembic 落地，本仓 `scripts/db` 仅本地/测试用。
@@ -64,9 +68,10 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | --- | --- | --- | --- | --- |
 | 厂商层（默认模板） | `llm_system_provider.default_protocol` + `api_base_url` | 管理端展示、新增模型能力时表单预填的占位值 | 协议**基地址**（模板） | 否（绝不参与运行） |
 | 模型能力层（事实来源） | `llm_provider_model.protocol` + `api_base_url` | 每个 (模型,能力) 的真实调用协议与入口，唯一权威 | **完整端点 URL**（`google` 例外存 base） | 间接（被复制下沉） |
-| 用户配置层（运行快照） | `llm_user_config.protocol` + `api_base_url` | 用户启用厂商时复制自模型能力层的运行时快照，Python 直接消费 | **完整端点 URL**（随模型层复制） | 是 |
+| 系统预设层（LinkRag 兜底） | `llm_system_preset.provider_type` + `protocol` + `api_base_url` | 系统兜底配置，Java 在用户无自配默认时返回 `source=SYSTEM` | **完整端点 URL**（随模型层复制） | 是 |
+| 用户配置层（运行快照） | `llm_user_config.protocol` + `api_base_url` | 用户启用厂商时复制自模型能力层的运行时快照，Java 优先返回 `source=USER` | **完整端点 URL**（随模型层复制） | 是 |
 
-关键不变量：用户配置展开（`setupProvider`）与预设镜像时，`protocol` / `api_base_url` **只复制自模型能力层，绝不 fallback 到厂商默认值**；同一厂商不同能力可落不同协议（典型：千问 chat=`openai`、rerank=`dashscope`），属合法场景。`llm_system_preset` 作为「整套可用配置模板」与一条用户配置同构，自带 `provider_type` / `protocol` / `api_base_url`，由模型能力层复制而来，使其可直接平移生成用户配置；`is_default` / `is_system_preset` 等运行态标记不在对齐范围。
+关键不变量：用户配置展开（`setupProvider`）与系统预设创建/重绑时，`protocol` / `api_base_url` **只复制自模型能力层，绝不 fallback 到厂商默认值**；系统预设的 `display_name` 也随模型能力层复制。真实调用始终使用 `model_name`，`display_name` 只供展示。同一厂商不同能力可落不同协议（典型：千问 chat=`openai`、rerank=`dashscope`），属合法场景。Java 有效配置解析顺序固定为 `llm_user_config` 用户自配默认 → `llm_system_preset` LinkRag 系统兜底默认，并通过 `source + configId` 消除两张表 ID 歧义。
 - Java 端和 Python RAG 端共享数据库时，字段语义必须在本文件或模块文档中明确。
 - `document_original_file` 只保存上传事实，不保存解析状态或解析产物。
 - `document_parse_file.latest_parse_task_id` 指向 `document_parsed_log.task_id`；Markdown 产物定位由 Python 写入 `document_parsed_log`。
@@ -79,7 +84,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - `blog_post.content_object_key` 指向私有 OSS 的 `blog/{postId}/content/{uuid}.md`；Markdown 正文不存 MySQL。
 - `blog_asset.object_key` / `public_url` 指向公开封面或正文图片对象；`asset_type` 支持 `COVER` 和 `CONTENT_IMAGE`。正文图片可由编辑器上传，也可由 Markdown 导入/保存流程自动写入 PUBLIC OSS，并记录 `blog_asset`。
 - `user_feedback` 首版为纯匿名反馈，不保存 `user_id`、`contact`、`is_anonymous`、`is_deleted`、`is_resolved`。`attachment_object_key` 只保存私有 MinIO object key，不保存 URL 或 bucket。合法值：`type` = `BUG` / `FEATURE` / `EXPERIENCE` / `OTHER`，`status` = `PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED`，`priority` = `1` 高 / `2` 中 / `3` 低。Java 本地 schema 与 Python migration 必须保持字段名、默认值、索引一致。
-- `dataset_parse_config`（LINK-149/LINK-170）跨端共享：Java 端读写、Python 端直读，DDL 真值在 Python migration 0017，Java 本地 schema（`scripts/db/init.sql` 与 H2 运行时 `link-api/src/main/resources/schema.sql`）与之保持字段名、默认值、索引一致。唯一键 `uk_user_dataset (user_id, dataset_id)`，索引 `idx_dataset_parse_config_dataset (dataset_id)`。四个 JSON 列内字段以 Python `src/core/dataset_config/models.py` 的 Pydantic 模型为准：`chunking_config`（3 项：`heading_break_level` / `min_candidate_chunk_tokens` / `overlap_tokens`）、`enhancement_config`（2 项开关：`enable_table_enhancement` / `enable_image_enhancement`，不含模型名，增强模型统一取发起用户 CHAT/VISION 默认模型）、`pdf_config`（1 项：`pdf_parser_backend`）、`recall_config`（9 项：`recall_result_limit` / `recall_context_token_budget` / `sparse_top_k` / `sparse_score_threshold` / `dense_top_k` / `dense_score_threshold` / `recall_enabled_sources` / `rerank_top_n` / `recall_strict`）。`recall_enabled_sources` 默认 `["bm25","sparse","dense"]`，`rerank_top_n` 默认 `8`，`recall_strict` 默认 `false`；旧 JSON 缺失这 3 项时 Java 读取回落默认，创建数据集时写入默认配置行。`(user_id, dataset_id)` 无行时由 Python 降级系统默认。
+- `dataset_parse_config`（LINK-219）跨端共享：Java 端读写、Python 端直读，DDL 真值在 Python migration 0017/0030，Java 本地 schema（`scripts/db/init.sql` 与 H2 运行时 `link-api/src/main/resources/schema.sql`）与之保持字段名、默认值、索引一致。唯一键 `uk_user_dataset (user_id, dataset_id)`，索引 `idx_dataset_parse_config_dataset (dataset_id)`，向量模型绑定索引 `idx_dataset_parse_sparse_config (sparse_embedding_config_id)` / `idx_dataset_parse_dense_config (dense_embedding_config_id)`。`sparse_embedding_config_id` / `dense_embedding_config_id` 分别绑定当前用户启用中的 `llm_user_config.id`，能力必须为 `SPARSE_EMBEDDING` / `EMBEDDING`；创建数据集时必填并写入默认配置行，已有绑定不可通过解析配置 PUT 修改，历史行可为空但召回 session 签发会拒绝未补齐或已失效的绑定。四个 JSON 列内字段以 Python `src/core/dataset_config/models.py` 的 Pydantic 模型为准：`chunking_config`（7 项：`heading_break_level` / `min_candidate_chunk_tokens` / `overlap_tokens` / `max_chunk_tokens` / `hard_max_tokens` / `stage_two_algorithm` / `protected_neighbor_overlap`）、`enhancement_config`（3 项开关：`enable_table_enhancement` / `enable_image_enhancement` / `enable_heading_hierarchy`，不含模型名，增强模型统一取发起用户 CHAT/VISION 默认模型）、`pdf_config`（1 项：`pdf_parser_backend`）、`recall_config`（14 项：`recall_result_limit` / `recall_context_token_budget` / `bm25_top_k` / `sparse_top_k` / `sparse_score_threshold` / `dense_top_k` / `dense_score_threshold` / `recall_enabled_sources` / `recall_fusion_strategy` / `fusion_bm25_weight` / `fusion_sparse_weight` / `fusion_dense_weight` / `rerank_top_n` / `recall_strict`）。`recall_enabled_sources` 默认 `["bm25","sparse","dense"]`，`rerank_top_n` 默认 `8`，`recall_strict` 默认 `false`；旧 JSON 缺失这 3 项时 Java 读取回落默认。生产库加列脚本见 `scripts/db/add_dataset_embedding_config_bindings.sql`，执行后需按用户实际配置回填历史数据集。
 
 ## 删除语义（隐性删除）
 

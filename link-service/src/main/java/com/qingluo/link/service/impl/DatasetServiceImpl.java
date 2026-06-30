@@ -22,6 +22,7 @@ import com.qingluo.link.model.dto.request.CreateDatasetRequest;
 import com.qingluo.link.model.dto.request.UpdateDatasetRequest;
 import com.qingluo.link.model.dto.response.DatasetDTO;
 import com.qingluo.link.model.dto.response.PageResult;
+import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetService;
 import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import java.util.List;
@@ -49,6 +50,7 @@ public class DatasetServiceImpl implements DatasetService {
     private final ChatMessageMapper chatMessageMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentDeleteNotifier deleteNotifier;
+    private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
     @Override
     @Transactional
@@ -56,6 +58,9 @@ public class DatasetServiceImpl implements DatasetService {
      * 创建用户数据集。
      */
     public DatasetDTO create(Long userId, CreateDatasetRequest request) {
+        embeddingConfigValidator.validateBindingPair(
+            userId, request.getSparseEmbeddingConfigId(), request.getDenseEmbeddingConfigId());
+
         Dataset dataset = new Dataset();
         dataset.setUserId(userId);
         dataset.setName(request.getName().trim());
@@ -66,7 +71,8 @@ public class DatasetServiceImpl implements DatasetService {
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(400, "当前用户下已存在同名数据集", 400);
         }
-        insertDefaultParseConfig(userId, dataset.getId());
+        insertDefaultParseConfig(userId, dataset.getId(),
+            request.getSparseEmbeddingConfigId(), request.getDenseEmbeddingConfigId());
         return toDTO(dataset);
     }
 
@@ -180,10 +186,13 @@ public class DatasetServiceImpl implements DatasetService {
         }
     }
 
-    private void insertDefaultParseConfig(Long userId, Long datasetId) {
+    private void insertDefaultParseConfig(Long userId, Long datasetId,
+                                          Long sparseEmbeddingConfigId, Long denseEmbeddingConfigId) {
         DatasetParseConfig config = new DatasetParseConfig();
         config.setUserId(userId);
         config.setDatasetId(datasetId);
+        config.setSparseEmbeddingConfigId(sparseEmbeddingConfigId);
+        config.setDenseEmbeddingConfigId(denseEmbeddingConfigId);
         config.setChunkingConfig(new ChunkingConfig());
         config.setEnhancementConfig(new EnhancementConfig());
         config.setPdfConfig(new PdfConfig());

@@ -168,6 +168,8 @@ class ConfigControllerTest {
                 .header("satoken", token)
                 .param("capability", "CHAT"))
             .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.source").value("USER"))
+            .andExpect(jsonPath("$.data.configId").isNumber())
             .andExpect(jsonPath("$.data.modelName").value("gpt-4"))
             .andExpect(jsonPath("$.data.providerType").value("openai_config"));
     }

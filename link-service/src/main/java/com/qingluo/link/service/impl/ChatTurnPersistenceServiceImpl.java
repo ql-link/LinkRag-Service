@@ -1,6 +1,7 @@
 package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.qingluo.link.components.mq.constant.ChatTurnStatus;
 import com.qingluo.link.components.mq.model.ChatTurnMQ;
 import com.qingluo.link.mapper.ChatConversationMapper;
@@ -133,34 +134,38 @@ public class ChatTurnPersistenceServiceImpl implements ChatTurnPersistenceServic
      * 上报标题，则仅在当前标题为空或仍为默认标题时写入，避免覆盖用户手动标题。
      */
     private void updateConversationMeta(ChatConversation conversation, ChatTurnMQ.MsgPayload payload) {
+        LambdaUpdateWrapper<ChatConversation> updateWrapper = new LambdaUpdateWrapper<ChatConversation>()
+                .eq(ChatConversation::getId, conversation.getId())
+                .setSql("updated_at = CURRENT_TIMESTAMP");
         if (payload.getConfigId() != null) {
-            conversation.setLastConfigId(payload.getConfigId());
+            updateWrapper.set(ChatConversation::getLastConfigId, payload.getConfigId());
         }
         if (StringUtils.hasText(payload.getModelName())) {
-            conversation.setLastModelName(payload.getModelName());
+            updateWrapper.set(ChatConversation::getLastModelName, payload.getModelName());
         }
-        applyTitleFromPayload(conversation, payload.getTitle());
-        // 置空 updated_at，让 updateById 不写该列，由 DB ON UPDATE CURRENT_TIMESTAMP 自动刷新，
-        // 使会话列表「最近活跃倒序」每轮（含 GENERATING 起点）随落库前移（P1）。
-        conversation.setUpdatedAt(null);
-        conversationMapper.updateById(conversation);
+        String title = resolveTitleFromPayload(conversation, payload.getTitle());
+        if (title != null) {
+            updateWrapper.set(ChatConversation::getTitle, title);
+        }
+        // Force a recent-use timestamp even when config/model/title values are unchanged.
+        conversationMapper.update(null, updateWrapper);
     }
 
     /**
      * Python 生成标题后随 chat_turn 上报；Java 只负责落库保护，不做 LLM 调用或 query 兜底生成。
      */
-    private void applyTitleFromPayload(ChatConversation conversation, String rawTitle) {
+    private String resolveTitleFromPayload(ChatConversation conversation, String rawTitle) {
         String title = normalizeTitle(rawTitle);
         if (!StringUtils.hasText(title)) {
-            return;
+            return null;
         }
         String current = conversation.getTitle();
         if (StringUtils.hasText(current)
                 && !DEFAULT_TITLE.equals(current.trim())
                 && !title.equals(current.trim())) {
-            return;
+            return null;
         }
-        conversation.setTitle(title);
+        return title;
     }
 
     private String normalizeTitle(String rawTitle) {

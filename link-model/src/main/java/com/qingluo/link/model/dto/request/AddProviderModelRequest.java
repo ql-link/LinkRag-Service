@@ -17,6 +17,9 @@ public class AddProviderModelRequest {
     @Schema(description = "模型名称", example = "gpt-4o-realtime")
     private String modelName;
 
+    @Schema(description = "模型展示名；为空时展示层回退模型名称", example = "GPT-4o Realtime")
+    private String displayName;
+
     @NotBlank(message = "能力标识不能为空")
     @Schema(description = "模型能力，如 CHAT/EMBEDDING/SPARSE_EMBEDDING", example = "CHAT")
     private String capability;
