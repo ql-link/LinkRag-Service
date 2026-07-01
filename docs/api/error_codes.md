@@ -21,6 +21,9 @@
 - `MODEL_CONFIG_INCOMPLETE(10014/400)`：模型能力缺少协议或入口，无法保存或展开。触发点：新增模型能力 (`addModelCapability`) 时 `apiBaseUrl` 为空；用户 `setup-provider` 展开时命中协议/入口缺失的历史模型能力（整请求阻断，不静默跳过，避免由执行端猜测）；`createPreset` 命中协议/入口缺失的模型能力。
 - `INVALID_PROTOCOL(10015/400)`：协议不在支持范围内。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准（`openai` / `anthropic` / `google` / `jina` / `dashscope`，小写敏感，`OPENAI` 等大写视为非法）。触发点：新增模型能力录入非法 `protocol`。
 - `SYSTEM_PROVIDER_READONLY(10016/400)`：系统服务厂商不支持用户自配或启停。当前用于拒绝普通用户通过 `setup-provider` 配置 `provider_type=linkrag`，以及通过 `/api/v1/llm/configs/toggle-model` 启停 LinkRag 只读配置。
+- `MODEL_SYNC_SOURCE_UNSUPPORTED(10017/400)`：外部模型目录同步来源不支持，或当前来源未收录该厂商。当前管理端手动刷新只支持 `MODELS_DEV`。
+- `MODEL_SYNC_CANDIDATE_NOT_FOUND(10018/404)`：外部模型候选项不存在。用于候选发布和审核状态更新。
+- `PROVIDER_HAS_NO_ACTIVE_MODEL(10019/400)`：启用系统厂商前至少需要有一条已上架模型能力。触发点：创建厂商时直接传 `isActive=true`、更新厂商为启用、调用启用/禁用接口启用厂商，但 `llm_provider_model` 中该厂商没有 `is_active=true` 的模型能力。
 - 其余 `MODEL_NOT_SUPPORTED(10008)`（模型不支持该能力 / 目录无该模型能力）、`DUPLICATE_USER_CONFIG(10009)`、`NO_DEFAULT_CONFIG(10006)` 等以 `ErrorCode.java` 为准。
 - `GlobalExceptionHandler` 新增对 `MissingServletRequestParameterException` 的处理：缺少必填查询参数统一返回 400 `缺少必填参数: <name>`。
 

@@ -21,6 +21,7 @@ public class OssUploadRuleRegistry {
     public OssUploadRuleRegistry() {
         Map<String, OssUploadRule> allRules = new HashMap<>();
         allRules.put("avatar", new OssUploadRule(OssSavePlaceEnum.PUBLIC, IMAGE_SUFFIXES, DEFAULT_MAX_SIZE));
+        allRules.put("providerIcon", new OssUploadRule(OssSavePlaceEnum.PUBLIC, IMAGE_SUFFIXES, DEFAULT_MAX_SIZE));
         allRules.put("chatImage", new OssUploadRule(OssSavePlaceEnum.PUBLIC, IMAGE_SUFFIXES, DEFAULT_MAX_SIZE));
         allRules.put("document", new OssUploadRule(
             OssSavePlaceEnum.RAW, Set.of("pdf", "doc", "docx", "txt", "md"), 20 * 1024 * 1024L));

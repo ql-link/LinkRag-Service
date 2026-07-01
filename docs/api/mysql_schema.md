@@ -9,6 +9,8 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 | `sys_user` | `SysUser` | 用户、角色、状态 |
 | `llm_system_provider` | `SystemProvider` | 系统 LLM 厂商（瘦身，去 `supported_models`/`config_schema`） |
 | `llm_provider_model` | `ProviderModel` | 厂商→模型→能力目录（取代 `supported_models` JSON） |
+| `llm_provider_model_sync_job` | `ProviderModelSyncJob` | 外部模型目录刷新任务（Java 管理端内部候选流，不参与运行决策） |
+| `llm_provider_model_sync_candidate` | `ProviderModelSyncCandidate` | 外部模型候选项（审核发布后才写入正式目录） |
 | `llm_system_preset` | `SystemPreset` | LinkRag 系统兜底预设（自带加密平台 Key） |
 | `llm_user_config` | `UserLLMConfig` | 用户自配 LLM 配置 |
 | `llm_usage_log` | `UsageLog` | 全链路模型调用账本（含 `stage` / `operation`，瘦身后无对话级关联键；全部模型调用用量统一经 `usage_report` 通道写入） |
@@ -35,8 +37,10 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；`scripts/db/schema.sql`
 - MyBatis-Plus 逻辑删除字段遵循当前 `is_deleted` / `isDeleted` 映射。
 - `llm_user_config.capability`（Entity `UserLLMConfig.capability`，单数）为专用能力标识，`VARCHAR(32) NOT NULL DEFAULT 'CHAT'`；合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`。列名以单数 `capability` 为准（曾误用复数 `capabilities`，已对齐线上库）。`OCR` 已移除，不再作为独立模型能力；存量环境可执行 `scripts/db/remove_ocr_capability.sql` 清理 `llm_provider_model` / `llm_system_preset` / `llm_user_config` 中的 OCR 行。
 - 厂商→模型→能力目录迁至 `llm_provider_model`（一个模型多能力=多行，唯一键 `uk_provider_model_cap (provider_id, model_name, capability)`），`llm_system_provider` 已去掉 `supported_models` / `config_schema` JSON。用户「配置厂商」即按该表展开整厂商 (模型, 能力) 写入 `llm_user_config`。
-- `llm_system_provider.provider_type='linkrag'` 是系统服务厂商，供管理端维护 LinkRag 系统兜底预设；用户侧可添加厂商列表会过滤 LinkRag，用户 `setup-provider` 也拒绝配置该厂商，但配置列表会把 LinkRag 作为只读配置项返回。
-- `llm_system_preset`（自带加密平台 Key，唯一键 `uk_preset_provider_model_cap`）已升级为 LinkRag 系统兜底预设，不再注册镜像到 `llm_user_config`。新增 `is_default BOOLEAN NOT NULL DEFAULT FALSE`：同一 `capability` 原则上只能有一条 `provider_type='linkrag' AND is_active=true AND is_default=true` 的系统默认预设，由 `SystemPresetServiceImpl` 在事务内清理同能力其他默认。有效配置解析命中系统兜底时，Java 返回 `source=SYSTEM` 与 `configId=llm_system_preset.id`，Python 按该引用读取本表。
+- `llm_system_provider.icon_url` 保存厂商图标公开 OSS URL，`icon_object_key` 保存对应 MinIO/OSS object key（如 `providerIcon/{uuid}.png`）。前端新增厂商时先调用管理端图标上传接口拿 `iconUrl` 与 `iconObjectKey`，再一起写入厂商配置，避免厂商图标继续硬编码在前端。LinkRag 图标同样存本表，不在 `llm_system_preset` 中重复保存。
+- 外部模型目录刷新（LINK-50）不污染正式目录：`llm_provider_model_sync_job` 记录每次刷新任务；`llm_provider_model_sync_candidate` 保存外部源候选、模型发布日期（`model_release_date`）、推断能力/协议/入口、模态与原始元数据。用户侧列表、用户配置展开、系统预设引用仍只读 `llm_provider_model`；候选必须由管理员审核发布后才进入正式目录。该能力只属于 Java 管理端，不要求 Python 端同步 schema 或消费候选表。
+- `llm_system_provider.provider_type='linkrag'` 是系统服务厂商，供管理端维护 LinkRag 系统兜底预设；用户侧可添加厂商列表会过滤 LinkRag，用户 `setup-provider` 也拒绝配置该厂商，但配置列表会把 LinkRag 作为只读配置项返回。`scripts/db/seed_llm_providers.sql` 会创建 LinkRag 厂商基础行，避免新环境只跑种子时系统预设缺少厂商引用。
+- `llm_system_preset`（自带加密平台 Key，唯一键 `uk_preset_provider_model_cap`）已升级为 LinkRag 系统兜底预设，不再注册镜像到 `llm_user_config`。新增/更新系统预设时，目标恒为 `llm_system_provider.provider_type='linkrag'`；模型运行事实可以由管理员手动填写，也可以从正式 `llm_provider_model` 快捷复制，但不会把系统预设归属到源厂商。同一 `capability` 原则上只能有一条 `provider_type='linkrag' AND is_active=true AND is_default=true` 的系统默认预设，由 `SystemPresetServiceImpl` 在事务内清理同能力其他默认。有效配置解析命中系统兜底时，Java 返回 `source=SYSTEM` 与 `configId=llm_system_preset.id`，Python 按该引用读取本表。
 - `llm_user_config` 一条配置按 (模型, 能力) 展开为多行，唯一键为 `uk_user_provider_model_capability (user_id, provider_id, model_name, capability, is_system_preset)`；新用户只写用户自配行（`is_system_preset=false`），`is_system_preset` 仅作历史兼容字段。`is_active` 兼表「模型启停」与「生效过滤」，`is_default` 表用户自配按能力默认（单用户单能力自配默认唯一）；`api_base_url`（原 `custom_api_base_url`）由展开时复制自模型能力层事实值（不再灌厂商默认，见下「协议与入口三层语义」）。已删字段：`provider_name` / `config_name` / `priority` / `timeout_ms` / `max_retries` / `stream_enabled` / `extra_config`。按能力切换查询由 `idx_user_provider_cap (user_id, provider_type, capability)` 支撑。用户无自配默认时，Java 回退读取 `llm_system_preset`。
 
 ### 协议与入口字段（LLM 模型能力协议改造）

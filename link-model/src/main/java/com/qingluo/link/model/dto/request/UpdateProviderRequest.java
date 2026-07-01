@@ -13,6 +13,12 @@ public class UpdateProviderRequest {
     @Schema(description = "厂商名称", example = "OpenAI")
     private String providerName;
 
+    @Schema(description = "厂商图标 URL；传空字符串可清空图标", example = "https://minio.example/tolink-public/providerIcon/openai.png")
+    private String iconUrl;
+
+    @Schema(description = "厂商图标 OSS object key；传空字符串可清空图标路径", example = "providerIcon/openai.png")
+    private String iconObjectKey;
+
     @Schema(description = "API地址", example = "https://api.openai.com/v1")
     private String apiBaseUrl;
 

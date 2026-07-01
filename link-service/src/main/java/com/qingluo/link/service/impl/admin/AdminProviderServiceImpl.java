@@ -8,7 +8,9 @@ import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.core.log.AuditLog;
 import com.qingluo.link.core.util.AuthContext;
+import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
+import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
@@ -28,6 +30,7 @@ import org.springframework.util.StringUtils;
 public class AdminProviderServiceImpl implements AdminProviderService {
 
     private final SystemProviderMapper systemProviderMapper;
+    private final ProviderModelMapper providerModelMapper;
     private final CacheConsistencyService cacheConsistencyService;
     private final LLMProtocolService llmProtocolService;
 
@@ -56,10 +59,15 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         if (count > 0) {
             throw new BusinessException(ErrorCode.DUPLICATE_USER_CONFIG, "厂商类型已存在");
         }
+        if (Boolean.TRUE.equals(request.getIsActive())) {
+            throw new BusinessException(ErrorCode.PROVIDER_HAS_NO_ACTIVE_MODEL);
+        }
 
         SystemProvider provider = new SystemProvider();
         provider.setProviderType(request.getProviderType());
         provider.setProviderName(request.getProviderName());
+        provider.setIconUrl(request.getIconUrl());
+        provider.setIconObjectKey(request.getIconObjectKey());
         provider.setApiBaseUrl(request.getApiBaseUrl());
         provider.setDefaultProtocol(request.getDefaultProtocol());
         provider.setIsActive(request.getIsActive());
@@ -84,6 +92,12 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         if (StringUtils.hasText(request.getProviderName())) {
             provider.setProviderName(request.getProviderName());
         }
+        if (request.getIconUrl() != null) {
+            provider.setIconUrl(StringUtils.hasText(request.getIconUrl()) ? request.getIconUrl() : null);
+        }
+        if (request.getIconObjectKey() != null) {
+            provider.setIconObjectKey(StringUtils.hasText(request.getIconObjectKey()) ? request.getIconObjectKey() : null);
+        }
         if (StringUtils.hasText(request.getApiBaseUrl())) {
             provider.setApiBaseUrl(request.getApiBaseUrl());
         }
@@ -92,6 +106,9 @@ public class AdminProviderServiceImpl implements AdminProviderService {
             provider.setDefaultProtocol(request.getDefaultProtocol());
         }
         if (request.getIsActive() != null) {
+            if (Boolean.TRUE.equals(request.getIsActive())) {
+                requireAtLeastOneActiveModel(provider.getId());
+            }
             provider.setIsActive(request.getIsActive());
         }
         if (request.getPriority() != null) {
@@ -127,9 +144,22 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         if (provider == null) {
             throw NotFoundException.providerNotFound();
         }
+        if (isActive) {
+            requireAtLeastOneActiveModel(provider.getId());
+        }
 
         provider.setIsActive(isActive);
         systemProviderMapper.updateById(provider);
         cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
+    }
+
+    private void requireAtLeastOneActiveModel(Long providerId) {
+        long activeModelCount = providerModelMapper.selectCount(
+                new LambdaQueryWrapper<ProviderModel>()
+                        .eq(ProviderModel::getProviderId, providerId)
+                        .eq(ProviderModel::getIsActive, true));
+        if (activeModelCount <= 0) {
+            throw new BusinessException(ErrorCode.PROVIDER_HAS_NO_ACTIVE_MODEL);
+        }
     }
 }

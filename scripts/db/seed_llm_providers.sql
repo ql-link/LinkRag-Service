@@ -1,7 +1,7 @@
 -- =============================================================
 -- toLink-Service：LLM 厂商与模型目录精简种子数据
 -- 基于远端库 active 模型目录收敛生成（2026-06-17）
--- 厂商：14 个，模型能力记录：83 条
+-- 厂商：15 个（含 LinkRag 系统服务厂商），模型能力记录：83 条
 -- 说明：只保留当前运营白名单；protocol/api_base_url 为模型能力层事实来源。
 -- =============================================================
 
@@ -14,6 +14,7 @@ INSERT INTO llm_system_provider (
     provider_type, provider_name, api_base_url, default_protocol, is_active, priority
 )
 VALUES
+    ('linkrag', 'LinkRag', 'https://api.linkrag.local/v1', 'openai', TRUE, 110),
     ('aliyun', 'Aliyun', 'https://dashscope.aliyuncs.com', 'openai', TRUE, 99),
     ('claude', 'Anthropic', 'https://api.anthropic.com', 'anthropic', TRUE, 99),
     ('deepseek', 'DeepSeek', 'https://api.deepseek.com', 'openai', TRUE, 99),

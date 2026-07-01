@@ -1,9 +1,11 @@
 package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
+import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
@@ -13,6 +15,7 @@ import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
+import com.qingluo.link.service.LLMProtocolService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.SystemPresetService;
 import lombok.RequiredArgsConstructor;
@@ -34,44 +37,35 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class SystemPresetServiceImpl implements SystemPresetService {
 
+    private static final String LINKRAG_PROVIDER_TYPE = "linkrag";
+
     private final SystemPresetMapper systemPresetMapper;
     private final SystemProviderMapper systemProviderMapper;
+    private final ProviderModelMapper providerModelMapper;
     private final ProviderModelService providerModelService;
     private final LLMCapabilityService llmCapabilityService;
+    private final LLMProtocolService llmProtocolService;
     private final ApiKeyEncryptService apiKeyEncryptService;
 
     @Override
     @Transactional
     public SystemPreset createPreset(CreatePresetRequest request) {
-        SystemProvider provider = systemProviderMapper.selectById(request.getProviderId());
-        if (provider == null) {
-            throw NotFoundException.providerNotFound();
-        }
-        llmCapabilityService.validateCapability(request.getCapability());
-        String capability = request.getCapability().toUpperCase(Locale.ROOT);
-        // 预设事实来源唯一指向模型能力层：取该 (模型,能力) 上架行，复制其协议与入口
-        ProviderModel model = providerModelService.findActiveModelCapability(
-                request.getProviderId(), request.getModelName(), capability);
-        if (model == null) {
-            throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "目录中无该模型能力，无法预设");
-        }
-        if (!StringUtils.hasText(model.getProtocol()) || !StringUtils.hasText(model.getApiBaseUrl())) {
-            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
-        }
+        SystemProvider linkRagProvider = requireLinkRagProvider();
+        PresetFacts facts = resolveCreateFacts(request);
 
         SystemPreset preset = new SystemPreset();
-        preset.setProviderId(request.getProviderId());
-        preset.setModelName(request.getModelName());
-        preset.setDisplayName(resolveDisplayName(model));
-        preset.setCapability(capability);
-        preset.setProviderType(provider.getProviderType());
-        preset.setProtocol(model.getProtocol());
-        preset.setApiBaseUrl(model.getApiBaseUrl());
+        preset.setProviderId(linkRagProvider.getId());
+        preset.setModelName(facts.modelName());
+        preset.setDisplayName(facts.displayName());
+        preset.setCapability(facts.capability());
+        preset.setProviderType(LINKRAG_PROVIDER_TYPE);
+        preset.setProtocol(facts.protocol());
+        preset.setApiBaseUrl(facts.apiBaseUrl());
         preset.setApiKey(apiKeyEncryptService.encrypt(request.getApiKey()));
         preset.setIsActive(true);
         preset.setIsDefault(Boolean.TRUE.equals(request.getIsDefault()));
         if (Boolean.TRUE.equals(preset.getIsDefault())) {
-            clearDefaultForCapability(capability, null);
+            clearDefaultForCapability(facts.capability(), null);
         }
         systemPresetMapper.insert(preset);
         return preset;
@@ -91,18 +85,8 @@ public class SystemPresetServiceImpl implements SystemPresetService {
     @Transactional
     public SystemPreset updatePreset(Long id, UpdatePresetRequest request) {
         SystemPreset preset = requirePreset(id);
-        Long providerId = request.getProviderId() != null ? request.getProviderId() : preset.getProviderId();
-        String modelName = StringUtils.hasText(request.getModelName()) ? request.getModelName() : preset.getModelName();
-        String capability = StringUtils.hasText(request.getCapability())
-                ? request.getCapability().toUpperCase(Locale.ROOT)
-                : preset.getCapability();
-
-        boolean modelBindingChanged = !providerId.equals(preset.getProviderId())
-                || !modelName.equals(preset.getModelName())
-                || !capability.equals(preset.getCapability());
-        if (modelBindingChanged) {
-            applyModelFacts(preset, providerId, modelName, capability);
-        }
+        SystemProvider linkRagProvider = requireLinkRagProvider();
+        applyUpdateFactsIfPresent(preset, request, linkRagProvider.getId());
         if (StringUtils.hasText(request.getApiKey())) {
             preset.setApiKey(apiKeyEncryptService.encrypt(request.getApiKey()));
         }
@@ -167,31 +151,46 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         return preset;
     }
 
-    private void applyModelFacts(SystemPreset preset, Long providerId, String modelName, String capability) {
-        SystemProvider provider = systemProviderMapper.selectById(providerId);
-        if (provider == null) {
-            throw NotFoundException.providerNotFound();
-        }
-        llmCapabilityService.validateCapability(capability);
-        ProviderModel model = providerModelService.findActiveModelCapability(providerId, modelName, capability);
+    private void applyCatalogFacts(SystemPreset preset, Long linkRagProviderId, Long sourceProviderId,
+                                   String modelName, String capability) {
+        String normalizedCapability = normalizeCapability(capability);
+        ProviderModel model = providerModelService.findActiveModelCapability(sourceProviderId, modelName, normalizedCapability);
         if (model == null) {
             throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "目录中无该模型能力，无法预设");
         }
-        if (!StringUtils.hasText(model.getProtocol()) || !StringUtils.hasText(model.getApiBaseUrl())) {
-            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
-        }
+        applyFacts(preset, linkRagProviderId, factsFromModel(model));
+    }
 
-        preset.setProviderId(providerId);
-        preset.setModelName(modelName);
-        preset.setDisplayName(resolveDisplayName(model));
-        preset.setCapability(capability);
-        preset.setProviderType(provider.getProviderType());
-        preset.setProtocol(model.getProtocol());
-        preset.setApiBaseUrl(model.getApiBaseUrl());
+    private void applySourceModelFacts(SystemPreset preset, Long linkRagProviderId, Long sourceProviderModelId) {
+        ProviderModel model = providerModelMapper.selectById(sourceProviderModelId);
+        if (model == null) {
+            throw new NotFoundException(ErrorCode.MODEL_NOT_SUPPORTED, "模型目录项不存在");
+        }
+        if (!Boolean.TRUE.equals(model.getIsActive())) {
+            throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "模型目录项未上架，无法加入 LinkRag 兜底");
+        }
+        applyFacts(preset, linkRagProviderId, factsFromModel(model));
+    }
+
+    private void applyManualFacts(SystemPreset preset, Long linkRagProviderId, String modelName, String displayName,
+                                  String capability, String protocol, String apiBaseUrl) {
+        PresetFacts facts = normalizeManualFacts(modelName, displayName, capability, protocol, apiBaseUrl);
+        applyFacts(preset, linkRagProviderId, facts);
+    }
+
+    private void applyFacts(SystemPreset preset, Long linkRagProviderId, PresetFacts facts) {
+        preset.setProviderId(linkRagProviderId);
+        preset.setModelName(facts.modelName());
+        preset.setDisplayName(facts.displayName());
+        preset.setCapability(facts.capability());
+        preset.setProviderType(LINKRAG_PROVIDER_TYPE);
+        preset.setProtocol(facts.protocol());
+        preset.setApiBaseUrl(facts.apiBaseUrl());
     }
 
     private void clearDefaultForCapability(String capability, Long excludeId) {
         LambdaUpdateWrapper<SystemPreset> wrapper = new LambdaUpdateWrapper<SystemPreset>()
+                .eq(SystemPreset::getProviderType, LINKRAG_PROVIDER_TYPE)
                 .eq(SystemPreset::getCapability, capability)
                 .eq(SystemPreset::getIsDefault, true)
                 .set(SystemPreset::getIsDefault, false);
@@ -201,7 +200,121 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         systemPresetMapper.update(null, wrapper);
     }
 
-    private String resolveDisplayName(ProviderModel model) {
-        return StringUtils.hasText(model.getDisplayName()) ? model.getDisplayName() : model.getModelName();
+    private PresetFacts resolveCreateFacts(CreatePresetRequest request) {
+        if (request.getSourceProviderModelId() != null) {
+            ProviderModel model = providerModelMapper.selectById(request.getSourceProviderModelId());
+            if (model == null) {
+                throw new NotFoundException(ErrorCode.MODEL_NOT_SUPPORTED, "模型目录项不存在");
+            }
+            if (!Boolean.TRUE.equals(model.getIsActive())) {
+                throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "模型目录项未上架，无法加入 LinkRag 兜底");
+            }
+            return factsFromModel(model);
+        }
+        if (request.getProviderId() != null) {
+            String capability = requireCapability(request.getCapability());
+            ProviderModel model = providerModelService.findActiveModelCapability(
+                    request.getProviderId(), requireText(request.getModelName(), "模型名称不能为空"), capability);
+            if (model == null) {
+                throw new BusinessException(ErrorCode.MODEL_NOT_SUPPORTED, "目录中无该模型能力，无法预设");
+            }
+            return factsFromModel(model);
+        }
+        return normalizeManualFacts(
+                request.getModelName(),
+                request.getDisplayName(),
+                request.getCapability(),
+                request.getProtocol(),
+                request.getApiBaseUrl()
+        );
+    }
+
+    private void applyUpdateFactsIfPresent(SystemPreset preset, UpdatePresetRequest request, Long linkRagProviderId) {
+        if (request.getSourceProviderModelId() != null) {
+            applySourceModelFacts(preset, linkRagProviderId, request.getSourceProviderModelId());
+            return;
+        }
+        if (request.getProviderId() != null) {
+            String modelName = StringUtils.hasText(request.getModelName()) ? request.getModelName() : preset.getModelName();
+            String capability = StringUtils.hasText(request.getCapability()) ? request.getCapability() : preset.getCapability();
+            applyCatalogFacts(preset, linkRagProviderId, request.getProviderId(), modelName, capability);
+            return;
+        }
+        if (hasManualFactUpdate(request)) {
+            String modelName = StringUtils.hasText(request.getModelName()) ? request.getModelName() : preset.getModelName();
+            String displayName = request.getDisplayName() != null ? request.getDisplayName() : preset.getDisplayName();
+            String capability = StringUtils.hasText(request.getCapability()) ? request.getCapability() : preset.getCapability();
+            String protocol = StringUtils.hasText(request.getProtocol()) ? request.getProtocol() : preset.getProtocol();
+            String apiBaseUrl = StringUtils.hasText(request.getApiBaseUrl()) ? request.getApiBaseUrl() : preset.getApiBaseUrl();
+            applyManualFacts(preset, linkRagProviderId, modelName, displayName, capability, protocol, apiBaseUrl);
+        }
+    }
+
+    private boolean hasManualFactUpdate(UpdatePresetRequest request) {
+        return StringUtils.hasText(request.getModelName())
+                || request.getDisplayName() != null
+                || StringUtils.hasText(request.getCapability())
+                || StringUtils.hasText(request.getProtocol())
+                || StringUtils.hasText(request.getApiBaseUrl());
+    }
+
+    private SystemProvider requireLinkRagProvider() {
+        SystemProvider provider = systemProviderMapper.selectOne(new LambdaQueryWrapper<SystemProvider>()
+                .eq(SystemProvider::getProviderType, LINKRAG_PROVIDER_TYPE));
+        if (provider == null) {
+            throw NotFoundException.providerNotFound();
+        }
+        return provider;
+    }
+
+    private PresetFacts factsFromModel(ProviderModel model) {
+        if (!StringUtils.hasText(model.getProtocol()) || !StringUtils.hasText(model.getApiBaseUrl())) {
+            throw new BusinessException(ErrorCode.MODEL_CONFIG_INCOMPLETE);
+        }
+        return new PresetFacts(
+                requireText(model.getModelName(), "模型名称不能为空"),
+                normalizeDisplayName(model.getDisplayName()),
+                normalizeCapability(model.getCapability()),
+                model.getProtocol(),
+                model.getApiBaseUrl()
+        );
+    }
+
+    private PresetFacts normalizeManualFacts(String modelName, String displayName, String capability,
+                                             String protocol, String apiBaseUrl) {
+        String normalizedProtocol = requireText(protocol, "调用协议不能为空");
+        llmProtocolService.validateProtocol(normalizedProtocol);
+        String normalizedApiBaseUrl = requireText(apiBaseUrl, "调用入口不能为空");
+        return new PresetFacts(
+                requireText(modelName, "模型名称不能为空"),
+                normalizeDisplayName(displayName),
+                requireCapability(capability),
+                normalizedProtocol,
+                normalizedApiBaseUrl
+        );
+    }
+
+    private String normalizeCapability(String capability) {
+        llmCapabilityService.validateCapability(capability);
+        return capability.toUpperCase(Locale.ROOT);
+    }
+
+    private String requireCapability(String capability) {
+        return normalizeCapability(requireText(capability, "能力标识不能为空"));
+    }
+
+    private String normalizeDisplayName(String displayName) {
+        return StringUtils.hasText(displayName) ? displayName.trim() : null;
+    }
+
+    private String requireText(String value, String message) {
+        if (!StringUtils.hasText(value)) {
+            throw new BusinessException(400, message, 400);
+        }
+        return value.trim();
+    }
+
+    private record PresetFacts(String modelName, String displayName, String capability,
+                               String protocol, String apiBaseUrl) {
     }
 }

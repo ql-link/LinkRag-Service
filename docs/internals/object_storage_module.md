@@ -67,6 +67,7 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 
 - 头像上传接口通过 `OssApplicationService.uploadAndDescribe("avatar", file, objectKey)` 指定带 `userId` 的 object key，同时复用 `avatar` 上传规则。
 - MinIO 返回的公开 URL 形如 `{endpoint}/{publicBucket}/avatar/{userId}/{uuid}.{suffix}`，该值直接写入 `sys_user.avatar_url`。
+- 厂商图标上传接口通过 `OssApplicationService.uploadAndDescribe("providerIcon", file)` 复用公开图片规则，返回公开 URL 与 object key；公开 URL 写入 `llm_system_provider.icon_url`，object key 写入 `llm_system_provider.icon_object_key`。对象 key 形如 `providerIcon/{uuid}.{suffix}`。
 - 当前实现只更新用户头像地址，不物理删除旧头像；如需清理历史头像，可按 `avatar/{userId}/` 前缀对账删除。
 
 ## 博客对象规则
