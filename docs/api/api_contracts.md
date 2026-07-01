@@ -204,7 +204,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | GET | `/api/v1/blog/posts` | 公开文章列表，只返回已发布文章，不含正文 |
 | GET | `/api/v1/blog/posts/{slug}` | 公开文章详情，含 Markdown 正文 |
 
-创建草稿时后端生成去掉连字符的 32 位小写 UUID 作为 `slug`，前端不提交也不更新 `slug`。不提供 `/api/v1/admin/blog/posts/{postId}/content/download` 下载路由。正文使用私有 OSS UUID Key，替换正文时先上传新对象，再切换 `blog_post.content_object_key`。Markdown 正文中的图片引用由后端自动处理：可成功下载的 `http` / `https` 图片会下载后写入 PUBLIC OSS 并记录为 `blog_asset.CONTENT_IMAGE`，`data:image/*;base64` 图片会解码后写入 PUBLIC OSS 并记录资源，随后 Markdown 中的图片地址替换为公开 URL；网络图片下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存；单独 `.md` 上传无法携带本地相对路径图片，因此相对路径图片会返回 400。
+创建草稿时后端生成去掉连字符的 32 位小写 UUID 作为 `slug`，前端不提交也不更新 `slug`。不提供 `/api/v1/admin/blog/posts/{postId}/content/download` 下载路由。正文使用私有 OSS UUID Key，替换正文时先上传新对象，再切换 `blog_post.content_object_key`。Markdown 正文中的图片引用由后端自动处理：可成功下载的 `http` / `https` 图片会下载后写入 PUBLIC OSS 并记录为 `blog_asset.CONTENT_IMAGE`，`data:image/*;base64` 图片会解码后写入 PUBLIC OSS 并记录资源，随后 Markdown 中的图片地址替换为公开 URL；已属于当前文章 `blog_asset` 的图片允许继续使用完整公开 URL 或 `/{PUBLIC bucket}/{objectKey}` 形式（如 `/tolink-public/blog/{postId}/images/{uuid}.png`），不会被重复抓取或按相对路径拒绝；网络图片下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存；其它本地相对路径图片会返回 400。
 
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
 

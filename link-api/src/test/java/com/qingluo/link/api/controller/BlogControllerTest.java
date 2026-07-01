@@ -300,6 +300,9 @@ class BlogControllerTest {
         Long contentAssetId = uploadAsset(postId, "CONTENT_IMAGE", "diagram.png", "image/png");
         String contentPublicUrl = jdbcTemplate.queryForObject(
             "SELECT public_url FROM blog_asset WHERE id = ?", String.class, contentAssetId);
+        String contentObjectKey = jdbcTemplate.queryForObject(
+            "SELECT object_key FROM blog_asset WHERE id = ?", String.class, contentAssetId);
+        String bucketRelativeUrl = "/local-public/" + contentObjectKey;
 
         mockMvc.perform(get("/api/v1/admin/blog/posts/{postId}/assets", postId)
                 .param("assetType", "COVER")
@@ -331,7 +334,7 @@ class BlogControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.markdownText").isNotEmpty());
 
-        saveMarkdown(postId, "# 正文\n![图](" + contentPublicUrl + ")");
+        saveMarkdown(postId, "# 正文\n![图](" + bucketRelativeUrl + ")");
         mockMvc.perform(delete("/api/v1/admin/blog/posts/{postId}/assets/{assetId}", postId, contentAssetId)
                 .header("satoken", adminToken))
             .andExpect(status().isBadRequest());

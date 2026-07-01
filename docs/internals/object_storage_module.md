@@ -83,7 +83,7 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 - Markdown 导入/保存使用 `upload2PreviewUrl(PUBLIC, File, "text/markdown", key)`；读取使用 `downloadFile(PUBLIC, key, temp)`。
 - 封面图片上传使用 `upload2PreviewUrl(PUBLIC, MultipartFile, key)`，资源类型为 `COVER`。
 - 正文图片上传使用 `upload2PreviewUrl(PUBLIC, MultipartFile, key)`，资源类型为 `CONTENT_IMAGE`，响应返回可插入编辑器的 Markdown 图片片段。
-- Markdown 导入/保存会扫描 `![](...)` 图片引用，支持 `http` / `https` 远端图片和 `data:image/*;base64` 内联图片；成功下载或解码后写入 `tolink-public` 桶、记录 `blog_asset.CONTENT_IMAGE`，并将 Markdown 图片地址改写为公开 URL。网络图片失败或被限制拦截时保留原 URL；本地相对路径图片会被拒绝。
+- Markdown 导入/保存会扫描 `![](...)` 图片引用，支持 `http` / `https` 远端图片和 `data:image/*;base64` 内联图片；成功下载或解码后写入 `tolink-public` 桶、记录 `blog_asset.CONTENT_IMAGE`，并将 Markdown 图片地址改写为公开 URL。已属于当前文章 `blog_asset` 的图片允许继续使用完整公开 URL 或 `/{PUBLIC bucket}/{objectKey}` 形式（如 `/tolink-public/blog/{postId}/images/{uuid}.png`），不会重复抓取；其它本地相对路径图片会被拒绝。
 - 文章删除为数据库软删，不批量删除 MinIO 对象。资源删除为数据库软删；正文图片仍被当前 Markdown 引用时拒绝删除，允许删除时同步调用 `deleteFile(PUBLIC, objectKey)` 删除 `tolink-public` 对象。
 - MinIO 与 MySQL 不可同事务；DB 写失败可能留下孤儿 UUID 对象，后续可按 `blog/` 前缀对账清理。
 - `tolink-public` 桶必须配置匿名读策略（`mc anonymous set download`），否则已生成的 `public_url` 仍会访问失败。

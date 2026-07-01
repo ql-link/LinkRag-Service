@@ -14,8 +14,10 @@ import com.qingluo.link.model.dto.response.BlogAssetDTO;
 import com.qingluo.link.model.enums.BlogAssetType;
 import com.qingluo.link.service.BlogAssetService;
 import com.qingluo.link.service.BlogContentStorageService;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,7 +100,7 @@ public class BlogAssetServiceImpl implements BlogAssetService {
         if (BlogAssetType.CONTENT_IMAGE.name().equals(asset.getAssetType())
                 && StringUtils.hasText(post.getContentObjectKey())) {
             String markdown = contentStorage.readMarkdown(post.getContentObjectKey());
-            if (StringUtils.hasText(asset.getPublicUrl()) && markdown.contains(asset.getPublicUrl())) {
+            if (containsAnyKnownReference(markdown, asset)) {
                 throw badRequest("该图片仍被正文引用，删除前请先从正文中移除");
             }
         }
@@ -172,6 +174,32 @@ public class BlogAssetServiceImpl implements BlogAssetService {
 
     private BusinessException badRequest(String message) {
         return new BusinessException(40001, message, 400);
+    }
+
+    private boolean containsAnyKnownReference(String markdown, BlogAsset asset) {
+        if (!StringUtils.hasText(markdown)) {
+            return false;
+        }
+        for (String reference : knownPublicReferences(asset)) {
+            if (markdown.contains(reference)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Set<String> knownPublicReferences(BlogAsset asset) {
+        Set<String> references = new HashSet<>();
+        if (StringUtils.hasText(asset.getPublicUrl())) {
+            references.add(asset.getPublicUrl());
+        }
+        if (StringUtils.hasText(asset.getObjectKey())) {
+            String publicBucket = ossService.getBucketName(OssSavePlaceEnum.PUBLIC);
+            if (StringUtils.hasText(publicBucket)) {
+                references.add("/" + publicBucket + "/" + asset.getObjectKey());
+            }
+        }
+        return references;
     }
 
     private String markdownAlt(String filename) {
