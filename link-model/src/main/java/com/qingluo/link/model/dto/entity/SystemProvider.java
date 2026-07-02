@@ -26,6 +26,14 @@ public class SystemProvider {
     @TableField("provider_name")
     private String providerName;
 
+    @Schema(description = "厂商图标 URL", example = "https://minio.example/tolink-public/providerIcon/openai.png")
+    @TableField("icon_url")
+    private String iconUrl;
+
+    @Schema(description = "厂商图标 OSS object key", example = "providerIcon/openai.png")
+    @TableField("icon_object_key")
+    private String iconObjectKey;
+
     /** 默认模板：新增模型能力时的预填入口，不参与运行决策（运行事实在 llm_provider_model）。 */
     @Schema(description = "默认API地址", example = "https://api.openai.com/v1")
     @TableField("api_base_url")

@@ -147,11 +147,11 @@ link-model       # Entity、请求 / 响应 DTO、枚举、统一响应模型
 ### 1. 初始化数据库
 
 ```bash
-mysql -h <DB_HOST> -u root -p < scripts/db/schema.sql
-mysql -h <DB_HOST> -u root -p tolink_rag_db < scripts/db/init.sql
+mysql -h <DB_HOST> -u root -p < scripts/db/init.sql
+mysql -h <DB_HOST> -u root -p < scripts/db/seed_llm_providers.sql
 ```
 
-> 数据库 schema 的权威源在 Python 端的 Alembic 迁移，本仓 `scripts/db` 仅供本地与测试使用。
+> 数据库 schema 的权威源在 Python 端的 Alembic 迁移，本仓 `scripts/db` 仅保留本地/测试用表结构初始化与厂商种子。
 
 ### 2. 配置环境变量
 

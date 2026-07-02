@@ -1,372 +1,302 @@
 -- =============================================================
--- toLink-Service：LLM 厂商与模型目录精简种子数据
--- 基于远端库 active 模型目录收敛生成（2026-06-17）
--- 厂商：14 个，模型能力记录：83 条
--- 说明：只保留当前运营白名单；protocol/api_base_url 为模型能力层事实来源。
+-- toLink-Service：LLM 厂商与模型目录种子数据（精简主力厂商版）
+-- 生成日期：2026-07-02
+-- 来源：本地 Docker MySQL tolink_rag_db.llm_system_provider / llm_provider_model / llm_system_preset
+-- 厂商：17 个；厂商模型能力记录：83 条；默认上架模型能力：83 条；LinkRag 系统预设：6 条。
+-- 策略：只保留国内/国外主力厂商与 LinkRag 系统厂商；每个厂商最多保留 5 个当前主推模型。
+-- LinkRag 只注册系统厂商，不写入 llm_provider_model；其模型只写入 llm_system_preset。
+-- 全新环境首次写入系统预设前需先设置加密平台 Key：
+--   SET @linkrag_system_preset_api_key = '<AES-256-GCM 加密后的平台 Key 密文>';
+-- display_name 保留主版本号（如 2.5 / 4.8），不保留发布日期或快照号。
 -- =============================================================
 
 USE tolink_rag_db;
 
 START TRANSACTION;
 
--- ─── 1. 厂商基本信息 ──────────────────────────────────────────
+-- 1. 厂商基本信息：直接写入主力厂商白名单，并下架历史非白名单厂商。
 INSERT INTO llm_system_provider (
-    provider_type, provider_name, api_base_url, default_protocol, is_active, priority
+    provider_type, provider_name, icon_url, icon_object_key, api_base_url, default_protocol, is_active, priority
 )
 VALUES
-    ('aliyun', 'Aliyun', 'https://dashscope.aliyuncs.com', 'openai', TRUE, 99),
-    ('claude', 'Anthropic', 'https://api.anthropic.com', 'anthropic', TRUE, 99),
-    ('deepseek', 'DeepSeek', 'https://api.deepseek.com', 'openai', TRUE, 99),
-    ('gemini', 'Google', 'https://generativelanguage.googleapis.com', 'google', TRUE, 99),
-    ('glm', 'ZHIPU-AI', 'https://open.bigmodel.cn/api/paas/v4', 'openai', TRUE, 99),
-    ('moonshot', 'Moonshot', 'https://api.moonshot.cn/v1', 'openai', TRUE, 99),
-    ('openai', 'OpenAI', 'https://api.openai.com/v1', 'openai', TRUE, 99),
-    ('xai', 'xAI', 'https://api.x.ai/v1', 'openai', TRUE, 99),
-    ('baichuan', 'Baichuan', 'https://api.baichuan-ai.com/v1', 'openai', TRUE, 50),
-    ('baidu', 'Baidu', 'https://qianfan.baidubce.com/v2', 'openai', TRUE, 50),
-    ('hunyuan', 'HunYuan', 'https://api.hunyuan.cloud.tencent.com/v1', 'openai', TRUE, 50),
-    ('jina', 'Jina', 'https://api.jina.ai/v1', 'jina', TRUE, 50),
-    ('mimo', 'Xiaomi MiMo Token Plan', 'https://token-plan-cn.xiaomimimo.com/v1', 'openai', TRUE, 50),
-    ('volcengine', 'VolcEngine', 'https://ark.cn-beijing.volces.com/api/v3', 'openai', TRUE, 50)
+    ('linkrag', 'LinkRag', 'http://localhost:39000/tolink-public/providerIcon/linkrag.png', 'providerIcon/linkrag.png', 'https://api.siliconflow.cn/v1', 'openai', TRUE, 100),
+    ('aliyun', 'Aliyun', 'http://localhost:39000/tolink-public/providerIcon/aliyun.svg', 'providerIcon/aliyun.svg', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'openai', TRUE, 99),
+    ('claude', 'Anthropic', 'http://localhost:39000/tolink-public/providerIcon/claude.svg', 'providerIcon/claude.svg', 'https://api.anthropic.com', 'anthropic', TRUE, 99),
+    ('deepseek', 'DeepSeek', 'http://localhost:39000/tolink-public/providerIcon/deepseek.svg', 'providerIcon/deepseek.svg', 'https://api.deepseek.com/v1', 'openai', TRUE, 99),
+    ('gemini', 'Google', 'http://localhost:39000/tolink-public/providerIcon/gemini.svg', 'providerIcon/gemini.svg', 'https://generativelanguage.googleapis.com/v1beta', 'google', TRUE, 99),
+    ('glm', 'ZHIPU-AI', 'http://localhost:39000/tolink-public/providerIcon/glm.svg', 'providerIcon/glm.svg', 'https://open.bigmodel.cn/api/paas/v4', 'openai', TRUE, 99),
+    ('moonshot', 'Moonshot', 'http://localhost:39000/tolink-public/providerIcon/moonshot.svg', 'providerIcon/moonshot.svg', 'https://api.moonshot.cn/v1', 'openai', TRUE, 99),
+    ('openai', 'OpenAI', 'http://localhost:39000/tolink-public/providerIcon/openai.svg', 'providerIcon/openai.svg', 'https://api.openai.com/v1', 'openai', TRUE, 99),
+    ('xai', 'xAI', 'http://localhost:39000/tolink-public/providerIcon/xai.svg', 'providerIcon/xai.svg', 'https://api.x.ai/v1', 'openai', TRUE, 99),
+    ('huggingface', 'HuggingFace', 'http://localhost:39000/tolink-public/providerIcon/huggingface.svg', 'providerIcon/huggingface.svg', 'https://router.huggingface.co/v1', 'openai', TRUE, 98),
+    ('minimax', 'MiniMax', 'http://localhost:39000/tolink-public/providerIcon/minimax.svg', 'providerIcon/minimax.svg', 'https://api.minimaxi.com/', 'openai', TRUE, 98),
+    ('openrouter', 'OpenRouter', 'http://localhost:39000/tolink-public/providerIcon/openrouter.svg', 'providerIcon/openrouter.svg', 'https://openrouter.ai/api/v1', 'openai', TRUE, 98),
+    ('hunyuan', 'HunYuan', 'http://localhost:39000/tolink-public/providerIcon/hunyuan.svg', 'providerIcon/hunyuan.svg', 'https://api.hunyuan.cloud.tencent.com/v1', 'openai', TRUE, 50),
+    ('jina', 'Jina', 'http://localhost:39000/tolink-public/providerIcon/jina.svg', 'providerIcon/jina.svg', 'https://api.jina.ai/v1', 'jina', TRUE, 50),
+    ('mimo', 'Xiaomi MiMo Token Plan', 'http://localhost:39000/tolink-public/providerIcon/mimo.svg', 'providerIcon/mimo.svg', 'https://token-plan-cn.xiaomimimo.com/v1', 'openai', TRUE, 50),
+    ('siliconflow', 'SiliconFlow', 'http://localhost:39000/tolink-public/providerIcon/siliconflow.svg', 'providerIcon/siliconflow.svg', 'https://api.siliconflow.cn/v1', 'openai', TRUE, 50),
+    ('volcengine', 'VolcEngine', 'http://localhost:39000/tolink-public/providerIcon/volcengine.svg', 'providerIcon/volcengine.svg', 'https://ark.cn-beijing.volces.com/api/v3', 'openai', TRUE, 50)
 ON DUPLICATE KEY UPDATE
     provider_name    = VALUES(provider_name),
+    icon_url         = VALUES(icon_url),
+    icon_object_key  = VALUES(icon_object_key),
     api_base_url     = VALUES(api_base_url),
     default_protocol = VALUES(default_protocol),
     is_active        = VALUES(is_active),
     priority         = VALUES(priority),
     updated_at       = CURRENT_TIMESTAMP;
 
--- ─── 2. 模型能力目录（一模型多能力 = 多行）──────────────────────
+UPDATE llm_system_provider
+SET is_active = FALSE,
+    updated_at = CURRENT_TIMESTAMP
+WHERE provider_type NOT IN (
+    'linkrag', 'aliyun', 'claude', 'deepseek', 'gemini', 'glm',
+    'moonshot', 'openai', 'xai', 'huggingface', 'minimax', 'openrouter',
+    'hunyuan', 'jina', 'mimo', 'siliconflow', 'volcengine'
+);
+
+-- 2. 模型能力目录：直接写入当前主推模型；未列入当前种子的历史模型能力会被下架。
 INSERT INTO llm_provider_model (
-    provider_id, model_name, capability, protocol, api_base_url, is_active
+    provider_id, model_name, display_name, capability, protocol, api_base_url, is_active
 )
-    SELECT id, 'qwen3-asr-flash', 'ASR', 'dashscope', 'https://dashscope.aliyuncs.com/api/v1', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen-flash', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen-plus', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen3-max', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen3.5-flash', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen3.5-plus', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'text-embedding-v3', 'EMBEDDING', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'text-embedding-v4', 'EMBEDDING', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'gte-rerank', 'RERANK', 'dashscope', 'https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen3-rerank', 'RERANK', 'dashscope', 'https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen-vl-max', 'VISION', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen-vl-plus', 'VISION', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen3-vl-plus', 'VISION', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen3.5-flash', 'VISION', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'qwen3.5-plus', 'VISION', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'aliyun'
-UNION ALL
-    SELECT id, 'claude-3-7-sonnet-20250219', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-haiku-4-5-20251001', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-opus-4-7', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-opus-4-8', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-sonnet-4-20250514', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-sonnet-4-5-20250929', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-sonnet-4-6', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-3-5-sonnet-20241022', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-haiku-4-5-20251001', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-opus-4-7', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-opus-4-8', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-sonnet-4-20250514', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-sonnet-4-5-20250929', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'claude-sonnet-4-6', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE FROM llm_system_provider WHERE provider_type = 'claude'
-UNION ALL
-    SELECT id, 'deepseek-v4-flash', 'CHAT', 'openai', 'https://api.deepseek.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'deepseek'
-UNION ALL
-    SELECT id, 'deepseek-v4-pro', 'CHAT', 'openai', 'https://api.deepseek.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'deepseek'
-UNION ALL
-    SELECT id, 'gemini-2.5-flash', 'CHAT', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE FROM llm_system_provider WHERE provider_type = 'gemini'
-UNION ALL
-    SELECT id, 'gemini-embedding-001', 'EMBEDDING', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE FROM llm_system_provider WHERE provider_type = 'gemini'
-UNION ALL
-    SELECT id, 'gemini-2.5-flash', 'VISION', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE FROM llm_system_provider WHERE provider_type = 'gemini'
-UNION ALL
-    SELECT id, 'gemini-2.5-pro', 'VISION', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE FROM llm_system_provider WHERE provider_type = 'gemini'
-UNION ALL
-    SELECT id, 'gemini-3-pro-preview', 'VISION', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE FROM llm_system_provider WHERE provider_type = 'gemini'
-UNION ALL
-    SELECT id, 'glm-asr-2512', 'ASR', 'openai', 'https://open.bigmodel.cn/api/paas/v4/audio/transcriptions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-4.6v-Flash', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-4.7', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-4.7-flashx', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-5', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-5-turbo', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-5v-turbo', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'embedding-3', 'EMBEDDING', 'openai', 'https://open.bigmodel.cn/api/paas/v4/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'glm-4.6v-Flash', 'VISION', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'glm'
-UNION ALL
-    SELECT id, 'kimi-k2-thinking', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'moonshot'
-UNION ALL
-    SELECT id, 'kimi-k2-thinking-turbo', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'moonshot'
-UNION ALL
-    SELECT id, 'kimi-k2.6', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'moonshot'
-UNION ALL
-    SELECT id, 'kimi-latest', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'moonshot'
-UNION ALL
-    SELECT id, 'kimi-k2.6', 'VISION', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'moonshot'
-UNION ALL
-    SELECT id, 'whisper-1', 'ASR', 'openai', 'https://api.openai.com/v1/audio/transcriptions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-4o-mini', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5-mini', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5.1-chat-latest', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5.4', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5.5', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'text-embedding-3-large', 'EMBEDDING', 'openai', 'https://api.openai.com/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-4o-mini', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5-mini', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5.1-chat-latest', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5.4', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'gpt-5.5', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'openai'
-UNION ALL
-    SELECT id, 'grok-3-fast', 'CHAT', 'openai', 'https://api.x.ai/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'xai'
-UNION ALL
-    SELECT id, 'grok-4', 'CHAT', 'openai', 'https://api.x.ai/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'xai'
-UNION ALL
-    SELECT id, 'Baichuan4', 'CHAT', 'openai', 'https://api.baichuan-ai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'baichuan'
-UNION ALL
-    SELECT id, 'Baichuan4-Air', 'CHAT', 'openai', 'https://api.baichuan-ai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'baichuan'
-UNION ALL
-    SELECT id, 'Baichuan4-Turbo', 'CHAT', 'openai', 'https://api.baichuan-ai.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'baichuan'
-UNION ALL
-    SELECT id, 'Baichuan-Text-Embedding', 'EMBEDDING', 'openai', 'https://api.baichuan-ai.com/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'baichuan'
-UNION ALL
-    SELECT id, 'embedding-v1', 'EMBEDDING', 'openai', 'https://qianfan.baidubce.com/v2/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'baidu'
-UNION ALL
-    SELECT id, 'ernie-5.0', 'VISION', 'openai', 'https://qianfan.baidubce.com/v2/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'baidu'
-UNION ALL
-    SELECT id, 'hunyuan-pro', 'CHAT', 'openai', 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'hunyuan'
-UNION ALL
-    SELECT id, 'hunyuan-embedding', 'EMBEDDING', 'openai', 'https://api.hunyuan.cloud.tencent.com/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'hunyuan'
-UNION ALL
-    SELECT id, 'jina-embeddings-v4', 'EMBEDDING', 'jina', 'https://api.jina.ai/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'jina'
-UNION ALL
-    SELECT id, 'jina-embeddings-v5-text-nano', 'EMBEDDING', 'jina', 'https://api.jina.ai/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'jina'
-UNION ALL
-    SELECT id, 'jina-embeddings-v5-text-small', 'EMBEDDING', 'jina', 'https://api.jina.ai/v1/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'jina'
-UNION ALL
-    SELECT id, 'jina-reranker-m0', 'RERANK', 'jina', 'https://api.jina.ai/v1/rerank', TRUE FROM llm_system_provider WHERE provider_type = 'jina'
-UNION ALL
-    SELECT id, 'jina-reranker-v3', 'RERANK', 'jina', 'https://api.jina.ai/v1/rerank', TRUE FROM llm_system_provider WHERE provider_type = 'jina'
-UNION ALL
-    SELECT id, 'mimo-v2.5-asr', 'ASR', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'mimo'
-UNION ALL
-    SELECT id, 'mimo-v2.5', 'CHAT', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'mimo'
-UNION ALL
-    SELECT id, 'mimo-v2.5-pro', 'CHAT', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'mimo'
-UNION ALL
-    SELECT id, 'mimo-v2.5', 'VISION', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'mimo'
-UNION ALL
-    SELECT id, 'doubao-seed-2-0-pro-260215', 'CHAT', 'openai', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions', TRUE FROM llm_system_provider WHERE provider_type = 'volcengine'
-UNION ALL
-    SELECT id, 'doubao-embedding-vision-251215', 'EMBEDDING', 'openai', 'https://ark.cn-beijing.volces.com/api/v3/embeddings', TRUE FROM llm_system_provider WHERE provider_type = 'volcengine'
+VALUES
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'aliyun'), 'qwen3-asr-flash', 'Qwen 3 ASR Flash', 'ASR', 'dashscope', 'https://dashscope.aliyuncs.com/api/v1', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'aliyun'), 'qwen3-max', 'Qwen 3 Max', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'aliyun'), 'qwen3-rerank', 'Qwen 3 Rerank', 'RERANK', 'dashscope', 'https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'aliyun'), 'qwen3.5-flash', 'Qwen 3.5 Flash', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'aliyun'), 'qwen3.5-flash', 'Qwen 3.5 Flash', 'VISION', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'aliyun'), 'qwen3.5-plus', 'Qwen 3.5 Plus', 'CHAT', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'aliyun'), 'qwen3.5-plus', 'Qwen 3.5 Plus', 'VISION', 'openai', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-haiku-4-5-20251001', 'Claude Haiku 4.5', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-haiku-4-5-20251001', 'Claude Haiku 4.5', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-opus-4-7', 'Claude Opus 4.7', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-opus-4-7', 'Claude Opus 4.7', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-opus-4-8', 'Claude Opus 4.8', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-opus-4-8', 'Claude Opus 4.8', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-sonnet-4-6', 'Claude Sonnet 4.6', 'CHAT', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'claude'), 'claude-sonnet-4-6', 'Claude Sonnet 4.6', 'VISION', 'anthropic', 'https://api.anthropic.com/v1/messages', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'deepseek'), 'deepseek-v4-flash', 'DeepSeek V4 Flash', 'CHAT', 'openai', 'https://api.deepseek.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'deepseek'), 'deepseek-v4-pro', 'DeepSeek V4 Pro', 'CHAT', 'openai', 'https://api.deepseek.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'gemini'), 'gemini-2.5-flash', 'Gemini 2.5 Flash', 'CHAT', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'gemini'), 'gemini-2.5-flash', 'Gemini 2.5 Flash', 'VISION', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'gemini'), 'gemini-2.5-pro', 'Gemini 2.5 Pro', 'VISION', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'gemini'), 'gemini-3-pro-preview', 'Gemini 3 Pro', 'VISION', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'gemini'), 'gemini-embedding-001', 'Gemini Embedding', 'EMBEDDING', 'google', 'https://generativelanguage.googleapis.com/v1beta', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'glm'), 'embedding-3', 'GLM Embedding 3', 'EMBEDDING', 'openai', 'https://open.bigmodel.cn/api/paas/v4/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'glm'), 'glm-5', 'GLM 5', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'glm'), 'glm-5-turbo', 'GLM 5 Turbo', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'glm'), 'glm-5v-turbo', 'GLM 5V Turbo', 'CHAT', 'openai', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'glm'), 'glm-asr-2512', 'GLM ASR', 'ASR', 'openai', 'https://open.bigmodel.cn/api/paas/v4/audio/transcriptions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'moonshot'), 'kimi-k2-thinking', 'Kimi K2 Thinking', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'moonshot'), 'kimi-k2-thinking-turbo', 'Kimi K2 Thinking Turbo', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'moonshot'), 'kimi-k2.6', 'Kimi K2.6', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'moonshot'), 'kimi-k2.6', 'Kimi K2.6', 'VISION', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'moonshot'), 'kimi-latest', 'Kimi', 'CHAT', 'openai', 'https://api.moonshot.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5-mini', 'GPT 5 Mini', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5-mini', 'GPT 5 Mini', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5.1-chat-latest', 'GPT 5.1 Chat', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5.1-chat-latest', 'GPT 5.1 Chat', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5.4', 'GPT 5.4', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5.4', 'GPT 5.4', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5.5', 'GPT 5.5', 'CHAT', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'gpt-5.5', 'GPT 5.5', 'VISION', 'openai', 'https://api.openai.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openai'), 'text-embedding-3-large', 'OpenAI Embedding 3 Large', 'EMBEDDING', 'openai', 'https://api.openai.com/v1/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'xai'), 'grok-3-fast', 'Grok 3 Fast', 'CHAT', 'openai', 'https://api.x.ai/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'xai'), 'grok-4', 'Grok 4', 'CHAT', 'openai', 'https://api.x.ai/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'deepseek-ai/DeepSeek-V4-Pro', 'DeepSeek V4 Pro', 'CHAT', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'MiniMaxAI/MiniMax-M3', 'MiniMax M3', 'CHAT', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'MiniMaxAI/MiniMax-M3', 'MiniMax M3', 'VISION', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'moonshotai/Kimi-K2.7-Code', 'Kimi K2.7 Code', 'CHAT', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'moonshotai/Kimi-K2.7-Code', 'Kimi K2.7 Code', 'VISION', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'Qwen/Qwen3.6-27B', 'Qwen 3.6 27B', 'CHAT', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'Qwen/Qwen3.6-27B', 'Qwen 3.6 27B', 'VISION', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'huggingface'), 'zai-org/GLM-5.2', 'GLM 5.2', 'CHAT', 'openai', 'https://router.huggingface.co/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'minimax'), 'minimax-m2.5', 'MiniMax M2.5', 'CHAT', 'openai', 'https://api.minimaxi.com/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openrouter'), 'anthropic/claude-sonnet-5', 'Claude Sonnet 5', 'CHAT', 'openai', 'https://openrouter.ai/api/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openrouter'), 'anthropic/claude-sonnet-5', 'Claude Sonnet 5', 'VISION', 'openai', 'https://openrouter.ai/api/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openrouter'), 'deepseek/deepseek-v4-pro', 'DeepSeek V4 Pro', 'CHAT', 'openai', 'https://openrouter.ai/api/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openrouter'), 'openai/gpt-5.5', 'GPT 5.5', 'CHAT', 'openai', 'https://openrouter.ai/api/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openrouter'), 'x-ai/grok-4.3', 'Grok 4.3', 'CHAT', 'openai', 'https://openrouter.ai/api/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'openrouter'), 'z-ai/glm-5.2', 'GLM 5.2', 'CHAT', 'openai', 'https://openrouter.ai/api/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'hunyuan'), 'hunyuan-embedding', 'Hunyuan Embedding', 'EMBEDDING', 'openai', 'https://api.hunyuan.cloud.tencent.com/v1/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'hunyuan'), 'hunyuan-lite', 'Hunyuan lite', 'CHAT', 'openai', 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'hunyuan'), 'hunyuan-pro', 'Hunyuan Pro', 'CHAT', 'openai', 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'hunyuan'), 'hunyuan-standard', 'Hunyuan standard', 'CHAT', 'openai', 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'hunyuan'), 'hunyuan-standard-256K', 'Hunyuan standard 256k', 'CHAT', 'openai', 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'jina'), 'jina-embeddings-v5-omni-nano', 'Jina Embedding 5 Omni Nano', 'EMBEDDING', 'jina', 'https://api.jina.ai/v1/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'jina'), 'jina-embeddings-v5-omni-small', 'Jina Embedding 5 Omni Small', 'EMBEDDING', 'jina', 'https://api.jina.ai/v1/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'jina'), 'jina-embeddings-v5-text-nano', 'Jina Embedding 5 Text Nano', 'EMBEDDING', 'jina', 'https://api.jina.ai/v1/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'jina'), 'jina-embeddings-v5-text-small', 'Jina Embedding 5 Text Small', 'EMBEDDING', 'jina', 'https://api.jina.ai/v1/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'jina'), 'jina-reranker-v3', 'Jina Reranker 3', 'RERANK', 'jina', 'https://api.jina.ai/v1/rerank', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'mimo'), 'mimo-v2.5', 'MiMo 2.5', 'CHAT', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'mimo'), 'mimo-v2.5', 'MiMo 2.5', 'VISION', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'mimo'), 'mimo-v2.5-asr', 'MiMo 2.5 ASR', 'ASR', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'mimo'), 'mimo-v2.5-pro', 'MiMo 2.5 Pro', 'CHAT', 'openai', 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'siliconflow'), 'BAAI/bge-reranker-v2-m3', 'BGE Reranker M3', 'RERANK', 'jina', 'https://api.siliconflow.cn/v1/rerank', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'siliconflow'), 'Pro/deepseek-ai/DeepSeek-V4-Flash', 'DeepSeek V4 Flash', 'CHAT', 'openai', 'https://api.siliconflow.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'siliconflow'), 'Pro/deepseek-ai/DeepSeek-V4-Pro', 'DeepSeek V4 Pro', 'CHAT', 'openai', 'https://api.siliconflow.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'siliconflow'), 'Pro/moonshotai/Kimi-K2.6', 'Kimi K2.6', 'CHAT', 'openai', 'https://api.siliconflow.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'siliconflow'), 'Pro/moonshotai/Kimi-K2.6', 'Kimi K2.6', 'VISION', 'openai', 'https://api.siliconflow.cn/v1/chat/completions', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'siliconflow'), 'Qwen/Qwen3-Embedding-0.6B', 'Qwen 3 Embedding 0.6b', 'EMBEDDING', 'openai', 'https://api.siliconflow.cn/v1/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'volcengine'), 'doubao-embedding-vision-251215', 'Doubao Vision Embedding', 'EMBEDDING', 'openai', 'https://ark.cn-beijing.volces.com/api/v3/embeddings', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'volcengine'), 'doubao-embedding-vision-251215', 'Doubao Vision Embedding', 'SPARSE_EMBEDDING', 'doubao_vision', 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal', TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'volcengine'), 'doubao-seed-2-0-pro-260215', 'Doubao Seed 2.0 Pro', 'CHAT', 'openai', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions', TRUE)
 ON DUPLICATE KEY UPDATE
+    display_name = VALUES(display_name),
     protocol     = VALUES(protocol),
     api_base_url = VALUES(api_base_url),
     is_active    = VALUES(is_active),
     updated_at   = CURRENT_TIMESTAMP;
 
--- 全厂商模型展示名回填；真实调用仍使用 model_name。
-DROP TEMPORARY TABLE IF EXISTS tmp_llm_model_display_names;
-
-CREATE TEMPORARY TABLE tmp_llm_model_display_names AS
-SELECT
-    id,
-    CASE
-        WHEN model_name = 'qwen3-asr-flash' THEN 'Qwen ASR Flash'
-        WHEN model_name = 'deepseek-ai/DeepSeek-V4-Flash' THEN 'DeepSeek V4 Flash'
-        WHEN model_name = 'Qwen/Qwen3.6-27B' THEN 'Qwen 3.6 27B'
-        WHEN model_name = 'bge-m3' THEN 'BGE-M3'
-        WHEN model_name = 'doubao-seed-2-0-pro-260215' THEN 'Doubao Seed 2.0 Pro'
-        WHEN model_name = 'BAAI/bge-m3' THEN 'BGE-M3'
-        WHEN model_name = 'BAAI/bge-reranker-v2-m3' THEN 'BGE Reranker M3'
-        WHEN model_name = 'doubao-embedding-vision-251215' AND capability = 'SPARSE_EMBEDDING' THEN 'Doubao Sparse'
-        WHEN model_name = 'doubao-embedding-vision-251215' THEN 'Doubao Vision Embedding'
-        WHEN clean_name REGEXP '^chatgpt ' THEN CONCAT('ChatGPT ', REGEXP_REPLACE(clean_name, '^chatgpt ', ''))
-        WHEN clean_name REGEXP '^gpt ' THEN CONCAT('GPT ', REGEXP_REPLACE(clean_name, '^gpt ', ''))
-        WHEN clean_name REGEXP '^qwen' THEN CONCAT('Qwen ', REGEXP_REPLACE(clean_name, '^qwen ?', ''))
-        WHEN clean_name REGEXP '^claude' THEN CONCAT('Claude ', REGEXP_REPLACE(clean_name, '^claude ?', ''))
-        WHEN clean_name REGEXP '^gemini' THEN CONCAT('Gemini ', REGEXP_REPLACE(clean_name, '^gemini ?', ''))
-        WHEN clean_name REGEXP '^deepseek' THEN CONCAT('DeepSeek ', REGEXP_REPLACE(clean_name, '^deepseek ?', ''))
-        WHEN clean_name REGEXP '^glm' THEN CONCAT('GLM ', REGEXP_REPLACE(clean_name, '^glm ?', ''))
-        WHEN clean_name REGEXP '^kimi' THEN CONCAT('Kimi ', REGEXP_REPLACE(clean_name, '^kimi ?', ''))
-        WHEN clean_name REGEXP '^moonshot kimi' THEN CONCAT('Kimi ', REGEXP_REPLACE(clean_name, '^moonshot kimi ?', ''))
-        WHEN clean_name REGEXP '^grok' THEN CONCAT('Grok ', REGEXP_REPLACE(clean_name, '^grok ?', ''))
-        WHEN clean_name REGEXP '^jina' THEN CONCAT('Jina ', REGEXP_REPLACE(clean_name, '^jina ?', ''))
-        WHEN clean_name REGEXP '^doubao' THEN CONCAT('Doubao ', REGEXP_REPLACE(clean_name, '^doubao ?', ''))
-        WHEN clean_name REGEXP '^mimo' THEN CONCAT('MiMo ', REGEXP_REPLACE(clean_name, '^mimo ?', ''))
-        WHEN clean_name REGEXP '^hunyuan' THEN CONCAT('Hunyuan ', REGEXP_REPLACE(clean_name, '^hunyuan ?', ''))
-        WHEN clean_name REGEXP '^baichuan' THEN CONCAT('Baichuan ', REGEXP_REPLACE(clean_name, '^baichuan ?', ''))
-        WHEN clean_name REGEXP '^ernie' THEN CONCAT('ERNIE ', REGEXP_REPLACE(clean_name, '^ernie ?', ''))
-        WHEN clean_name REGEXP '^whisper' THEN CONCAT('Whisper ', REGEXP_REPLACE(clean_name, '^whisper ?', ''))
-        WHEN clean_name REGEXP '^llama' THEN CONCAT('Llama ', REGEXP_REPLACE(clean_name, '^llama ?', ''))
-        WHEN clean_name REGEXP '^mistral' THEN CONCAT('Mistral ', REGEXP_REPLACE(clean_name, '^mistral ?', ''))
-        WHEN clean_name REGEXP '^mixtral' THEN CONCAT('Mixtral ', REGEXP_REPLACE(clean_name, '^mixtral ?', ''))
-        WHEN clean_name REGEXP '^text embedding' THEN CONCAT('Text Embedding ', REGEXP_REPLACE(clean_name, '^text embedding ?', ''))
-        WHEN clean_name REGEXP '^embedding ' THEN CONCAT('Embedding ', REGEXP_REPLACE(clean_name, '^embedding ', ''))
-        WHEN clean_name REGEXP '^gte rerank' THEN CONCAT('GTE Rerank ', REGEXP_REPLACE(clean_name, '^gte rerank ?', ''))
-        WHEN clean_name REGEXP '^bge ' THEN CONCAT('BGE ', REGEXP_REPLACE(clean_name, '^bge ', ''))
-        WHEN clean_name REGEXP '^o[0-9]' THEN TRIM(CONCAT(UPPER(SUBSTRING(clean_name, 1, 2)), ' ', REGEXP_REPLACE(clean_name, '^o[0-9] ?', '')))
-        ELSE clean_name
-    END AS display_name
-FROM (
-    SELECT
-        id,
-        provider_type,
-        model_name,
-        capability,
-        TRIM(REGEXP_REPLACE(
-            REGEXP_REPLACE(
-                REGEXP_REPLACE(raw_name, ' [0-9]{4} [0-9]{2} [0-9]{2}$', ''),
-                ' [0-9]{8}$', ''
-            ),
-            ' [0-9]{2} [0-9]{2}$', ''
-        )) AS clean_name
-    FROM (
-        SELECT
-            pm.id,
-            sp.provider_type,
-            pm.model_name,
-            pm.capability,
-            TRIM(REGEXP_REPLACE(
-                REPLACE(REPLACE(REPLACE(LOWER(SUBSTRING_INDEX(pm.model_name, '/', -1)), '_', ' '), '-', ' '), ':', ' '),
-                ' +', ' '
-            )) AS raw_name
-        FROM llm_provider_model pm
-        JOIN llm_system_provider sp ON sp.id = pm.provider_id
-    ) raw_models
-) normalized_models;
-
-UPDATE tmp_llm_model_display_names
-SET display_name = TRIM(REGEXP_REPLACE(display_name, ' +', ' '));
-
-UPDATE tmp_llm_model_display_names
-SET display_name = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                   REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                   display_name,
-                   ' flash', ' Flash'),
-                   ' pro', ' Pro'),
-                   ' mini', ' Mini'),
-                   ' nano', ' Nano'),
-                   ' turbo', ' Turbo'),
-                   ' latest', ' Latest'),
-                   ' preview', ' Preview'),
-                   ' embedding', ' Embedding'),
-                   ' embeddings', ' Embeddings'),
-                   ' reranker', ' Reranker'),
-                   ' sonnet', ' Sonnet'),
-                   ' opus', ' Opus'),
-                   ' haiku', ' Haiku'),
-                   ' thinking', ' Thinking'),
-                   ' instruct', ' Instruct'),
-                   ' vision', ' Vision'),
-                   ' chat', ' Chat'),
-                   ' large', ' Large'),
-                   ' small', ' Small'),
-                   ' max', ' Max');
-
-UPDATE tmp_llm_model_display_names
-SET display_name = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                   display_name,
-                   ' asr', ' ASR'),
-                   ' vl', ' VL'),
-                   ' r1', ' R1'),
-                   ' r2', ' R2'),
-                   ' k2', ' K2'),
-                   ' v1', ' V1'),
-                   ' v2', ' V2'),
-                   ' v3', ' V3'),
-                   ' v4', ' V4'),
-                   ' v5', ' V5');
-
-UPDATE tmp_llm_model_display_names
-SET display_name = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                   display_name,
-                   ' plus', ' Plus'),
-                   ' long', ' Long'),
-                   ' coder', ' Coder'),
-                   ' reasoner', ' Reasoner'),
-                   ' distill', ' Distill'),
-                   ' base', ' Base'),
-                   ' multilingual', ' Multilingual'),
-                   ' maverick', ' Maverick'),
-                   ' air', ' Air'),
-                   ' seed', ' Seed');
-
-UPDATE tmp_llm_model_display_names
-SET display_name = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                   display_name,
-                   ' rerank', ' Rerank'),
-                   ' clip', ' CLIP'),
-                   ' beta', ' Beta'),
-                   ' instruct', ' Instruct'),
-                   ' a3b', ' A3B');
-
-UPDATE tmp_llm_model_display_names
-SET display_name = LEFT(display_name, 64);
-
 UPDATE llm_provider_model pm
-JOIN tmp_llm_model_display_names d ON d.id = pm.id
-SET pm.display_name = d.display_name,
+JOIN llm_system_provider sp ON sp.id = pm.provider_id
+SET pm.is_active = FALSE,
     pm.updated_at = CURRENT_TIMESTAMP
-WHERE d.display_name IS NOT NULL
-  AND d.display_name <> '';
+WHERE (sp.provider_type, pm.model_name, pm.capability) NOT IN (
+    ('aliyun', 'qwen3-asr-flash', 'ASR'),
+    ('aliyun', 'qwen3-max', 'CHAT'),
+    ('aliyun', 'qwen3-rerank', 'RERANK'),
+    ('aliyun', 'qwen3.5-flash', 'CHAT'),
+    ('aliyun', 'qwen3.5-flash', 'VISION'),
+    ('aliyun', 'qwen3.5-plus', 'CHAT'),
+    ('aliyun', 'qwen3.5-plus', 'VISION'),
+    ('claude', 'claude-haiku-4-5-20251001', 'CHAT'),
+    ('claude', 'claude-haiku-4-5-20251001', 'VISION'),
+    ('claude', 'claude-opus-4-7', 'CHAT'),
+    ('claude', 'claude-opus-4-7', 'VISION'),
+    ('claude', 'claude-opus-4-8', 'CHAT'),
+    ('claude', 'claude-opus-4-8', 'VISION'),
+    ('claude', 'claude-sonnet-4-5-20250929', 'CHAT'),
+    ('claude', 'claude-sonnet-4-5-20250929', 'VISION'),
+    ('claude', 'claude-sonnet-4-6', 'CHAT'),
+    ('claude', 'claude-sonnet-4-6', 'VISION'),
+    ('deepseek', 'deepseek-v4-flash', 'CHAT'),
+    ('deepseek', 'deepseek-v4-pro', 'CHAT'),
+    ('gemini', 'gemini-2.5-flash', 'CHAT'),
+    ('gemini', 'gemini-2.5-flash', 'VISION'),
+    ('gemini', 'gemini-2.5-pro', 'VISION'),
+    ('gemini', 'gemini-3-pro-preview', 'VISION'),
+    ('gemini', 'gemini-embedding-001', 'EMBEDDING'),
+    ('glm', 'embedding-3', 'EMBEDDING'),
+    ('glm', 'glm-5', 'CHAT'),
+    ('glm', 'glm-5-turbo', 'CHAT'),
+    ('glm', 'glm-5v-turbo', 'CHAT'),
+    ('glm', 'glm-asr-2512', 'ASR'),
+    ('moonshot', 'kimi-k2-thinking', 'CHAT'),
+    ('moonshot', 'kimi-k2-thinking-turbo', 'CHAT'),
+    ('moonshot', 'kimi-k2.6', 'CHAT'),
+    ('moonshot', 'kimi-k2.6', 'VISION'),
+    ('moonshot', 'kimi-latest', 'CHAT'),
+    ('openai', 'gpt-5-mini', 'CHAT'),
+    ('openai', 'gpt-5-mini', 'VISION'),
+    ('openai', 'gpt-5.1-chat-latest', 'CHAT'),
+    ('openai', 'gpt-5.1-chat-latest', 'VISION'),
+    ('openai', 'gpt-5.4', 'CHAT'),
+    ('openai', 'gpt-5.4', 'VISION'),
+    ('openai', 'gpt-5.5', 'CHAT'),
+    ('openai', 'gpt-5.5', 'VISION'),
+    ('openai', 'text-embedding-3-large', 'EMBEDDING'),
+    ('xai', 'grok-3-fast', 'CHAT'),
+    ('xai', 'grok-4', 'CHAT'),
+    ('huggingface', 'deepseek-ai/DeepSeek-V4-Pro', 'CHAT'),
+    ('huggingface', 'MiniMaxAI/MiniMax-M3', 'CHAT'),
+    ('huggingface', 'MiniMaxAI/MiniMax-M3', 'VISION'),
+    ('huggingface', 'moonshotai/Kimi-K2.7-Code', 'CHAT'),
+    ('huggingface', 'moonshotai/Kimi-K2.7-Code', 'VISION'),
+    ('huggingface', 'Qwen/Qwen3.6-27B', 'CHAT'),
+    ('huggingface', 'Qwen/Qwen3.6-27B', 'VISION'),
+    ('huggingface', 'zai-org/GLM-5.2', 'CHAT'),
+    ('minimax', 'minimax-m2.5', 'CHAT'),
+    ('openrouter', 'anthropic/claude-sonnet-5', 'CHAT'),
+    ('openrouter', 'anthropic/claude-sonnet-5', 'VISION'),
+    ('openrouter', 'deepseek/deepseek-v4-pro', 'CHAT'),
+    ('openrouter', 'openai/gpt-5.5', 'CHAT'),
+    ('openrouter', 'x-ai/grok-4.3', 'CHAT'),
+    ('openrouter', 'z-ai/glm-5.2', 'CHAT'),
+    ('hunyuan', 'hunyuan-embedding', 'EMBEDDING'),
+    ('hunyuan', 'hunyuan-lite', 'CHAT'),
+    ('hunyuan', 'hunyuan-pro', 'CHAT'),
+    ('hunyuan', 'hunyuan-standard', 'CHAT'),
+    ('hunyuan', 'hunyuan-standard-256K', 'CHAT'),
+    ('jina', 'jina-embeddings-v5-omni-nano', 'EMBEDDING'),
+    ('jina', 'jina-embeddings-v5-omni-small', 'EMBEDDING'),
+    ('jina', 'jina-embeddings-v5-text-nano', 'EMBEDDING'),
+    ('jina', 'jina-embeddings-v5-text-small', 'EMBEDDING'),
+    ('jina', 'jina-reranker-v3', 'RERANK'),
+    ('mimo', 'mimo-v2.5', 'CHAT'),
+    ('mimo', 'mimo-v2.5', 'VISION'),
+    ('mimo', 'mimo-v2.5-asr', 'ASR'),
+    ('mimo', 'mimo-v2.5-pro', 'CHAT'),
+    ('siliconflow', 'BAAI/bge-reranker-v2-m3', 'RERANK'),
+    ('siliconflow', 'Pro/deepseek-ai/DeepSeek-V4-Flash', 'CHAT'),
+    ('siliconflow', 'Pro/deepseek-ai/DeepSeek-V4-Pro', 'CHAT'),
+    ('siliconflow', 'Pro/moonshotai/Kimi-K2.6', 'CHAT'),
+    ('siliconflow', 'Pro/moonshotai/Kimi-K2.6', 'VISION'),
+    ('siliconflow', 'Qwen/Qwen3-Embedding-0.6B', 'EMBEDDING'),
+    ('volcengine', 'doubao-embedding-vision-251215', 'EMBEDDING'),
+    ('volcengine', 'doubao-embedding-vision-251215', 'SPARSE_EMBEDDING'),
+    ('volcengine', 'doubao-seed-2-0-pro-260215', 'CHAT')
+);
 
-UPDATE llm_system_preset p
-JOIN llm_provider_model pm
-  ON pm.provider_id = p.provider_id
- AND pm.model_name = p.model_name
- AND pm.capability = p.capability
-SET p.display_name = pm.display_name,
-    p.updated_at = CURRENT_TIMESTAMP
-WHERE pm.display_name IS NOT NULL
-  AND pm.display_name <> '';
+DELETE pm
+FROM llm_provider_model pm
+JOIN llm_system_provider sp ON sp.id = pm.provider_id
+WHERE sp.provider_type = 'linkrag';
 
-DROP TEMPORARY TABLE IF EXISTS tmp_llm_model_display_names;
+-- 3. LinkRag 系统兜底预设：直接写入原表，每个 capability 一条默认。
+--    api_key 不写明文；已有预设会复用原密文，全新库需在 SOURCE 前设置 @linkrag_system_preset_api_key。
+INSERT INTO llm_system_preset (
+    provider_id, model_name, display_name, capability, provider_type,
+    protocol, api_base_url, api_key, is_active, is_default
+)
+VALUES
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'linkrag'), 'qwen3-asr-flash', 'Qwen ASR Flash', 'ASR', 'linkrag', 'dashscope', 'https://dashscope.aliyuncs.com/api/v1', COALESCE(NULLIF(@linkrag_system_preset_api_key, ''), ''), TRUE, TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'linkrag'), 'deepseek-ai/DeepSeek-V4-Flash', 'DeepSeek V4 Flash', 'CHAT', 'linkrag', 'openai', 'https://api.siliconflow.cn/v1/chat/completions', COALESCE(NULLIF(@linkrag_system_preset_api_key, ''), ''), TRUE, TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'linkrag'), 'BAAI/bge-m3', 'BGE-M3', 'EMBEDDING', 'linkrag', 'openai', 'https://api.siliconflow.cn/v1/embeddings', COALESCE(NULLIF(@linkrag_system_preset_api_key, ''), ''), TRUE, TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'linkrag'), 'BAAI/bge-reranker-v2-m3', 'BGE Reranker M3', 'RERANK', 'linkrag', 'jina', 'https://api.siliconflow.cn/v1/rerank', COALESCE(NULLIF(@linkrag_system_preset_api_key, ''), ''), TRUE, TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'linkrag'), 'doubao-embedding-vision-251215', 'Doubao Sparse', 'SPARSE_EMBEDDING', 'linkrag', 'doubao_vision', 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal', COALESCE(NULLIF(@linkrag_system_preset_api_key, ''), ''), TRUE, TRUE),
+    ((SELECT id FROM llm_system_provider WHERE provider_type = 'linkrag'), 'Qwen/Qwen3.6-27B', 'Qwen 3.6 27B', 'VISION', 'linkrag', 'openai', 'https://api.siliconflow.cn/v1/chat/completions', COALESCE(NULLIF(@linkrag_system_preset_api_key, ''), ''), TRUE, TRUE)
+ON DUPLICATE KEY UPDATE
+    display_name  = VALUES(display_name),
+    provider_type = VALUES(provider_type),
+    protocol      = VALUES(protocol),
+    api_base_url  = VALUES(api_base_url),
+    api_key       = COALESCE(NULLIF(@linkrag_system_preset_api_key, ''), api_key),
+    is_active     = VALUES(is_active),
+    is_default    = VALUES(is_default),
+    updated_at    = CURRENT_TIMESTAMP;
+
+UPDATE llm_system_preset
+SET is_default = FALSE,
+    updated_at = CURRENT_TIMESTAMP
+WHERE provider_type = 'linkrag'
+  AND is_default = TRUE
+  AND (model_name, capability) NOT IN (
+      ('qwen3-asr-flash', 'ASR'),
+      ('deepseek-ai/DeepSeek-V4-Flash', 'CHAT'),
+      ('BAAI/bge-m3', 'EMBEDDING'),
+      ('BAAI/bge-reranker-v2-m3', 'RERANK'),
+      ('doubao-embedding-vision-251215', 'SPARSE_EMBEDDING'),
+      ('Qwen/Qwen3.6-27B', 'VISION')
+  );
+
+UPDATE llm_system_preset
+SET is_active = FALSE,
+    is_default = FALSE,
+    updated_at = CURRENT_TIMESTAMP
+WHERE provider_type = 'linkrag'
+  AND (model_name, capability) NOT IN (
+      ('qwen3-asr-flash', 'ASR'),
+      ('deepseek-ai/DeepSeek-V4-Flash', 'CHAT'),
+      ('BAAI/bge-m3', 'EMBEDDING'),
+      ('BAAI/bge-reranker-v2-m3', 'RERANK'),
+      ('doubao-embedding-vision-251215', 'SPARSE_EMBEDDING'),
+      ('Qwen/Qwen3.6-27B', 'VISION')
+  );
+
+DELETE FROM llm_system_preset
+WHERE provider_type <> 'linkrag';
 
 COMMIT;

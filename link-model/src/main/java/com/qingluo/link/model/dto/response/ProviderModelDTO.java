@@ -24,6 +24,9 @@ public class ProviderModelDTO {
     @Schema(description = "厂商名称", example = "OpenAI")
     private String providerName;
 
+    @Schema(description = "厂商图标 URL", example = "https://minio.example/tolink-public/providerIcon/openai.png")
+    private String iconUrl;
+
     @Schema(description = "可选模型列表")
     private List<ModelCapabilityDTO> models;
 }

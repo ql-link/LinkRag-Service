@@ -24,6 +24,9 @@ public class ProviderRef {
     /** 厂商名称，用户侧展示。 */
     private String providerName;
 
+    /** 厂商图标 URL，用户侧展示。 */
+    private String iconUrl;
+
     /** 优先级，priority 倒序决定展示顺序。 */
     private Integer priority;
 }

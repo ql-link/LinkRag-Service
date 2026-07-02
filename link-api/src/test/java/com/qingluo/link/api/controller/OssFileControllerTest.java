@@ -48,6 +48,18 @@ class OssFileControllerTest {
     }
 
     @Test
+    void Should_Upload_ProviderIcon_To_Public_Oss_When_BizType_Is_ProviderIcon() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "provider.png", MediaType.IMAGE_PNG_VALUE, "png-content".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/v1/oss-files/{bizType}", "providerIcon").file(file))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data")
+                    .value(org.hamcrest.Matchers.startsWith("/api/v1/oss-files/public/providerIcon/")));
+    }
+
+    @Test
     void Should_Preview_Uploaded_Public_File_Through_Api_Controller() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "avatar.png", MediaType.IMAGE_PNG_VALUE, "preview-content".getBytes(StandardCharsets.UTF_8));

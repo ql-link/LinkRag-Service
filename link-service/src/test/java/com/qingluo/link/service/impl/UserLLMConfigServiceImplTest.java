@@ -472,6 +472,9 @@ class UserLLMConfigServiceImplTest {
     void getConfigs_appendsReadonlyLinkRagConfig() {
         given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of());
         given(systemPresetMapper.selectList(any())).willReturn(List.of(linkRagPreset(100L, "CHAT", "linkrag-chat")));
+        SystemProvider linkRagProvider = providerOf(99L, "linkrag", "https://api.linkrag.local/v1");
+        linkRagProvider.setIconUrl("https://minio.example/tolink-public/providerIcon/linkrag.png");
+        given(systemProviderService.getByProviderType("linkrag")).willReturn(linkRagProvider);
         given(apiKeyEncryptService.maskApiKey("ENC_SYS")).willReturn("SY****");
 
         List<UserLLMConfigDTO> result = service.getConfigs(7L, null, "chat", true);
@@ -479,6 +482,7 @@ class UserLLMConfigServiceImplTest {
         assertThat(result).hasSize(1);
         UserLLMConfigDTO linkRag = result.get(0);
         assertThat(linkRag.getProviderType()).isEqualTo("linkrag");
+        assertThat(linkRag.getIconUrl()).isEqualTo("https://minio.example/tolink-public/providerIcon/linkrag.png");
         assertThat(linkRag.getModelName()).isEqualTo("linkrag-chat");
         assertThat(linkRag.getDisplayName()).isEqualTo("LinkRag Chat");
         assertThat(linkRag.getIsEditable()).isFalse();
@@ -495,6 +499,8 @@ class UserLLMConfigServiceImplTest {
         UserLLMConfigDTO userDefaultDto = toDto(userDefault);
         given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of(userDefaultDto));
         given(systemPresetMapper.selectList(any())).willReturn(List.of(linkRagPreset(100L, "CHAT", "linkrag-chat")));
+        given(systemProviderService.getByProviderType("linkrag"))
+                .willReturn(providerOf(99L, "linkrag", "https://api.linkrag.local/v1"));
         given(apiKeyEncryptService.maskApiKey("ENC_SYS")).willReturn("SY****");
 
         List<UserLLMConfigDTO> result = service.getConfigs(7L, null, "chat", true);

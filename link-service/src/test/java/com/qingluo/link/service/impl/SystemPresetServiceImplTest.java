@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
+import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import com.qingluo.link.model.dto.entity.ProviderModel;
@@ -16,6 +17,7 @@ import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
+import com.qingluo.link.service.LLMProtocolService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.impl.llm.SystemPresetServiceImpl;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -26,6 +28,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,9 +50,13 @@ class SystemPresetServiceImplTest {
     @Mock
     private SystemProviderMapper systemProviderMapper;
     @Mock
+    private ProviderModelMapper providerModelMapper;
+    @Mock
     private ProviderModelService providerModelService;
     @Mock
     private LLMCapabilityService llmCapabilityService;
+    @Mock
+    private LLMProtocolService llmProtocolService;
     @Mock
     private ApiKeyEncryptService apiKeyEncryptService;
 
@@ -64,11 +72,11 @@ class SystemPresetServiceImplTest {
     }
 
     @Test
-    @DisplayName("创建预设：从模型能力层复制 protocol/api_base_url/provider_type，Key 加密入库")
+    @DisplayName("创建预设：从模型能力层复制 protocol/api_base_url，预设归属 LinkRag")
     void createPreset_copiesModelFacts() {
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "aliyun", "https://other"));
+        given(systemProviderMapper.selectOne(any())).willReturn(provider(99L, "linkrag", "https://linkrag"));
         given(providerModelService.findActiveModelCapability(5L, "gte-rerank", "RERANK"))
-                .willReturn(model("GTE Rerank", "dashscope", "https://dashscope.aliyuncs.com/api/v1"));
+                .willReturn(model("gte-rerank", "RERANK", "GTE Rerank", "dashscope", "https://dashscope.aliyuncs.com/api/v1"));
         given(apiKeyEncryptService.encrypt("sk-platform")).willReturn("ENC_P");
 
         CreatePresetRequest request = new CreatePresetRequest();
@@ -85,16 +93,68 @@ class SystemPresetServiceImplTest {
         assertThat(result.getDisplayName()).isEqualTo("GTE Rerank");
         assertThat(result.getProtocol()).isEqualTo("dashscope");
         assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
-        assertThat(result.getProviderType()).isEqualTo("aliyun");
+        assertThat(result.getProviderId()).isEqualTo(99L);
+        assertThat(result.getProviderType()).isEqualTo("linkrag");
         assertThat(result.getIsDefault()).isFalse();
+    }
+
+    @Test
+    @DisplayName("创建预设：从源模型目录项 ID 快捷加入 LinkRag 兜底")
+    void createPreset_copiesSourceProviderModelById() {
+        given(systemProviderMapper.selectOne(any())).willReturn(provider(99L, "linkrag", "https://linkrag"));
+        given(providerModelMapper.selectById(100L))
+                .willReturn(model("deepseek-chat", "CHAT", "DeepSeek Chat", "openai",
+                        "https://api.deepseek.com/v1/chat/completions"));
+        given(apiKeyEncryptService.encrypt("sk-platform")).willReturn("ENC_P");
+
+        CreatePresetRequest request = new CreatePresetRequest();
+        request.setSourceProviderModelId(100L);
+        request.setApiKey("sk-platform");
+
+        SystemPreset result = service.createPreset(request);
+
+        assertThat(result.getProviderId()).isEqualTo(99L);
+        assertThat(result.getProviderType()).isEqualTo("linkrag");
+        assertThat(result.getModelName()).isEqualTo("deepseek-chat");
+        assertThat(result.getCapability()).isEqualTo("CHAT");
+        assertThat(result.getDisplayName()).isEqualTo("DeepSeek Chat");
+        assertThat(result.getProtocol()).isEqualTo("openai");
+        verify(systemPresetMapper).insert(any(SystemPreset.class));
+    }
+
+    @Test
+    @DisplayName("创建预设：手动填写 LinkRag 模型运行事实")
+    void createPreset_acceptsManualFacts() {
+        given(systemProviderMapper.selectOne(any())).willReturn(provider(99L, "linkrag", "https://linkrag"));
+        given(apiKeyEncryptService.encrypt("sk-platform")).willReturn("ENC_P");
+
+        CreatePresetRequest request = new CreatePresetRequest();
+        request.setModelName("linkrag-managed-chat");
+        request.setDisplayName("LinkRag Managed Chat");
+        request.setCapability("chat");
+        request.setProtocol("openai");
+        request.setApiBaseUrl("https://api.linkrag.local/v1/chat/completions");
+        request.setApiKey("sk-platform");
+
+        SystemPreset result = service.createPreset(request);
+
+        assertThat(result.getProviderId()).isEqualTo(99L);
+        assertThat(result.getProviderType()).isEqualTo("linkrag");
+        assertThat(result.getModelName()).isEqualTo("linkrag-managed-chat");
+        assertThat(result.getCapability()).isEqualTo("CHAT");
+        assertThat(result.getDisplayName()).isEqualTo("LinkRag Managed Chat");
+        assertThat(result.getProtocol()).isEqualTo("openai");
+        assertThat(result.getApiBaseUrl()).isEqualTo("https://api.linkrag.local/v1/chat/completions");
+        verify(llmProtocolService).validateProtocol("openai");
+        verify(systemPresetMapper).insert(any(SystemPreset.class));
     }
 
     @Test
     @DisplayName("创建默认预设：清理同能力其他系统默认")
     void createPreset_asDefaultClearsOtherDefaults() {
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "linkrag", "https://linkrag"));
+        given(systemProviderMapper.selectOne(any())).willReturn(provider(5L, "linkrag", "https://linkrag"));
         given(providerModelService.findActiveModelCapability(5L, "linkrag-chat", "CHAT"))
-                .willReturn(model("openai", "https://linkrag/v1/chat/completions"));
+                .willReturn(model("linkrag-chat", "CHAT", null, "openai", "https://linkrag/v1/chat/completions"));
         given(apiKeyEncryptService.encrypt("sk-platform")).willReturn("ENC_P");
 
         CreatePresetRequest request = new CreatePresetRequest();
@@ -115,7 +175,7 @@ class SystemPresetServiceImplTest {
     @Test
     @DisplayName("创建预设：目录中无该模型能力时拒绝（MODEL_NOT_SUPPORTED）")
     void createPreset_rejectsMissingModelCapability() {
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "deepseek", "url"));
+        given(systemProviderMapper.selectOne(any())).willReturn(provider(99L, "linkrag", "https://linkrag"));
         given(providerModelService.findActiveModelCapability(5L, "ghost", "CHAT")).willReturn(null);
 
         CreatePresetRequest request = new CreatePresetRequest();
@@ -136,9 +196,9 @@ class SystemPresetServiceImplTest {
         SystemPreset existing = preset(1L, 5L, "deepseek-chat", "CHAT",
                 "deepseek", "openai", "https://old", "ENC_OLD");
         given(systemPresetMapper.selectById(1L)).willReturn(existing);
-        given(systemProviderMapper.selectById(6L)).willReturn(provider(6L, "aliyun", "https://other"));
+        given(systemProviderMapper.selectOne(any())).willReturn(provider(99L, "linkrag", "https://linkrag"));
         given(providerModelService.findActiveModelCapability(6L, "gte-rerank", "RERANK"))
-                .willReturn(model("dashscope", "https://dashscope.aliyuncs.com/api/v1"));
+                .willReturn(model("gte-rerank", "RERANK", null, "dashscope", "https://dashscope.aliyuncs.com/api/v1"));
         given(apiKeyEncryptService.encrypt("sk-new")).willReturn("ENC_NEW");
 
         UpdatePresetRequest request = new UpdatePresetRequest();
@@ -150,8 +210,8 @@ class SystemPresetServiceImplTest {
 
         SystemPreset result = service.updatePreset(1L, request);
 
-        assertThat(result.getProviderId()).isEqualTo(6L);
-        assertThat(result.getProviderType()).isEqualTo("aliyun");
+        assertThat(result.getProviderId()).isEqualTo(99L);
+        assertThat(result.getProviderType()).isEqualTo("linkrag");
         assertThat(result.getCapability()).isEqualTo("RERANK");
         assertThat(result.getProtocol()).isEqualTo("dashscope");
         assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
@@ -166,6 +226,7 @@ class SystemPresetServiceImplTest {
         SystemPreset existing = preset(1L, 5L, "linkrag-chat", "CHAT",
                 "linkrag", "openai", "https://old", "ENC_OLD");
         given(systemPresetMapper.selectById(1L)).willReturn(existing);
+        given(systemProviderMapper.selectOne(any())).willReturn(provider(5L, "linkrag", "https://linkrag"));
 
         UpdatePresetRequest request = new UpdatePresetRequest();
         request.setIsDefault(true);
@@ -218,6 +279,21 @@ class SystemPresetServiceImplTest {
         verify(systemPresetMapper).updateById(existing);
     }
 
+    @Test
+    @DisplayName("查询预设：只返回 LinkRag 系统预设并脱敏 Key")
+    void listPresets_filtersLinkRagAndMasksKey() {
+        SystemPreset preset = preset(1L, 5L, "linkrag-chat", "CHAT",
+                "linkrag", "openai", "https://old", "ENC_OLD");
+        given(systemPresetMapper.selectList(any())).willReturn(List.of(preset));
+        given(apiKeyEncryptService.maskApiKey("ENC_OLD")).willReturn("ENC***OLD");
+
+        List<SystemPreset> result = service.listPresets();
+
+        assertThat(result).containsExactly(preset);
+        assertThat(result.get(0).getApiKey()).isEqualTo("ENC***OLD");
+        verify(systemPresetMapper).selectList(any());
+    }
+
     private SystemPreset preset(Long id, Long providerId, String model, String capability,
                                 String providerType, String protocol, String apiBaseUrl, String encKey) {
         SystemPreset preset = new SystemPreset();
@@ -243,13 +319,18 @@ class SystemPresetServiceImplTest {
     }
 
     private ProviderModel model(String protocol, String apiBaseUrl) {
-        return model(null, protocol, apiBaseUrl);
+        return model("model", "CHAT", null, protocol, apiBaseUrl);
     }
 
     private ProviderModel model(String displayName, String protocol, String apiBaseUrl) {
+        return model("model", "CHAT", displayName, protocol, apiBaseUrl);
+    }
+
+    private ProviderModel model(String modelName, String capability, String displayName, String protocol, String apiBaseUrl) {
         ProviderModel m = new ProviderModel();
-        m.setModelName("model");
+        m.setModelName(modelName);
         m.setDisplayName(displayName);
+        m.setCapability(capability);
         m.setProtocol(protocol);
         m.setApiBaseUrl(apiBaseUrl);
         m.setIsActive(true);
