@@ -78,6 +78,16 @@ class MinioFileServiceTest {
     }
 
     @Test
+    void Should_UsePublicBaseUrl_When_ResolvePublicUrlAndPublicBaseUrlIsConfigured() {
+        OssProperties ossProperties = minioProperties("tolink-public", "tolink-rag-raw", "tolink-rag-docs");
+        ossProperties.setPublicBaseUrl("/tolink-public/");
+        MinioFileService service = new MinioFileService(ossProperties);
+
+        assertThat(service.resolvePublicUrl(OssSavePlaceEnum.PUBLIC, "avatar/10000/abc.png"))
+            .isEqualTo("/tolink-public/avatar/10000/abc.png");
+    }
+
+    @Test
     void Should_FailFast_When_PublicBucketIsNotConfigured() {
         MinioFileService service = new MinioFileService(
             minioProperties(null, "tolink-rag-raw", "tolink-rag-docs"));
