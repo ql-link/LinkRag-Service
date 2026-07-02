@@ -42,7 +42,7 @@
 分支、提交、测试、文档同步、spec-as-test 等贡献者规范见 [contributing.md](contributing.md)，完整约定在 [../CLAUDE.md](../CLAUDE.md)。
 
 ### 数据库脚本 → [`../scripts/db/`](../scripts/db/)
-`schema.sql`（建表）、`init.sql`（初始化数据）已移至仓库根 `scripts/db/`。
+仅保留 `init.sql`（本地/测试表结构初始化）与 `seed_llm_providers.sql`（默认厂商与模型种子）。
 
 ## 文档体系约定
 

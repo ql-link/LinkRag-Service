@@ -31,7 +31,7 @@ public class CreatePresetRequest {
     @Schema(description = "模型能力，如 CHAT/EMBEDDING/SPARSE_EMBEDDING；手动模式必填", example = "CHAT")
     private String capability;
 
-    @Schema(description = "调用协议；手动模式必填，合法值 openai/anthropic/google/jina/dashscope", example = "openai")
+    @Schema(description = "调用协议；手动模式必填，合法值 openai/anthropic/google/jina/dashscope/bge_m3/doubao_vision", example = "openai")
     private String protocol;
 
     @Schema(description = "调用入口完整端点 URL；手动模式必填", example = "https://api.deepseek.com/v1/chat/completions")

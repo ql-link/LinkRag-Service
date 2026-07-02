@@ -19,7 +19,7 @@
 - `MODEL_DISABLED(10012/400)`：选已关停（`is_active=false`）的模型作为某能力生效时拒绝。
 - `PRESET_READONLY(10013/403)`：历史保留错误码；系统预设已改由管理端维护在 `llm_system_preset`，普通用户不再通过 `llm_user_config` 操作预设镜像行。
 - `MODEL_CONFIG_INCOMPLETE(10014/400)`：模型能力缺少协议或入口，无法保存或展开。触发点：新增模型能力 (`addModelCapability`) 时 `apiBaseUrl` 为空；用户 `setup-provider` 展开时命中协议/入口缺失的历史模型能力（整请求阻断，不静默跳过，避免由执行端猜测）；`createPreset` 命中协议/入口缺失的模型能力。
-- `INVALID_PROTOCOL(10015/400)`：协议不在支持范围内。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准（`openai` / `anthropic` / `google` / `jina` / `dashscope`，小写敏感，`OPENAI` 等大写视为非法）。触发点：新增模型能力录入非法 `protocol`。
+- `INVALID_PROTOCOL(10015/400)`：协议不在支持范围内。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准（`openai` / `anthropic` / `google` / `jina` / `dashscope` / `bge_m3` / `doubao_vision`，小写敏感，`OPENAI` 等大写视为非法）。触发点：新增模型能力录入非法 `protocol`。
 - `SYSTEM_PROVIDER_READONLY(10016/400)`：系统服务厂商不支持用户自配或启停。当前用于拒绝普通用户通过 `setup-provider` 配置 `provider_type=linkrag`，以及通过 `/api/v1/llm/configs/toggle-model` 启停 LinkRag 只读配置。
 - `MODEL_SYNC_SOURCE_UNSUPPORTED(10017/400)`：外部模型目录同步来源不支持，或当前来源未收录该厂商。当前管理端手动刷新只支持 `MODELS_DEV`。
 - `MODEL_SYNC_CANDIDATE_NOT_FOUND(10018/404)`：外部模型候选项不存在。用于候选发布和审核状态更新。

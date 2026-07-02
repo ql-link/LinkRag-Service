@@ -25,7 +25,7 @@ public class UpdatePresetRequest {
     @Schema(description = "能力标识，如 CHAT/EMBEDDING/SPARSE_EMBEDDING", example = "CHAT")
     private String capability;
 
-    @Schema(description = "调用协议，合法值 openai/anthropic/google/jina/dashscope", example = "openai")
+    @Schema(description = "调用协议，合法值 openai/anthropic/google/jina/dashscope/bge_m3/doubao_vision", example = "openai")
     private String protocol;
 
     @Schema(description = "调用入口完整端点 URL", example = "https://api.deepseek.com/v1/chat/completions")

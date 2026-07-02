@@ -453,7 +453,8 @@ ALTER TABLE dataset_parse_config AUTO_INCREMENT = 10000;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 初始数据（LLM 厂商 + 模型目录）
 -- 运行完本文件后，执行 seed_llm_providers.sql 写入初始厂商与模型数据：
+--   SET @linkrag_system_preset_api_key = '<AES-256-GCM 加密后的平台 Key 密文>'; -- 全新库首次写入系统兜底预设需要
 --   SOURCE scripts/db/seed_llm_providers.sql;
 -- seed_llm_providers.sql 当前由本地 Docker MySQL 的 llm_system_provider /
--- llm_provider_model 快照生成：全量保留厂商与模型，按运营白名单控制启用态。
+-- llm_provider_model 快照裁剪生成：只保留国内/国外主力厂商，每厂商最多 5 个主推模型；LinkRag 只注册厂商，模型只写入系统预设。
 -- ─────────────────────────────────────────────────────────────────────────────
