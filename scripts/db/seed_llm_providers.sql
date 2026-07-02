@@ -296,4 +296,7 @@ WHERE provider_type = 'linkrag'
       ('Qwen/Qwen3.6-27B', 'VISION')
   );
 
+DELETE FROM llm_system_preset
+WHERE provider_type <> 'linkrag';
+
 COMMIT;

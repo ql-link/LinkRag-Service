@@ -133,12 +133,16 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         systemPresetMapper.updateById(preset);
     }
 
-    @Override
     /**
-     * 列出全部系统预设，Key 脱敏返回（不向管理端暴露平台 Key 明文）。
+     * 列出 LinkRag 系统预设，Key 脱敏返回（不向管理端暴露平台 Key 明文）。
      */
+    @Override
     public List<SystemPreset> listPresets() {
-        List<SystemPreset> presets = systemPresetMapper.selectList(null);
+        List<SystemPreset> presets = systemPresetMapper.selectList(new LambdaQueryWrapper<SystemPreset>()
+                .eq(SystemPreset::getProviderType, LINKRAG_PROVIDER_TYPE)
+                .orderByAsc(SystemPreset::getCapability)
+                .orderByDesc(SystemPreset::getIsDefault)
+                .orderByAsc(SystemPreset::getModelName));
         presets.forEach(preset -> preset.setApiKey(apiKeyEncryptService.maskApiKey(preset.getApiKey())));
         return presets;
     }

@@ -43,7 +43,7 @@
 | GET | `/api/v1/admin/model-sync-candidates` | 外部模型候选分页，支持 `providerId` / `jobId` / `reviewStatus` / `capability` 过滤 |
 | POST | `/api/v1/admin/model-sync-candidates/{id}/publish` | 将外部候选发布到正式 `llm_provider_model`，请求体可覆盖模型名/展示名/能力/协议/入口 |
 | PATCH | `/api/v1/admin/model-sync-candidates/{id}/review` | 更新外部候选审核状态（`PENDING` / `REJECTED`） |
-| GET | `/api/v1/admin/system-presets` | 系统预设列表（平台 Key 脱敏） |
+| GET | `/api/v1/admin/system-presets` | LinkRag 系统预设列表（平台 Key 脱敏，不按默认项过滤） |
 | POST | `/api/v1/admin/system-presets` | 新增 LinkRag 系统预设（支持手动填写或从正式模型目录快捷加入，平台 Key 加密入库） |
 | PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（支持手动更新运行事实或从正式模型目录重新快捷复制） |
 | PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（当前默认需先指定替代项） |
@@ -86,7 +86,7 @@
 > `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
 >
 > 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`（含 `iconUrl`）；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
-> `provider_type=linkrag` 是系统服务厂商：不出现在用户侧可添加厂商列表，用户也不能调用 `setup-provider` 配置它的 Key（返回 `SYSTEM_PROVIDER_READONLY(10016/400)`）；但会作为 `GET /configs` 的只读配置项返回，用户可以选择使用。LinkRag 图标仍存于 `llm_system_provider.icon_url`，`llm_system_preset` 不重复保存厂商图标；主种子脚本只创建 LinkRag 厂商行，不向 `llm_provider_model` 写入 LinkRag 模型，LinkRag 模型只在 `llm_system_preset` 中作为系统兜底默认维护。
+> `provider_type=linkrag` 是系统服务厂商：不出现在用户侧可添加厂商列表，用户也不能调用 `setup-provider` 配置它的 Key（返回 `SYSTEM_PROVIDER_READONLY(10016/400)`）；但会作为 `GET /configs` 的只读配置项返回，用户可以选择使用。用户侧 `GET /configs` 只合并 `provider_type=linkrag AND is_active=true AND is_default=true` 的系统兜底项；管理端 `GET /api/v1/admin/system-presets` 列出 LinkRag 系统预设表内全部预设，不按默认项过滤。LinkRag 图标仍存于 `llm_system_provider.icon_url`，`llm_system_preset` 不重复保存厂商图标；主种子脚本只创建 LinkRag 厂商行，不向 `llm_provider_model` 写入 LinkRag 模型，LinkRag 模型只在 `llm_system_preset` 中作为系统兜底默认维护。
 >
 > 管理端新增 LinkRag 兜底模型统一使用 `POST /api/v1/admin/system-presets`，最终落库恒为 `provider_type=linkrag`、`provider_id=LinkRag 厂商 ID`。接口支持两种方式：手动填写 `{ modelName, displayName?, capability, protocol, apiBaseUrl, apiKey, isDefault? }`；或快捷加入正式模型目录 `{ sourceProviderModelId, apiKey, isDefault? }`，后端从 `llm_provider_model` 复制模型名、展示名、能力、协议和完整入口。兼容旧入参 `{ providerId, modelName, capability, apiKey }`，其语义也是“从该源厂商模型目录复制到 LinkRag 预设”，不是把系统预设归属到源厂商。`apiKey` 是平台 Key，用户无需配置 Key。
 >

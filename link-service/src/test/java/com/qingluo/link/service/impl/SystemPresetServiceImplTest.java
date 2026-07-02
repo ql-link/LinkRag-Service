@@ -29,6 +29,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -275,6 +277,21 @@ class SystemPresetServiceImplTest {
         assertThat(existing.getIsDefault()).isTrue();
         verify(systemPresetMapper).update(eq(null), any(LambdaUpdateWrapper.class));
         verify(systemPresetMapper).updateById(existing);
+    }
+
+    @Test
+    @DisplayName("查询预设：只返回 LinkRag 系统预设并脱敏 Key")
+    void listPresets_filtersLinkRagAndMasksKey() {
+        SystemPreset preset = preset(1L, 5L, "linkrag-chat", "CHAT",
+                "linkrag", "openai", "https://old", "ENC_OLD");
+        given(systemPresetMapper.selectList(any())).willReturn(List.of(preset));
+        given(apiKeyEncryptService.maskApiKey("ENC_OLD")).willReturn("ENC***OLD");
+
+        List<SystemPreset> result = service.listPresets();
+
+        assertThat(result).containsExactly(preset);
+        assertThat(result.get(0).getApiKey()).isEqualTo("ENC***OLD");
+        verify(systemPresetMapper).selectList(any());
     }
 
     private SystemPreset preset(Long id, Long providerId, String model, String capability,
