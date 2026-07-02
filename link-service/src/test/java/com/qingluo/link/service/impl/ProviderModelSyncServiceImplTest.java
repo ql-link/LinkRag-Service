@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -97,6 +98,39 @@ class ProviderModelSyncServiceImplTest {
         assertThat(candidateCaptor.getAllValues())
                 .extracting(ProviderModelSyncCandidate::getReleaseDate)
                 .containsOnly(LocalDate.of(2025, 6, 17));
+    }
+
+    @Test
+    @DisplayName("刷新外部目录：同一模型候选已存在时更新旧记录，不重复插入")
+    void refreshProviderModels_updatesExistingCandidateInsteadOfDuplicating() {
+        given(catalogClient.source()).willReturn("MODELS_DEV");
+        given(systemProviderMapper.selectById(5L)).willReturn(provider());
+        doAnswer(inv -> {
+            ProviderModelSyncJob job = inv.getArgument(0);
+            job.setId(10L);
+            return 1;
+        }).when(syncJobMapper).insert(any(ProviderModelSyncJob.class));
+        given(providerModelMapper.selectList(any())).willReturn(List.of());
+        given(catalogClient.listModels(any())).willReturn(List.of(
+                external("gpt-new", "GPT New Updated", List.of("CHAT"))));
+        ProviderModelSyncCandidate existing = new ProviderModelSyncCandidate();
+        existing.setId(20L);
+        existing.setProviderId(5L);
+        existing.setSyncSource("MODELS_DEV");
+        existing.setModelName("gpt-new");
+        existing.setInferredCapability("CHAT");
+        existing.setReviewStatus("REJECTED");
+        given(syncCandidateMapper.selectOne(any())).willReturn(existing);
+
+        ProviderModelSyncJob job = service.refreshProviderModels(5L, null);
+
+        assertThat(job.getAddedCount()).isEqualTo(1);
+        assertThat(existing.getJobId()).isEqualTo(10L);
+        assertThat(existing.getDisplayName()).isEqualTo("GPT New Updated");
+        assertThat(existing.getReviewStatus()).isEqualTo("REJECTED");
+        assertThat(existing.getInferredProtocol()).isEqualTo("openai");
+        verify(syncCandidateMapper, never()).insert(any(ProviderModelSyncCandidate.class));
+        verify(syncCandidateMapper).updateById(existing);
     }
 
     @Test

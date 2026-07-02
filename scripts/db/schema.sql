@@ -1,37 +1,8 @@
 -- ===============================================
--- 1. 初始化系统厂商数据（厂商表瘦身：去 supported_models / config_schema）
+-- 1. LLM 厂商与模型目录
+-- 完整 LLM 厂商与模型目录种子统一维护在 scripts/db/seed_llm_providers.sql。
+-- 本文件不再内置轻量 LLM 目录，避免与全量种子分叉。
 -- ===============================================
-INSERT INTO llm_system_provider (provider_type, provider_name, api_base_url, is_active, priority)
-VALUES
-    ('linkrag', 'LinkRag', 'https://api.linkrag.local/v1', TRUE, 110),
-    ('openai', 'OpenAI', 'https://api.openai.com/v1', TRUE, 100),
-    ('claude', 'Anthropic Claude', 'https://api.anthropic.com/v1', TRUE, 95),
-    ('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', TRUE, 90),
-    ('glm', '智谱 AI (Zhipu)', 'https://open.bigmodel.cn/api/paas/v4', TRUE, 85),
-    ('aliyun', '通义千问 (DashScope)', 'https://dashscope.aliyuncs.com/compatible-mode/v1', TRUE, 80);
-
--- ===============================================
--- 1.1 初始化厂商模型能力目录（原 supported_models JSON 拆为行，一模型多能力=多行）
--- provider_id 用子查询按 provider_type 关联，避免硬编码自增 ID
--- ===============================================
-INSERT INTO llm_provider_model (provider_id, model_name, capability)
-SELECT p.id, m.model_name, m.capability
-FROM llm_system_provider p
-JOIN (
-    SELECT 'openai'   AS provider_type, 'gpt-4o'            AS model_name, 'CHAT'      AS capability UNION ALL
-    SELECT 'openai',   'gpt-4o',            'VISION'    UNION ALL
-    SELECT 'openai',   'gpt-4-turbo',       'CHAT'      UNION ALL
-    SELECT 'claude',   'claude-3-5-sonnet', 'CHAT'      UNION ALL
-    SELECT 'claude',   'claude-3-opus',     'CHAT'      UNION ALL
-    SELECT 'deepseek', 'deepseek-v3',       'CHAT'      UNION ALL
-    SELECT 'deepseek', 'deepseek-coder',    'CHAT'      UNION ALL
-    SELECT 'glm',      'glm-4v',            'CHAT'      UNION ALL
-    SELECT 'glm',      'glm-4v',            'VISION'    UNION ALL
-    SELECT 'glm',      'glm-4-plus',        'CHAT'      UNION ALL
-    SELECT 'aliyun',   'qwen-max',          'CHAT'      UNION ALL
-    SELECT 'aliyun',   'qwen-plus',         'CHAT'      UNION ALL
-    SELECT 'aliyun',   'qwen-turbo',        'CHAT'
-) m ON m.provider_type = p.provider_type;
 
 -- ===============================================
 -- 1.2 初始化系统预设（可选；LinkRag 系统兜底配置，自带平台 Key）
@@ -50,9 +21,6 @@ INSERT INTO sys_user (username, password_hash, nickname, email, role, status)
 VALUES ('admin', '$2a$10$EasYxZ6ZB.YqlgDI8XnH4uuFow/KHNVnTLhXhOoBvhPTMK.FdrvEW', '系统管理员', 'admin@tolink.com', 'ADMIN', 1);
 
 -- ===============================================
--- 3. 可选：初始化一个测试用户的 LLM 自配配置 (示例)
+-- 3. 测试用户 LLM 自配配置
+-- 示例配置依赖正式模型目录，请先执行 scripts/db/seed_llm_providers.sql 后再按需手工写入。
 -- ===============================================
-INSERT INTO llm_user_config (user_id, provider_id, provider_type, api_key, api_base_url, model_name, capability, is_active, is_default, is_system_preset)
-SELECT u.id, p.id, 'deepseek', 'sk-xxxxxxxxxxxx', 'https://api.deepseek.com/v1', 'deepseek-v3', 'CHAT', TRUE, TRUE, FALSE
-FROM sys_user u, llm_system_provider p
-WHERE u.username = 'admin' AND p.provider_type = 'deepseek';

@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_model_sync_candidate (
     created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
+    UNIQUE KEY uk_sync_candidate_provider_source_model_cap (provider_id, sync_source, model_name, inferred_capability),
     INDEX idx_sync_candidate_job (job_id),
     INDEX idx_sync_candidate_provider_status (provider_id, review_status),
     INDEX idx_sync_candidate_model_cap (provider_id, model_name, inferred_capability)
@@ -453,7 +454,6 @@ ALTER TABLE dataset_parse_config AUTO_INCREMENT = 10000;
 -- 初始数据（LLM 厂商 + 模型目录）
 -- 运行完本文件后，执行 seed_llm_providers.sql 写入初始厂商与模型数据：
 --   SOURCE scripts/db/seed_llm_providers.sql;
--- seed_llm_providers.sql 由 scripts/import_ragflow_configs.py 自动生成，
--- 需要重新生成时：
---   python3 scripts/import_ragflow_configs.py [ragflow-configs-dir]
+-- seed_llm_providers.sql 当前由本地 Docker MySQL 的 llm_system_provider /
+-- llm_provider_model 快照生成：全量保留厂商与模型，按运营白名单控制启用态。
 -- ─────────────────────────────────────────────────────────────────────────────

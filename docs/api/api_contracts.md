@@ -99,7 +99,7 @@
 > - `POST /api/v1/admin/providers`：`CreateProviderRequest` 新增 `defaultProtocol`（厂商默认协议模板）。
 > - `GET /api/v1/llm/configs/default`：响应由 `UserLLMConfigDTO` 改为 `EffectiveLLMConfigDTO`，新增 `source`、`configId` 与 `displayName`，用于 Python 按来源表读取最终配置。
 > - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；支持手动填写 `protocol` / `apiBaseUrl`，也支持按 `sourceProviderModelId` 或兼容字段 `(providerId, modelName, capability)` 从正式目录快捷复制 `protocol` / `api_base_url` / `display_name`。无论来源如何，预设都归属 LinkRag 系统厂商。当 `isDefault=true` 时自动解除同能力其他 LinkRag 系统默认。
-> - 外部模型目录刷新（LINK-50）：`POST /api/v1/admin/providers/{providerId}/model-sync` 只把 `models.dev` 等外部源数据写入 `llm_provider_model_sync_job` / `llm_provider_model_sync_candidate`，不直接影响用户侧模型列表；管理员审核后调用 `POST /api/v1/admin/model-sync-candidates/{id}/publish` 才会复用正式目录服务写入 `llm_provider_model` 并清理相关缓存。候选响应包含外部源模型发布日期 `releaseDate`；候选发布可覆盖推断出的 `capability` / `protocol` / `apiBaseUrl`，避免外部源误判直接进入运行目录。候选响应中的 `capability` 是兼容别名，等同真实推断字段 `inferredCapability`。
+> - 外部模型目录刷新（LINK-50）：`POST /api/v1/admin/providers/{providerId}/model-sync` 只把 `models.dev` 等外部源数据写入 `llm_provider_model_sync_job` / `llm_provider_model_sync_candidate`，不直接影响用户侧模型列表；管理员审核后调用 `POST /api/v1/admin/model-sync-candidates/{id}/publish` 才会复用正式目录服务写入 `llm_provider_model` 并清理相关缓存。候选响应包含外部源模型发布日期 `releaseDate`；候选发布可覆盖推断出的 `capability` / `protocol` / `apiBaseUrl`，避免外部源误判直接进入运行目录。候选响应中的 `capability` 是兼容别名，等同真实推断字段 `inferredCapability`。重复刷新同一厂商时，后端按 `(providerId, syncSource, modelName, inferredCapability)` 更新既有候选，不再追加重复行。
 
 ### LLM 协议与入口契约
 

@@ -197,7 +197,7 @@ public class ProviderModelSyncServiceImpl implements ProviderModelSyncService {
                 ProviderModel matched = localByKey.get(key);
                 ProviderModelSyncCandidate candidate = toCandidate(job, provider, external, normalizedCapability,
                         matched, now);
-                syncCandidateMapper.insert(candidate);
+                upsertCandidate(candidate);
                 if (matched == null) {
                     added++;
                 } else {
@@ -207,6 +207,33 @@ public class ProviderModelSyncServiceImpl implements ProviderModelSyncService {
         }
         long stale = localByKey.keySet().stream().filter(key -> !externalKeys.contains(key)).count();
         return new RefreshStats(added, updated, Math.toIntExact(stale));
+    }
+
+    private void upsertCandidate(ProviderModelSyncCandidate candidate) {
+        ProviderModelSyncCandidate existing = syncCandidateMapper.selectOne(
+                new LambdaQueryWrapper<ProviderModelSyncCandidate>()
+                        .eq(ProviderModelSyncCandidate::getProviderId, candidate.getProviderId())
+                        .eq(ProviderModelSyncCandidate::getSyncSource, candidate.getSyncSource())
+                        .eq(ProviderModelSyncCandidate::getModelName, candidate.getModelName())
+                        .eq(ProviderModelSyncCandidate::getInferredCapability, candidate.getInferredCapability()));
+        if (existing == null) {
+            syncCandidateMapper.insert(candidate);
+            return;
+        }
+        existing.setJobId(candidate.getJobId());
+        existing.setExternalModelId(candidate.getExternalModelId());
+        existing.setDisplayName(candidate.getDisplayName());
+        existing.setInferredProtocol(candidate.getInferredProtocol());
+        existing.setInferredApiBaseUrl(candidate.getInferredApiBaseUrl());
+        existing.setContextWindow(candidate.getContextWindow());
+        existing.setMaxOutputTokens(candidate.getMaxOutputTokens());
+        existing.setReleaseDate(candidate.getReleaseDate());
+        existing.setInputModalities(candidate.getInputModalities());
+        existing.setOutputModalities(candidate.getOutputModalities());
+        existing.setRawMetadata(candidate.getRawMetadata());
+        existing.setMatchedProviderModelId(candidate.getMatchedProviderModelId());
+        existing.setLastSeenAt(candidate.getLastSeenAt());
+        syncCandidateMapper.updateById(existing);
     }
 
     private ProviderModelSyncCandidate toCandidate(ProviderModelSyncJob job, SystemProvider provider,

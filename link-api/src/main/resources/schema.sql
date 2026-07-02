@@ -191,6 +191,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_user_provider_model_capability ON llm_user_
 CREATE UNIQUE INDEX IF NOT EXISTS uk_provider_model_cap ON llm_provider_model(provider_id, model_name, capability);
 CREATE INDEX IF NOT EXISTS idx_sync_job_provider ON llm_provider_model_sync_job(provider_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_sync_candidate_provider_status ON llm_provider_model_sync_candidate(provider_id, review_status);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sync_candidate_provider_source_model_cap ON llm_provider_model_sync_candidate(provider_id, sync_source, model_name, inferred_capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_preset_provider_model_cap ON llm_system_preset(provider_id, model_name, capability);
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_user_pinned_updated ON chat_conversation(user_id, is_pinned, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_dataset_updated ON chat_conversation(dataset_id, updated_at);
