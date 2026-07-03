@@ -37,6 +37,29 @@ docker logs -f tolink-service
 
 单行日志字段与 Java/Python 统一追踪约定对齐：`time` / `level` / `service` / `host` / `pid` / `trace_id` / `logger_name` / `message` / `exception`。Java 文件日志为顶层 JSON 字段；Python 当前 Loguru `serialize=True` 文件日志在 `record.extra.*` 下携带 trace 扩展字段，采集侧需分别映射。
 
+### 日志集中采集（Docker）
+
+仓库提供一套最小 Loki + Promtail 部署文件，用于本机或单机服务器验证 Java/Python JSON Lines 日志采集：
+
+```bash
+docker compose -f deploy/docker-compose.observability.yml up -d
+curl http://localhost:3100/ready
+```
+
+默认挂载路径：
+
+| 服务 | 宿主路径 | 容器内路径 | 说明 |
+| --- | --- | --- | --- |
+| Java | `./logs` | `/var/log/tolink-service` | 对应 `deploy/docker-compose.yml` 挂载出的 Java `LOG_PATH=/app/logs` |
+| Python | `./python-logs` 或 `${PYTHON_LOG_PATH}` | `/var/log/tolink-rag` | 用于挂载 Python 端 Loguru JSON 日志目录 |
+
+Promtail 配置位于 `deploy/observability/promtail-config.yml`：Java 日志按顶层 `service` / `level` / `host` 提取 Loki labels；Python 日志按 `record.extra.service` / `record.level.name` / `record.extra.host` 提取。`trace_id` 不作为 Loki label，避免高基数字段拖垮索引；查询时按日志 JSON 内容过滤，例如：
+
+```bash
+curl -G 'http://localhost:3100/loki/api/v1/query_range' \
+  --data-urlencode 'query={service="tolink-service"} |= "trace_id_value"'
+```
+
 ## 验证
 
 ```bash
