@@ -22,6 +22,10 @@ logging:
   level:
     com.qingluo.link: ${LOG_LEVEL:info}
 
+observability:
+  loki:
+    base-url: ${OBSERVABILITY_LOKI_BASE_URL:http://localhost:3100}
+
 thread-pool:
   document-upload:
     core-pool-size: 5

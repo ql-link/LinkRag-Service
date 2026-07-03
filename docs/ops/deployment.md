@@ -46,6 +46,8 @@ docker compose -f deploy/docker-compose.observability.yml up -d
 curl http://localhost:3100/ready
 ```
 
+Java 后端的管理端日志模块通过 `OBSERVABILITY_LOKI_BASE_URL` 访问 Loki。`deploy/docker-compose.yml` 默认设置为 `http://host.docker.internal:3100`，用于业务容器访问宿主机映射出的 Loki 端口；如果 Java 服务和 Loki 在同一 Docker 网络，可覆盖为 `http://tolink-loki:3100`；如果 Java 服务直接跑在宿主机，可使用 `http://localhost:3100`。该地址只给 Java 后端使用，不应让前端直接访问 Loki。
+
 默认挂载路径：
 
 | 服务 | 宿主路径 | 容器内路径 | 说明 |
@@ -58,6 +60,17 @@ Promtail 配置位于 `deploy/observability/promtail-config.yml`：Java 日志�
 ```bash
 curl -G 'http://localhost:3100/loki/api/v1/query_range' \
   --data-urlencode 'query={service="tolink-service"} |= "trace_id_value"'
+```
+
+Python RAG 服务的日志服务名必须配置为 `LOG_SERVICE_NAME=tolink-rag`。如果 Python 端仍使用默认 `tolink-service`，Promtail/Loki 可以采集到日志，但管理端按 `service` 筛选时无法区分 Java 与 Python。
+
+前端应调用 Java 管理端代理接口而不是 Loki：
+
+```bash
+curl 'http://localhost:8080/api/v1/admin/logs?service=tolink-service&page=1&page_size=50' \
+  -H 'satoken: <admin-token>'
+curl 'http://localhost:8080/api/v1/admin/logs/labels' \
+  -H 'satoken: <admin-token>'
 ```
 
 ## 验证

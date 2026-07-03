@@ -27,6 +27,8 @@
 | PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |
 | PATCH | `/api/v1/admin/feedback/{id}/priority` | 更新反馈优先级：`1` 高 / `2` 中 / `3` 低 |
 | PATCH | `/api/v1/admin/feedback/{id}/reply` | 写入管理员回复，不自动修改反馈状态 |
+| GET | `/api/v1/admin/logs` | 管理端集中日志查询代理，支持 `service`、`level`、`trace_id`、`keyword`、`start_time`、`end_time`、`page`、`page_size` |
+| GET | `/api/v1/admin/logs/labels` | 管理端日志筛选标签，返回服务列表与固定日志级别列表 |
 | GET | `/api/v1/admin/providers` | 管理端厂商列表（分页，按优先级倒序） |
 | POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol`） |
 | PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，变更后双删缓存 |
@@ -45,6 +47,36 @@
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
+
+### Admin Logs
+
+管理端日志接口仅允许 `ADMIN` 角色访问。Java 后端只代理查询 Loki，不向前端暴露 Loki 地址。
+
+`GET /api/v1/admin/logs` 查询参数：
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `service` | 否 | 服务名，如 `tolink-service` / `tolink-rag`；仅允许字母、数字、下划线、连字符，最长 64 |
+| `level` | 否 | `TRACE` / `DEBUG` / `INFO` / `WARN` / `ERROR` / `FATAL` / `ACCESS` / `AUDIT` |
+| `trace_id` | 否 | 链路追踪 ID，仅允许字母、数字、下划线、连字符，1~64 位 |
+| `keyword` | 否 | 原始日志行文本过滤，最长 200，不允许控制字符 |
+| `start_time` | 否 | ISO 时间；缺省按 `observability.loki.default-lookback` 回溯 |
+| `end_time` | 否 | ISO 时间；缺省为当前时间 |
+| `page` | 否 | 默认 1 |
+| `page_size` | 否 | 默认 50，最大由 `observability.loki.max-page-size` 控制 |
+
+响应为 `Result<PageResult<LogEntryDTO>>`，`items` 元素统一扁平输出：`time` / `level` / `service` / `host` / `pid` / `trace_id` / `logger_name` / `message` / `exception`。解析失败的非 JSON 日志不会丢弃，会把原始行填入 `message` 并返回 `raw`。由于 Loki `query_range` 不提供数据库式总数，`total` 表示本次查询从 Loki 取回后可分页的匹配条数，而不是全时间范围的精确总量。
+
+`GET /api/v1/admin/logs/labels` 返回：
+
+```json
+{
+  "services": ["tolink-service", "tolink-rag"],
+  "levels": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL", "ACCESS", "AUDIT"]
+}
+```
+
+`services` 优先读取 Loki 的 `service` label；Loki 不可用或无数据时兜底返回 `tolink-service` / `tolink-rag`。
 
 ## LLM
 

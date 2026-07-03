@@ -184,10 +184,13 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `LOG_LEVEL` | 应用日志级别（`application.yml` 已接 `${LOG_LEVEL:info}`，对 `com.qingluo.link` 生效） | 否 | `info` | `debug`（本地排查） |
 | `MYBATIS_LOG_IMPL` | MyBatis SQL 日志实现类 | 否 | `org.apache.ibatis.logging.stdout.StdOutImpl` | `org.apache.ibatis.logging.nologging.NoLoggingImpl`（生产） |
 | `LOG_PATH` | JSON Lines 日志输出目录（`logback-spring.xml` 按天文件夹滚动、保留 7 天；Docker 部署挂载到宿主） | 否 | `logs` | `/app/logs` |
+| `OBSERVABILITY_LOKI_BASE_URL` | Java 管理端日志查询代理访问 Loki 的内网地址；不应暴露给前端或公网 | 否 | `http://localhost:3100` | `http://tolink-loki:3100` |
 
 **链路追踪（trace_id）**：`link-observability` 提供 `TraceIdFilter` / `TraceContext` / `MdcTaskDecorator` / `TraceHeaders`。`TraceIdFilter` 为每个 HTTP 请求建立 `trace_id` 写入 MDC（优先复用上游 `X-Trace-Id` 头，缺失或非法则新建，并回写响应头）；异步线程池经 `MdcTaskDecorator` 透传。MQ 生产侧由 `MQSend` 适配层把当前 MDC `trace_id` 写入 `X-Trace-Id` header；Kafka 消费入口读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复 MDC，缺失或非法时自建。日志输出为 JSON Lines，Java 顶层字段包括 `time` / `level` / `service` / `host` / `pid` / `trace_id` / `logger_name` / `message` / `exception`。
 
 **日志采集提示**：Java Logback JSON 已将 `trace_id`、`service` 等字段放在顶层；Python 当前 Loguru `serialize=True` 文件日志字段在 `record.extra.trace_id`、`record.extra.service`、`record.extra.host` 等路径下。Fluent Bit / Promtail / Loki 采集配置需要分别按两端实际 JSON 路径做字段提取或映射。
+
+**管理端日志查询代理**：`GET /api/v1/admin/logs` 和 `/api/v1/admin/logs/labels` 由 Java 后端访问 Loki `query_range` / label API 后统一返回前端。`service` / 普通 `level` 会尽量作为 Loki label 查询，`trace_id` / `keyword` 作为 LogQL 文本过滤；`ACCESS` / `AUDIT` 通过 `logger_name` 文本过滤。Python RAG 端必须设置 `LOG_SERVICE_NAME=tolink-rag`，否则日志会和 Java 的 `tolink-service` 混在同一服务名下，前端无法按服务筛选。
 
 **访问日志**：`AccessLogFilter`（排在 `TraceIdFilter` 之后）统一为全部 HTTP 端点记录一行 `方法 路径 status=… cost=…ms userId=… ip=…`，用专用 logger 名 `ACCESS`（可单独调级，如 `logging.level.ACCESS=warn` 降噪）。在 `finally` 落日志，正常/异常均记录；userId 尽力获取（未登录记 `-`）；异步请求（SSE）只计建流耗时；Swagger/接口文档/静态资源路径跳过。
 
