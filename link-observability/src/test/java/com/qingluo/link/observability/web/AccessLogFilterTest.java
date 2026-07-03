@@ -1,4 +1,4 @@
-package com.qingluo.link.core.web;
+package com.qingluo.link.observability.web;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -8,6 +8,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import javax.servlet.FilterChain;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,6 +30,21 @@ class AccessLogFilterTest {
 
         // 链已被调用（请求被放行）
         org.junit.jupiter.api.Assertions.assertNotNull(chain.getRequest());
+    }
+
+    @Test
+    void should_delegate_current_request_to_user_provider() throws Exception {
+        AtomicReference<String> seenUri = new AtomicReference<>();
+        AccessLogFilter accessLogFilter = new AccessLogFilter(request -> {
+            seenUri.set(request.getRequestURI());
+            return "42";
+        });
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/datasets");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        accessLogFilter.doFilter(request, response, new MockFilterChain());
+
+        org.junit.jupiter.api.Assertions.assertEquals("/api/v1/datasets", seenUri.get());
     }
 
     @Test

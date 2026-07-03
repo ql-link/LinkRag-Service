@@ -19,7 +19,7 @@ mvn spring-boot:run -pl link-api
 
 ## 日志
 
-logback（`link-api/src/main/resources/logback-spring.xml`）按天输出到日期文件夹，仅保留最近 7 天：
+logback（`link-api/src/main/resources/logback-spring.xml`）按天输出 JSON Lines 到日期文件夹，仅保留最近 7 天：
 
 ```
 <LOG_PATH>/2026-06-07/tolink-service.log         # 当天全量日志
@@ -34,6 +34,8 @@ tail -f /opt/tolink/toLink-Service/logs/$(date +%F)/tolink-service.log
 # 容器控制台日志（stdout，由 docker 日志驱动接管）
 docker logs -f tolink-service
 ```
+
+单行日志字段与 Java/Python 统一追踪约定对齐：`time` / `level` / `service` / `host` / `pid` / `trace_id` / `logger_name` / `message` / `exception`。Java 文件日志为顶层 JSON 字段；Python 当前 Loguru `serialize=True` 文件日志在 `record.extra.*` 下携带 trace 扩展字段，采集侧需分别映射。
 
 ## 验证
 

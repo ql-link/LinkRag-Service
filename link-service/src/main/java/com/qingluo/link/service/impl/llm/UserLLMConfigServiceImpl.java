@@ -6,7 +6,7 @@ import com.qingluo.link.components.redis.service.CacheConsistencyService;
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
-import com.qingluo.link.core.log.AuditLog;
+import com.qingluo.link.observability.log.AuditLog;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.SystemPresetMapper;
 import com.qingluo.link.mapper.UserLLMConfigMapper;

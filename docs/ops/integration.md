@@ -23,7 +23,7 @@
 - OSS object key 和数据库文件记录一致。
 - 文档上传文件名由 Java 端做安全归一化：浏览器本地路径会被裁剪为 basename，常见业务符号（如括号、`#`、`&`、`+`、`=`）允许保留；控制字符、空名和超长名称会被拒绝。Python 端读取内部文件接口时应按数据库中的 `original_filename` 展示或记录，不要重新套更窄的文件名白名单。
 - 解析终态结果由 Python 写入共享数据库，Java 通过查询接口读取，不再依赖终态回传 MQ。
-- **链路追踪**：Java 端日志已接入 traceId（HTTP 入口复用/新建 `X-Trace-Id` 头，异步线程与 MQ 消费/定时任务各自串联）。当前 traceId **不随 MQ 消息或内部 HTTP 跨端传递**；若后续需 Java↔Python 全链路串联，可约定透传 `X-Trace-Id`（属增量协调项，暂未实现）。
+- **链路追踪**：Java 端日志已接入 `trace_id`（HTTP 入口复用/新建 `X-Trace-Id` 头并回写响应头，异步线程透传 MDC）。Java -> Python 的 MQ 消息由 Java `MQSend` 适配层自动携带 `X-Trace-Id` header；Python -> Java 的 Kafka 消息由 Java 消费入口读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复 MDC。trace 只走传输 header，不写入 `parse_task` / `document_delete` / `chat_turn` / `usage_report` 业务 payload。
 - **上传异步化**：上传接口立即返回 `uploadStatus=UPLOADING`，OSS 上传/终态回写在 Java 侧线程池异步完成；`parseImmediately=true` 的解析任务**只在 OSS 上传成功后**才投递（不会对尚未落 OSS 的文件触发解析）。Python 侧无需改动，仍以收到 `parse_task` 为准；前端需改为按 `uploadStatus` 轮询获取上传终态。
 - **隐性删除 + 删除通知**：删除数据集/文件为软删保留原文件——Java 端不物理删 OSS 对象、不删解析表（`document_parse_file` / `document_parsed_log`）；这些衍生产物与 Python 侧 OSS 产物（清洗文件/向量）由 Python 负责删除。Java 在删除事务提交后（afterCommit）经 `tolink.rag.document_delete` **真实投递删除通知**（删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别；尽力发、失败仅告警吞掉、无 DLQ；回滚不发）。**Python 侧需消费该通知并按范围删衍生产物（重复消息幂等、删不存在产物 no-op），本仓库未实现**。⚠️ **发布需两端协调**：该队列为点对点，Python 消费端就绪前 Java producer 不应单独上生产（否则消息无消费者会在 broker 积压）。
 

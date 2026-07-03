@@ -1,6 +1,6 @@
 package com.qingluo.link.core.config;
 
-import com.qingluo.link.core.trace.MdcTaskDecorator;
+import com.qingluo.link.observability.trace.MdcTaskDecorator;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -51,7 +51,7 @@ public class ThreadPoolConfig {
         executor.setKeepAliveSeconds(props.getKeepAliveSeconds());
         executor.setThreadNamePrefix(props.getThreadNamePrefix());
         executor.setRejectedExecutionHandler(handler);
-        // 透传提交线程的 MDC（含 traceId），异步上传日志与发起请求同链路
+        // 透传提交线程的 MDC（含 trace_id），异步上传日志与发起请求同链路
         executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
         return executor;

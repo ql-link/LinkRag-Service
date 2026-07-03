@@ -1,8 +1,9 @@
-package com.qingluo.link.core.web;
+package com.qingluo.link.observability.web;
 
-import com.qingluo.link.core.util.AuthContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -17,7 +18,7 @@ import java.io.IOException;
 /**
  * 统一请求访问日志：一处覆盖全部 HTTP 端点，记录 方法 / 路径 / 状态码 / 耗时 / 用户 / 客户端 IP。
  *
- * <p>排在 {@code TraceIdFilter} 之后（依赖其已写入 MDC 的 traceId）。在 {@code finally} 中落日志，
+ * <p>排在 {@code TraceIdFilter} 之后（依赖其已写入 MDC 的 trace_id）。在 {@code finally} 中落日志，
  * 无论正常返回还是异常（GlobalExceptionHandler 处理后状态码已确定）都记录一行。userId 尽力获取，
  * 未登录或读取异常记为 {@code -}。专用 logger 名 {@code ACCESS}，便于单独调级或拆 appender。</p>
  *
@@ -29,6 +30,21 @@ import java.io.IOException;
 public class AccessLogFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger("ACCESS");
+
+    private final CurrentUserProvider currentUserProvider;
+
+    public AccessLogFilter() {
+        this(CurrentUserProvider.anonymous());
+    }
+
+    @Autowired
+    public AccessLogFilter(ObjectProvider<CurrentUserProvider> provider) {
+        this(provider.getIfAvailable(CurrentUserProvider::anonymous));
+    }
+
+    AccessLogFilter(CurrentUserProvider currentUserProvider) {
+        this.currentUserProvider = currentUserProvider == null ? CurrentUserProvider.anonymous() : currentUserProvider;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -45,18 +61,8 @@ public class AccessLogFilter extends OncePerRequestFilter {
                     query == null ? "" : "?" + query,
                     response.getStatus(),
                     cost,
-                    currentUserIdOrDash(),
+                    currentUserProvider.currentUserIdOrDash(request),
                     clientIp(request));
-        }
-    }
-
-    /** 尽力获取当前登录用户 ID；未登录或读取异常返回 "-"，绝不影响主流程。 */
-    private String currentUserIdOrDash() {
-        try {
-            Long userId = AuthContext.getCurrentUserId();
-            return userId == null ? "-" : userId.toString();
-        } catch (Exception e) {
-            return "-";
         }
     }
 

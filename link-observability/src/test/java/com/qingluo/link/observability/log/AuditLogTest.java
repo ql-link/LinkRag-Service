@@ -1,4 +1,4 @@
-package com.qingluo.link.core.log;
+package com.qingluo.link.observability.log;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;

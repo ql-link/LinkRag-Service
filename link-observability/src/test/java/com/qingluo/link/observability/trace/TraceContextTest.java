@@ -1,17 +1,17 @@
-package com.qingluo.link.core.trace;
+package com.qingluo.link.observability.trace;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * {@link TraceContext} 单测：覆盖 traceId 生成、合法性白名单（防日志注入）、MDC 读写与清理。
+ * {@link TraceContext} 单测：覆盖 trace_id 生成、合法性白名单（防日志注入）、MDC 读写与清理。
  */
 class TraceContextTest {
 
@@ -49,14 +49,35 @@ class TraceContextTest {
     void put_and_clear_should_manage_mdc() {
         TraceContext.put("trace-1");
         assertEquals("trace-1", MDC.get(TraceContext.TRACE_ID_KEY));
+        assertEquals("trace-1", MDC.get(TraceContext.LEGACY_TRACE_ID_KEY));
+        assertEquals("trace-1", TraceContext.currentTraceId());
         TraceContext.clear();
         assertNull(MDC.get(TraceContext.TRACE_ID_KEY));
+        assertNull(MDC.get(TraceContext.LEGACY_TRACE_ID_KEY));
     }
 
     @Test
     void startNew_should_put_and_return_same_value() {
         String id = TraceContext.startNew();
         assertNotNull(id);
+        assertEquals(id, MDC.get(TraceContext.TRACE_ID_KEY));
+    }
+
+    @Test
+    void start_should_reuse_valid_inbound_trace_id() {
+        String id = TraceContext.start("trace-from-upstream");
+
+        assertEquals("trace-from-upstream", id);
+        assertEquals("trace-from-upstream", MDC.get(TraceContext.TRACE_ID_KEY));
+        assertEquals("trace-from-upstream", MDC.get(TraceContext.LEGACY_TRACE_ID_KEY));
+    }
+
+    @Test
+    void start_should_generate_when_inbound_trace_id_invalid() {
+        String id = TraceContext.start("bad\ntrace");
+
+        assertNotNull(id);
+        assertTrue(TraceContext.isValid(id));
         assertEquals(id, MDC.get(TraceContext.TRACE_ID_KEY));
     }
 }

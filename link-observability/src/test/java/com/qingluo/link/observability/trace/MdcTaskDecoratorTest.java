@@ -1,4 +1,4 @@
-package com.qingluo.link.core.trace;
+package com.qingluo.link.observability.trace;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

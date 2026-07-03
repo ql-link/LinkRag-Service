@@ -19,6 +19,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.qingluo</groupId>
+            <artifactId>link-observability</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>

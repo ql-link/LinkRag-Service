@@ -1,4 +1,4 @@
-package com.qingluo.link.core.trace;
+package com.qingluo.link.observability.trace;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +80,7 @@ class TraceIdFilterTest {
         filter.doFilter(request, response, new MockFilterChain());
 
         assertNull(MDC.get(TraceContext.TRACE_ID_KEY));
+        assertNull(MDC.get(TraceContext.LEGACY_TRACE_ID_KEY));
     }
 
     /** 在过滤链内部捕获当时 MDC 中的 traceId，验证请求处理期间 traceId 已就绪。 */

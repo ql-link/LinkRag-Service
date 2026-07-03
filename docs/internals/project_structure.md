@@ -4,24 +4,25 @@ toLink-Service 是 Maven 多模块项目。
 
 ```text
 toLink-Service/
-├── link-model       # Entity / DTO / Enum / Result
-├── link-core        # Exception / AuthContext / util / global config
-├── link-components  # Redis / MQ / OSS components
-├── link-mapper      # MyBatis-Plus Mapper
-├── link-service     # Business services
-├── link-api         # Controllers and Spring Boot application
-├── docs             # Docs, contracts, historical module files
-├── .ai              # AI skills and prompt source
-├── .claude          # Claude-facing links and doc-sync rules
-├── .agent           # Agent-facing skill link
-└── scripts          # AI/documentation validation scripts
+├── link-model         # Entity / DTO / Enum / Result
+├── link-observability # trace_id / access log / audit log
+├── link-core          # Exception / AuthContext / util / global config
+├── link-components    # Redis / MQ / OSS components
+├── link-mapper        # MyBatis-Plus Mapper
+├── link-service       # Business services
+├── link-api           # Controllers and Spring Boot application
+├── docs               # Docs, contracts, historical module files
+├── .ai                # AI skills and prompt source
+├── .claude            # Claude-facing links and doc-sync rules
+├── .agent             # Agent-facing skill link
+└── scripts            # AI/documentation validation scripts
 ```
 
-依赖方向以业务层复用模型、Mapper、组件为主：`link-api` 调用 `link-service`，`link-service` 组合 `link-mapper`、`link-components`、`link-core`、`link-model`。`link-service` 另引入 `spring-boot-starter-actuator`（Micrometer 监控指标，向上传递给 `link-api`）。召回当前为「前端直连 Python」模式，Java 仅签发 session token：相关类有 `link-api` 的 `RecallSessionController`、`link-service` 的 `recall/RecallSessionServiceImpl` 与 `recall/RecallScopeResolver`、`config/RecallProperties`、`config/RecallExecutorConfig`、`link-core` 的 `security/RecallSessionJwtSigner`。旧召回网关链路（Java 中转代理 Python 内部召回）已于 LINK-122 废弃移除。对话标题由 Python 问答链路生成并随 `chat_turn.title` 上报，Java 仅做条件落库与手动标题保护，不再直接调用 LLM 生成标题。
+依赖方向以业务层复用模型、Mapper、组件为主：`link-api` 调用 `link-service`，`link-service` 组合 `link-mapper`、`link-components`、`link-core`、`link-model`、`link-observability`。`link-observability` 是独立横向模块，承载 `TraceContext` / `TraceIdFilter` / `MdcTaskDecorator` / `TraceHeaders` / `AccessLogFilter` / `AuditLog`，不依赖业务模块；`link-core` 仅通过 `AuthCurrentUserProvider` 把 `AuthContext` 桥接给访问日志。`link-service` 另引入 `spring-boot-starter-actuator`（Micrometer 监控指标，向上传递给 `link-api`）。召回当前为「前端直连 Python」模式，Java 仅签发 session token：相关类有 `link-api` 的 `RecallSessionController`、`link-service` 的 `recall/RecallSessionServiceImpl` 与 `recall/RecallScopeResolver`、`config/RecallProperties`、`config/RecallExecutorConfig`、`link-core` 的 `security/RecallSessionJwtSigner`。旧召回网关链路（Java 中转代理 Python 内部召回）已于 LINK-122 废弃移除。对话标题由 Python 问答链路生成并随 `chat_turn.title` 上报，Java 仅做条件落库与手动标题保护，不再直接调用 LLM 生成标题。
 
 ## 构建与测试
 
-根 `pom.xml` 统一配置 Maven Surefire `2.22.2`，使各模块 JUnit 5 测试按相同方式执行；同时在 dependencyManagement 中锁定 OkHttp `4.12.0` / Okio `3.6.0`，避免 Spring Boot 2.5 默认的 OkHttp 3.x 与 MinIO 8.5.x 运行期 API 不兼容。提交前运行：
+根 `pom.xml` 统一配置 Maven Surefire `2.22.2`，使各模块 JUnit 5 测试按相同方式执行；同时在 dependencyManagement 中锁定 OkHttp `4.12.0` / Okio `3.6.0`，避免 Spring Boot 2.5 默认的 OkHttp 3.x 与 MinIO 8.5.x 运行期 API 不兼容；`logstash-logback-encoder` 由 `link-api` 引入，用于 Logback JSON Lines 输出，运行期 trace/access/audit 入口由 `link-observability` 提供。提交前运行：
 
 ```bash
 mvn clean test
