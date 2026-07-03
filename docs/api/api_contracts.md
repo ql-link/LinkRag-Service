@@ -27,24 +27,32 @@
 | PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |
 | PATCH | `/api/v1/admin/feedback/{id}/priority` | 更新反馈优先级：`1` 高 / `2` 中 / `3` 低 |
 | PATCH | `/api/v1/admin/feedback/{id}/reply` | 写入管理员回复，不自动修改反馈状态 |
-| GET | `/api/v1/admin/providers` | 管理端厂商列表（分页，按优先级倒序） |
-| POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol`） |
-| PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，变更后双删缓存 |
+| GET | `/api/v1/admin/providers` | 管理端厂商列表（分页，按优先级倒序，返回 `iconUrl` / `iconObjectKey`） |
+| POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol` / `iconUrl` / `iconObjectKey`；直接创建为启用状态要求已有上架模型，否则返回 `10019`） |
+| POST | `/api/v1/admin/providers/icon` | 上传厂商图标到公开 OSS，返回图标 URL 与 object key |
+| PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，支持更新/清空 `iconUrl` / `iconObjectKey`，变更后双删缓存；更新为启用状态要求已有上架模型，否则返回 `10019` |
 | DELETE | `/api/v1/admin/providers/{id}` | 删除系统厂商 |
-| PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数） |
+| PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数）；启用要求已有上架模型，否则返回 `10019` |
 | GET | `/api/v1/admin/provider-models` | 管理端模型能力目录分页（可按 `providerId` / `capability` / `isActive` 过滤，含下架项） |
 | POST | `/api/v1/admin/providers/{providerId}/models` | 新增厂商模型能力目录项 |
 | PATCH | `/api/v1/admin/provider-models/{id}` | 部分更新模型能力目录项（模型名、能力、协议、入口、上下架状态） |
 | DELETE | `/api/v1/admin/provider-models/{id}` | 删除模型能力目录项 |
 | PATCH | `/api/v1/admin/provider-models/{id}/active` | 上/下架模型能力目录项 |
-| GET | `/api/v1/admin/system-presets` | 系统预设列表（平台 Key 脱敏） |
-| POST | `/api/v1/admin/system-presets` | 新增系统预设（平台 Key 加密入库） |
-| PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（变更厂商/模型/能力时复制模型能力层协议与入口） |
+| POST | `/api/v1/admin/providers/{providerId}/model-sync` | 手动刷新外部模型目录候选（当前支持 `MODELS_DEV`，只写候选表） |
+| GET | `/api/v1/admin/model-sync-jobs` | 外部模型目录刷新任务分页，支持 `providerId` / `syncSource` / `status` 过滤 |
+| GET | `/api/v1/admin/model-sync-candidates` | 外部模型候选分页，支持 `providerId` / `jobId` / `reviewStatus` / `capability` 过滤 |
+| POST | `/api/v1/admin/model-sync-candidates/{id}/publish` | 将外部候选发布到正式 `llm_provider_model`，请求体可覆盖模型名/展示名/能力/协议/入口 |
+| PATCH | `/api/v1/admin/model-sync-candidates/{id}/review` | 更新外部候选审核状态（`PENDING` / `REJECTED`） |
+| GET | `/api/v1/admin/system-presets` | LinkRag 系统预设列表（平台 Key 脱敏，不按默认项过滤） |
+| POST | `/api/v1/admin/system-presets` | 新增 LinkRag 系统预设（支持手动填写或从正式模型目录快捷加入，平台 Key 加密入库） |
+| PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（支持手动更新运行事实或从正式模型目录重新快捷复制） |
 | PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（当前默认需先指定替代项） |
 | PATCH | `/api/v1/admin/system-presets/{id}/default` | 设为该能力的 LinkRag 系统兜底默认 |
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
+
+`POST /api/v1/admin/providers/icon` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `providerIcon` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS，object key 形如 `providerIcon/{uuid}.{suffix}`。上传成功后返回 `ProviderIconUploadDTO{ iconUrl, iconObjectKey }`；前端再将两者传给 `POST /api/v1/admin/providers` 或 `PATCH /api/v1/admin/providers/{id}`，分别写入 `llm_system_provider.icon_url` 与 `icon_object_key`。用户侧 `GET /api/v1/llm/providers` 返回可添加厂商的 `iconUrl`；`GET /api/v1/llm/configs` 的 LinkRag 只读配置项也返回 `iconUrl`，来源同为 `llm_system_provider`，用于替代前端硬编码厂商图标。
 
 ## LLM
 
@@ -77,22 +85,25 @@
 >
 > `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
 >
-> 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
-> `provider_type=linkrag` 是系统服务厂商：不出现在用户侧可添加厂商列表，用户也不能调用 `setup-provider` 配置它的 Key（返回 `SYSTEM_PROVIDER_READONLY(10016/400)`）；但会作为 `GET /configs` 的只读配置项返回，用户可以选择使用。
+> 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`（含 `iconUrl`）；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
+> `provider_type=linkrag` 是系统服务厂商：不出现在用户侧可添加厂商列表，用户也不能调用 `setup-provider` 配置它的 Key（返回 `SYSTEM_PROVIDER_READONLY(10016/400)`）；但会作为 `GET /configs` 的只读配置项返回，用户可以选择使用。用户侧 `GET /configs` 只合并 `provider_type=linkrag AND is_active=true AND is_default=true` 的系统兜底项；管理端 `GET /api/v1/admin/system-presets` 列出 LinkRag 系统预设表内全部预设，不按默认项过滤。LinkRag 图标仍存于 `llm_system_provider.icon_url`，`llm_system_preset` 不重复保存厂商图标；主种子脚本只创建 LinkRag 厂商行，不向 `llm_provider_model` 写入 LinkRag 模型，LinkRag 模型只在 `llm_system_preset` 中作为系统兜底默认维护。
+>
+> 管理端新增 LinkRag 兜底模型统一使用 `POST /api/v1/admin/system-presets`，最终落库恒为 `provider_type=linkrag`、`provider_id=LinkRag 厂商 ID`。接口支持两种方式：手动填写 `{ modelName, displayName?, capability, protocol, apiBaseUrl, apiKey, isDefault? }`；或快捷加入正式模型目录 `{ sourceProviderModelId, apiKey, isDefault? }`，后端从 `llm_provider_model` 复制模型名、展示名、能力、协议和完整入口。兼容旧入参 `{ providerId, modelName, capability, apiKey }`，其语义也是“从该源厂商模型目录复制到 LinkRag 预设”，不是把系统预设归属到源厂商。`apiKey` 是平台 Key，用户无需配置 Key。
 >
 > 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力唯一）。`providerType=linkrag` 时，`PUT /configs/effective` 清空该能力用户自配默认，使 LinkRag 只读配置生效。`PATCH /configs/toggle-model` 独立启停用户自配配置：请求体 `capability` 存在时只启停该 `providerType + modelName + capability` 自配行，不存在时兼容旧前端，按 `providerType + modelName` 批量启停该模型全部用户自配能力；若关闭的是当前能力用户默认配置，后端清除该默认标记，使实际生效配置回退 LinkRag 系统默认。LinkRag 不可编辑/删除/启停。`GET /configs/default` 返回 `EffectiveLLMConfigDTO`，字段 `source` 为 `USER` 或 `SYSTEM`，供执行端按来源表读取；前端配置页优先使用 `GET /configs` 的 `isDefault` 展示当前生效项。`GET /configs` 支持 `capability` / `isActive` 过滤，返回用户自配配置 + LinkRag 只读配置；`UserLLMConfigDTO.isEditable=false` 表示只读，不允许编辑、删除、启停或改 Key。错误码：系统服务厂商不可自配/启停 `10016`、能力级启停找不到用户自配配置 `10004`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
 
 > **LLM 协议改造字段变更（破坏性 + 加法）**，详见下文「LLM 协议与入口契约」：
 > - `GET /api/v1/llm/providers`：`ModelCapabilityDTO` 新增 `displayName`（模型短展示名，真实调用仍用 `modelName`）；`capabilities` 由 `List<String>`（能力名）**升级为** `List<ModelCapabilityDetailDTO>`，每元素为 `{ capability, protocol, apiBaseUrl }`（**破坏性，前端需同批适配**）。`apiBaseUrl` 为**完整端点 URL**（见下「base 形态约定」）。例：`{"modelName":"Qwen/Qwen3.6-27B","displayName":"Qwen 3.6 27B","capabilities":[{"capability":"VISION","protocol":"openai","apiBaseUrl":"https://api.siliconflow.cn/v1/chat/completions"}]}`。
-> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `displayName`、`protocol`（运行快照，复制自模型能力层）与 `isEditable`（LinkRag 为 `false`）；`SetupProviderRequest` 请求体不变。
+> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `displayName`、`protocol`（运行快照，复制自模型能力层）与 `isEditable`（LinkRag 为 `false`）；其中 `GET /configs` 的 LinkRag 只读项会额外返回来自系统厂商表的 `iconUrl`；`SetupProviderRequest` 请求体不变。
 > - `POST /api/v1/admin/providers/{providerId}/models`：`AddProviderModelRequest` 新增可选 `displayName`、必填 `protocol`（`NotBlank`，须为 5 协议枚举）、`apiBaseUrl`（`NotBlank`）；缺失或非法分别返回 `10014` / `10015`（400）。
 > - `POST /api/v1/admin/providers`：`CreateProviderRequest` 新增 `defaultProtocol`（厂商默认协议模板）。
 > - `GET /api/v1/llm/configs/default`：响应由 `UserLLMConfigDTO` 改为 `EffectiveLLMConfigDTO`，新增 `source`、`configId` 与 `displayName`，用于 Python 按来源表读取最终配置。
-> - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；`createPreset` 内部按 (providerId, modelName, capability) 查 `llm_provider_model` 复制 `protocol` / `api_base_url` / `display_name`（事实来源单一，不接受管理员手填）。当 `isDefault=true` 时自动解除同能力其他系统默认。
+> - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；支持手动填写 `protocol` / `apiBaseUrl`，也支持按 `sourceProviderModelId` 或兼容字段 `(providerId, modelName, capability)` 从正式目录快捷复制 `protocol` / `api_base_url` / `display_name`。无论来源如何，预设都归属 LinkRag 系统厂商。当 `isDefault=true` 时自动解除同能力其他 LinkRag 系统默认。
+> - 外部模型目录刷新（LINK-50）：`POST /api/v1/admin/providers/{providerId}/model-sync` 只把 `models.dev` 等外部源数据写入 `llm_provider_model_sync_job` / `llm_provider_model_sync_candidate`，不直接影响用户侧模型列表；管理员审核后调用 `POST /api/v1/admin/model-sync-candidates/{id}/publish` 才会复用正式目录服务写入 `llm_provider_model` 并清理相关缓存。候选响应包含外部源模型发布日期 `releaseDate`；候选发布可覆盖推断出的 `capability` / `protocol` / `apiBaseUrl`，避免外部源误判直接进入运行目录。候选响应中的 `capability` 是兼容别名，等同真实推断字段 `inferredCapability`。重复刷新同一厂商时，后端按 `(providerId, syncSource, modelName, inferredCapability)` 更新既有候选，不再追加重复行。
 
 ### LLM 协议与入口契约
 
-LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与请求/响应怎么拼）× `capability`（用途，决定调哪个端点）**。Java 管理端负责把协议与**完整调用端点**落成数据下发，Python RAG 执行端按 `protocol` 选 adapter 后**直接打** `api_base_url`。三层语义（厂商默认模板 / 模型能力事实 / 用户配置快照）与 `protocol` 枚举（`openai` / `anthropic` / `google` / `jina` / `dashscope`）见 `docs/api/mysql_schema.md`「协议与入口三层语义」。
+LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter，决定鉴权与请求/响应怎么拼）× `capability`（用途，决定调哪个端点）**。Java 管理端负责把协议与**完整调用端点**落成数据下发，Python RAG 执行端按 `protocol` 选 adapter 后**直接打** `api_base_url`。三层语义（厂商默认模板 / 模型能力事实 / 用户配置快照）与 `protocol` 枚举（`openai` / `anthropic` / `google` / `jina` / `dashscope` / `bge_m3` / `doubao_vision`）见 `docs/api/mysql_schema.md`「协议与入口三层语义」。
 
 **`api_base_url` 形态约定（2026-06 与 Python PR #192 对齐，语义已反转，两端必须严格一致）**：
 
@@ -114,12 +125,14 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族，决定鉴权与
 | `jina` | EMBEDDING / SPARSE_EMBEDDING | `https://api.jina.ai/v1/embeddings` |
 | `dashscope` | RERANK | `https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank`（千问原生嵌套） |
 | `dashscope` | ASR | 本期不做，暂存 base `https://dashscope.aliyuncs.com/api/v1` |
+| `bge_m3` | SPARSE_EMBEDDING | 完整服务地址，如 `http://103.205.254.30:37997/encode`，Python 直打并发送 `{ return_dense: false, return_sparse: true }` |
+| `doubao_vision` | SPARSE_EMBEDDING | `https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal`，Python 逐条请求火山多模态 embedding |
 
 **adapter dispatch 契约**：
 
 - 执行端按 `(protocol, capability)` 二维选 adapter，**不依据 `provider_type`**；`provider_type` 仅作厂商身份、展示、审计保留。
 - adapter 职责 = 3 件套：① 拼鉴权头 ② 构建请求体 ③ 解析回包；**URL 直接用 `api_base_url`，不再拼后缀**（`google` 例外按协议补全）。
-- 未知 `(protocol, capability)` 组合返回明确错误，不回退猜测。本期 Python 实际落地组合：`openai`+CHAT/EMBEDDING、`anthropic`+CHAT、`google`+CHAT、`jina`+RERANK/EMBEDDING、`dashscope`+RERANK；VISION/SPARSE_EMBEDDING/ASR schema 与 seed 已支持，Python 端需后续对接具体 adapter 与请求/响应协议。
+- 未知 `(protocol, capability)` 组合返回明确错误，不回退猜测。本期 Python 实际落地组合：`openai`+CHAT/VISION/EMBEDDING/ASR、`anthropic`+CHAT/VISION、`google`+CHAT/VISION/EMBEDDING、`jina`+RERANK/EMBEDDING、`dashscope`+RERANK/ASR、`bge_m3`+SPARSE_EMBEDDING、`doubao_vision`+SPARSE_EMBEDDING。
 - 职责边界：完整端点 URL（多变的「去哪」）= 数据，Java 管；鉴权 + 请求体 + 回包解析（稳定的「怎么调」）= 代码，adapter 管。新增同协议厂商 Java 加一行数据即可，adapter 零改动。
 
 ## Chat

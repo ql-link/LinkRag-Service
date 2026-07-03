@@ -22,7 +22,9 @@ public enum LLMProtocol {
     ANTHROPIC("anthropic"),
     GOOGLE("google"),
     JINA("jina"),
-    DASHSCOPE("dashscope");
+    DASHSCOPE("dashscope"),
+    BGE_M3("bge_m3"),
+    DOUBAO_VISION("doubao_vision");
 
     private final String code;
 

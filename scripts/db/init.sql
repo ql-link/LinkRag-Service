@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS llm_system_provider (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '厂商唯一标识',
     provider_type   VARCHAR(32)    NOT NULL COMMENT '厂商类型：openai/claude/glm/deepseek',
     provider_name   VARCHAR(64)    NOT NULL COMMENT '厂商展示名称，如 "OpenAI"',
+    icon_url        VARCHAR(512)   COMMENT '厂商图标 URL，公开 OSS 地址',
+    icon_object_key VARCHAR(256)   COMMENT '厂商图标 OSS object key，如 providerIcon/{uuid}.png',
     api_base_url    VARCHAR(512)   NOT NULL COMMENT '默认 API 基地址（仅作新增模型预填模板，不参与运行决策）',
     default_protocol VARCHAR(32)   NOT NULL DEFAULT 'openai' COMMENT '默认协议（模板值，新增模型能力预填用）',
     is_active       BOOLEAN        NOT NULL DEFAULT TRUE COMMENT '是否启用',
@@ -56,6 +58,53 @@ CREATE TABLE IF NOT EXISTS llm_provider_model (
     UNIQUE KEY uk_provider_model_cap (provider_id, model_name, capability),
     INDEX idx_provider_cap (provider_id, capability)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '厂商模型能力目录表';
+
+-- 2.1.1 外部模型目录同步任务表（只记录刷新过程，不参与运行决策）
+CREATE TABLE IF NOT EXISTS llm_provider_model_sync_job (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    provider_id     BIGINT UNSIGNED NOT NULL COMMENT '关联 llm_system_provider.id',
+    sync_source     VARCHAR(32)     NOT NULL COMMENT '同步来源：MODELS_DEV 等',
+    status          VARCHAR(16)     NOT NULL COMMENT 'RUNNING/SUCCESS/FAILED',
+    added_count     INT             NOT NULL DEFAULT 0 COMMENT '新增候选数量',
+    updated_count   INT             NOT NULL DEFAULT 0 COMMENT '匹配既有正式目录的候选数量',
+    stale_count     INT             NOT NULL DEFAULT 0 COMMENT '外部源未再出现的正式目录数量',
+    error_message   VARCHAR(512)    COMMENT '失败原因',
+    started_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at     DATETIME        COMMENT '结束时间',
+
+    INDEX idx_sync_job_provider (provider_id, started_at),
+    INDEX idx_sync_job_source_status (sync_source, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '外部模型目录同步任务表';
+
+-- 2.1.2 外部模型目录候选表（管理员审核发布后才写入 llm_provider_model）
+CREATE TABLE IF NOT EXISTS llm_provider_model_sync_candidate (
+    id                          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    job_id                      BIGINT UNSIGNED NOT NULL COMMENT '关联同步任务 ID',
+    provider_id                 BIGINT UNSIGNED NOT NULL COMMENT '关联 llm_system_provider.id',
+    sync_source                 VARCHAR(32)     NOT NULL COMMENT '同步来源',
+    external_model_id           VARCHAR(192)    NOT NULL COMMENT '外部源模型 ID',
+    model_name                  VARCHAR(128)    NOT NULL COMMENT '拟发布模型名',
+    display_name                VARCHAR(64)     COMMENT '模型展示名',
+    inferred_capability         VARCHAR(32)     NOT NULL COMMENT '推断能力',
+    inferred_protocol           VARCHAR(32)     COMMENT '推断协议',
+    inferred_api_base_url       VARCHAR(512)    COMMENT '推断调用入口',
+    context_window              INT             COMMENT '上下文窗口',
+    max_output_tokens           INT             COMMENT '最大输出 token',
+    model_release_date          DATE            COMMENT '外部源提供的模型发布日期',
+    input_modalities            JSON            COMMENT '输入模态',
+    output_modalities           JSON            COMMENT '输出模态',
+    raw_metadata                JSON            COMMENT '外部源原始元数据',
+    review_status               VARCHAR(16)     NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/PUBLISHED/REJECTED',
+    matched_provider_model_id   BIGINT UNSIGNED COMMENT '匹配到的正式目录 ID',
+    last_seen_at                DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_sync_candidate_provider_source_model_cap (provider_id, sync_source, model_name, inferred_capability),
+    INDEX idx_sync_candidate_job (job_id),
+    INDEX idx_sync_candidate_provider_status (provider_id, review_status),
+    INDEX idx_sync_candidate_model_cap (provider_id, model_name, inferred_capability)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '外部模型目录候选表';
 
 -- 2.2 系统预设表（LinkRag 平台兜底配置，自带平台 Key；用户无自配默认时按能力回退读取）
 CREATE TABLE IF NOT EXISTS llm_system_preset (
@@ -404,8 +453,8 @@ ALTER TABLE dataset_parse_config AUTO_INCREMENT = 10000;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 初始数据（LLM 厂商 + 模型目录）
 -- 运行完本文件后，执行 seed_llm_providers.sql 写入初始厂商与模型数据：
+--   SET @linkrag_system_preset_api_key = '<AES-256-GCM 加密后的平台 Key 密文>'; -- 全新库首次写入系统兜底预设需要
 --   SOURCE scripts/db/seed_llm_providers.sql;
--- seed_llm_providers.sql 由 scripts/import_ragflow_configs.py 自动生成，
--- 需要重新生成时：
---   python3 scripts/import_ragflow_configs.py [ragflow-configs-dir]
+-- seed_llm_providers.sql 当前由本地 Docker MySQL 的 llm_system_provider /
+-- llm_provider_model 快照裁剪生成：只保留国内/国外主力厂商，每厂商最多 5 个主推模型；LinkRag 只注册厂商，模型只写入系统预设。
 -- ─────────────────────────────────────────────────────────────────────────────

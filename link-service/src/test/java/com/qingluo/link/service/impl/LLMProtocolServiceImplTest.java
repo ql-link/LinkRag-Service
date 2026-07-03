@@ -18,8 +18,8 @@ class LLMProtocolServiceImplTest {
     private final LLMProtocolServiceImpl service = new LLMProtocolServiceImpl();
 
     @ParameterizedTest
-    @ValueSource(strings = {"openai", "anthropic", "google", "jina", "dashscope"})
-    @DisplayName("5 个受支持协议校验通过")
+    @ValueSource(strings = {"openai", "anthropic", "google", "jina", "dashscope", "bge_m3", "doubao_vision"})
+    @DisplayName("7 个受支持协议校验通过")
     void validateProtocol_acceptsSupported(String protocol) {
         assertThatCode(() -> service.validateProtocol(protocol)).doesNotThrowAnyException();
     }

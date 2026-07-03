@@ -25,6 +25,8 @@ class SystemProviderTest {
         assertFieldExists("id");
         assertFieldExists("providerType");
         assertFieldExists("providerName");
+        assertFieldExists("iconUrl");
+        assertFieldExists("iconObjectKey");
         assertFieldExists("apiBaseUrl");
         assertFieldExists("isActive");
         assertFieldExists("priority");

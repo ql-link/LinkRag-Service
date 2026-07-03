@@ -186,7 +186,7 @@ class ProviderCatalogCacheServiceImplTest {
     }
 
     private ProviderRef ref(Long id, String type) {
-        return new ProviderRef(id, type, type, 50);
+        return new ProviderRef(id, type, type, null, 50);
     }
 
     private ProviderModel pm(Long providerId, String model, String capability) {
