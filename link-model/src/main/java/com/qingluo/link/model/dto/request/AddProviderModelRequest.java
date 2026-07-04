@@ -25,7 +25,7 @@ public class AddProviderModelRequest {
     private String capability;
 
     @NotBlank(message = "协议不能为空")
-    @Schema(description = "调用协议，如 openai/anthropic/google/jina/dashscope", example = "openai")
+    @Schema(description = "调用协议，如 openai/anthropic/google/jina/dashscope/bge_m3/doubao_vision", example = "openai")
     private String protocol;
 
     @NotBlank(message = "调用入口不能为空")

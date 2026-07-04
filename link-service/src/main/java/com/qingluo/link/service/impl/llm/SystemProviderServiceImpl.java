@@ -80,7 +80,8 @@ public class SystemProviderServiceImpl implements SystemProviderService {
      */
     private List<ProviderRef> loadActiveProviderRefs() {
         return getActiveProviders().stream()
-                .map(p -> new ProviderRef(p.getId(), p.getProviderType(), p.getProviderName(), p.getPriority()))
+                .map(p -> new ProviderRef(p.getId(), p.getProviderType(), p.getProviderName(), p.getIconUrl(),
+                        p.getPriority()))
                 .toList();
     }
 
@@ -148,7 +149,8 @@ public class SystemProviderServiceImpl implements SystemProviderService {
         List<ModelCapabilityDTO> models = grouped.entrySet().stream()
                 .map(entry -> new ModelCapabilityDTO(entry.getKey(), displayNames.get(entry.getKey()), entry.getValue()))
                 .toList();
-        return new ProviderModelDTO(provider.getProviderType(), provider.getProviderName(), models);
+        return new ProviderModelDTO(provider.getProviderType(), provider.getProviderName(), provider.getIconUrl(),
+                models);
     }
 
     private String resolveDisplayName(ProviderModel model) {

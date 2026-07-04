@@ -59,12 +59,13 @@ class SystemProviderServiceImplTest {
     @DisplayName("一·按能力查询聚合返回该能力下的模型集合（命中缓存不查库）")
     void getActiveProviderModels_aggregatesByCapability() {
         givenCacheHit(new ProviderCatalogSnapshot(
-                List.of(ref(5L, "openai")),
+                List.of(ref(5L, "openai", "https://minio.example/tolink-public/providerIcon/openai.png")),
                 List.of(pm(5L, "gpt-4o", "CHAT"), pm(5L, "gpt-4o-mini", "CHAT"))));
 
         List<ProviderModelDTO> result = service.getActiveProviderModels("CHAT");
 
         assertThat(result).hasSize(1);
+        assertThat(result.get(0).getIconUrl()).isEqualTo("https://minio.example/tolink-public/providerIcon/openai.png");
         assertThat(result.get(0).getModels()).extracting("modelName")
                 .containsExactlyInAnyOrder("gpt-4o", "gpt-4o-mini");
         assertThat(result.get(0).getModels()).extracting("displayName")
@@ -210,7 +211,11 @@ class SystemProviderServiceImplTest {
 
     /** 缓存命中场景：索引中的轻量厂商引用。 */
     private ProviderRef ref(Long id, String type) {
-        return new ProviderRef(id, type, type, 50);
+        return ref(id, type, null);
+    }
+
+    private ProviderRef ref(Long id, String type, String iconUrl) {
+        return new ProviderRef(id, type, type, iconUrl, 50);
     }
 
     /** 缓存未命中场景：厂商表行（供 systemProviderMapper.selectList 回源）。 */
@@ -219,6 +224,7 @@ class SystemProviderServiceImplTest {
         provider.setId(id);
         provider.setProviderType(type);
         provider.setProviderName(type);
+        provider.setIconUrl("https://minio.example/tolink-public/providerIcon/" + type + ".png");
         provider.setIsActive(true);
         provider.setPriority(50);
         return provider;

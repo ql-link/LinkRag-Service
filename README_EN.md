@@ -145,11 +145,11 @@ For the four shared channels and detailed boundaries between the two ends, see t
 ### 1. Initialize the database
 
 ```bash
-mysql -h <DB_HOST> -u root -p < scripts/db/schema.sql
-mysql -h <DB_HOST> -u root -p tolink_rag_db < scripts/db/init.sql
+mysql -h <DB_HOST> -u root -p < scripts/db/init.sql
+mysql -h <DB_HOST> -u root -p < scripts/db/seed_llm_providers.sql
 ```
 
-> The authoritative source for the database schema is the Python side's Alembic migrations; `scripts/db` here is for local and test use only.
+> The authoritative source for the database schema is the Python side's Alembic migrations; `scripts/db` here only keeps the local/test table initializer and provider seed.
 
 ### 2. Configure environment variables
 

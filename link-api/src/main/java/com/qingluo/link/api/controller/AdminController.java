@@ -8,27 +8,37 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.AddProviderModelRequest;
 import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
+import com.qingluo.link.model.dto.request.PublishModelSyncCandidateRequest;
+import com.qingluo.link.model.dto.request.SyncProviderModelsRequest;
 import com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest;
+import com.qingluo.link.model.dto.request.UpdateModelSyncCandidateReviewRequest;
 import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateUserRoleRequest;
 import com.qingluo.link.model.dto.request.UpdateUserStatusRequest;
+import com.qingluo.link.model.dto.entity.ProviderModelSyncCandidate;
+import com.qingluo.link.model.dto.entity.ProviderModelSyncJob;
 import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
 import com.qingluo.link.model.dto.response.PageResult;
+import com.qingluo.link.model.dto.response.ProviderIconUploadDTO;
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.service.AdminDocumentFileConfigService;
 import com.qingluo.link.service.AdminProviderService;
 import com.qingluo.link.service.AdminUserService;
+import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.ProviderModelService;
+import com.qingluo.link.service.ProviderModelSyncService;
 import com.qingluo.link.service.SystemPresetService;
+import com.qingluo.link.service.oss.UploadResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -50,7 +60,9 @@ public class AdminController {
     private final AdminProviderService adminProviderService;
     private final AdminDocumentFileConfigService adminDocumentFileConfigService;
     private final ProviderModelService providerModelService;
+    private final ProviderModelSyncService providerModelSyncService;
     private final SystemPresetService systemPresetService;
+    private final OssApplicationService ossApplicationService;
 
     // ---- 用户管理 ----
 
@@ -142,6 +154,13 @@ public class AdminController {
     public Result<Void> createProvider(@RequestBody @Validated CreateProviderRequest request) {
         adminProviderService.createProvider(request);
         return Result.success(null);
+    }
+
+    @PostMapping("/providers/icon")
+    @Operation(summary = "上传厂商图标", description = "上传厂商图标到公开 OSS，返回可直接访问的图标 URL 与 OSS object key")
+    public Result<ProviderIconUploadDTO> uploadProviderIcon(@RequestParam("file") MultipartFile file) {
+        UploadResult uploadResult = ossApplicationService.uploadAndDescribe("providerIcon", file);
+        return Result.success(new ProviderIconUploadDTO(uploadResult.previewUrl(), uploadResult.objectKey()));
     }
 
     /**
@@ -251,6 +270,59 @@ public class AdminController {
         return Result.success(null);
     }
 
+    // ---- 外部模型目录同步候选管理 ----
+
+    @PostMapping("/providers/{providerId}/model-sync")
+    @Operation(summary = "刷新外部模型目录", description = "从外部模型目录源拉取候选项，写入候选表，不直接发布到正式模型目录")
+    public Result<ProviderModelSyncJob> refreshProviderModelCandidates(
+            @Parameter(description = "厂商ID") @PathVariable Long providerId,
+            @RequestBody(required = false) SyncProviderModelsRequest request) {
+        String source = request == null ? null : request.getSyncSource();
+        return Result.success(providerModelSyncService.refreshProviderModels(providerId, source));
+    }
+
+    @GetMapping("/model-sync-jobs")
+    @Operation(summary = "查询外部模型目录同步任务", description = "分页查询外部模型目录刷新任务")
+    public Result<PageResult<ProviderModelSyncJob>> listProviderModelSyncJobs(
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "厂商ID") @RequestParam(required = false) Long providerId,
+            @Parameter(description = "同步来源") @RequestParam(required = false) String syncSource,
+            @Parameter(description = "任务状态") @RequestParam(required = false) String status) {
+        return Result.success(providerModelSyncService.listJobs(page, size, providerId, syncSource, status));
+    }
+
+    @GetMapping("/model-sync-candidates")
+    @Operation(summary = "查询外部模型目录候选", description = "分页查询外部模型候选，管理员审核后可发布到正式模型目录")
+    public Result<PageResult<ProviderModelSyncCandidate>> listProviderModelSyncCandidates(
+            @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "厂商ID") @RequestParam(required = false) Long providerId,
+            @Parameter(description = "同步任务ID") @RequestParam(required = false) Long jobId,
+            @Parameter(description = "审核状态") @RequestParam(required = false) String reviewStatus,
+            @Parameter(description = "模型能力") @RequestParam(required = false) String capability) {
+        return Result.success(
+                providerModelSyncService.listCandidates(page, size, providerId, jobId, reviewStatus, capability));
+    }
+
+    @PostMapping("/model-sync-candidates/{id}/publish")
+    @Operation(summary = "发布外部模型候选", description = "将候选项发布到正式 llm_provider_model 目录；请求体字段可覆盖候选推断值")
+    public Result<ProviderModel> publishProviderModelSyncCandidate(
+            @Parameter(description = "候选项ID") @PathVariable Long id,
+            @RequestBody(required = false) PublishModelSyncCandidateRequest request) {
+        PublishModelSyncCandidateRequest actualRequest =
+                request == null ? new PublishModelSyncCandidateRequest() : request;
+        return Result.success(providerModelSyncService.publishCandidate(id, actualRequest));
+    }
+
+    @PatchMapping("/model-sync-candidates/{id}/review")
+    @Operation(summary = "更新外部模型候选审核状态", description = "将候选项标记为 PENDING 或 REJECTED")
+    public Result<ProviderModelSyncCandidate> updateProviderModelSyncCandidateReview(
+            @Parameter(description = "候选项ID") @PathVariable Long id,
+            @RequestBody @Validated UpdateModelSyncCandidateReviewRequest request) {
+        return Result.success(providerModelSyncService.updateReviewStatus(id, request.getReviewStatus()));
+    }
+
     // ---- 系统预设管理 ----
 
     /**
@@ -266,7 +338,7 @@ public class AdminController {
      * 新增系统预设（平台 Key 入库前加密）。
      */
     @PostMapping("/system-presets")
-    @Operation(summary = "新增系统预设", description = "预配一条 LinkRag 系统兜底配置，平台 Key 入库前加密")
+    @Operation(summary = "新增系统预设", description = "预配一条 LinkRag 系统兜底配置，支持手动填写模型运行事实或从正式模型目录快捷加入，平台 Key 入库前加密")
     public Result<Void> createSystemPreset(@RequestBody @Validated CreatePresetRequest request) {
         systemPresetService.createPreset(request);
         return Result.success(null);
@@ -276,7 +348,7 @@ public class AdminController {
      * 更新系统预设。
      */
     @PatchMapping("/system-presets/{id}")
-    @Operation(summary = "更新系统预设", description = "部分更新系统预设，变更厂商/模型/能力时从模型能力目录重新复制协议与入口")
+    @Operation(summary = "更新系统预设", description = "部分更新系统预设，支持手动更新模型运行事实或从正式模型目录重新快捷复制；预设始终归属 LinkRag")
     public Result<SystemPreset> updateSystemPreset(
             @Parameter(description = "预设ID") @PathVariable Long id,
             @RequestBody @Validated UpdatePresetRequest request) {

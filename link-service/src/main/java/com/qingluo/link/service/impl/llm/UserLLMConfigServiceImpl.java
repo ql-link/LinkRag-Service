@@ -102,8 +102,14 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
             wrapper.eq(SystemPreset::getCapability, normalizedCapability);
         }
 
-        return systemPresetMapper.selectList(wrapper).stream()
-                .map(preset -> toLinkRagDTO(preset, hasActiveUserDefault(userConfigs, preset.getCapability())))
+        List<SystemPreset> presets = systemPresetMapper.selectList(wrapper);
+        if (presets.isEmpty()) {
+            return List.of();
+        }
+
+        String linkRagIconUrl = resolveLinkRagIconUrl();
+        return presets.stream()
+                .map(preset -> toLinkRagDTO(preset, hasActiveUserDefault(userConfigs, preset.getCapability()), linkRagIconUrl))
                 .toList();
     }
 
@@ -443,10 +449,11 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         return dto;
     }
 
-    private UserLLMConfigDTO toLinkRagDTO(SystemPreset preset, boolean hasActiveUserDefault) {
+    private UserLLMConfigDTO toLinkRagDTO(SystemPreset preset, boolean hasActiveUserDefault, String iconUrl) {
         UserLLMConfigDTO dto = new UserLLMConfigDTO();
         dto.setId(preset.getId());
         dto.setProviderType(preset.getProviderType());
+        dto.setIconUrl(iconUrl);
         dto.setModelName(preset.getModelName());
         dto.setDisplayName(resolveDisplayName(preset));
         dto.setCapability(preset.getCapability());
@@ -460,6 +467,15 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         dto.setCreatedAt(preset.getCreatedAt());
         dto.setUpdatedAt(preset.getUpdatedAt());
         return dto;
+    }
+
+    private String resolveLinkRagIconUrl() {
+        try {
+            SystemProvider provider = systemProviderService.getByProviderType(LINKRAG_PROVIDER_TYPE);
+            return provider.getIconUrl();
+        } catch (NotFoundException ex) {
+            return null;
+        }
     }
 
     private boolean hasActiveUserDefault(List<UserLLMConfigDTO> userConfigs, String capability) {

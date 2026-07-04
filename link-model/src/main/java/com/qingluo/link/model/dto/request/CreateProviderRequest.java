@@ -21,6 +21,12 @@ public class CreateProviderRequest {
     @Schema(description = "厂商名称", example = "OpenAI")
     private String providerName;
 
+    @Schema(description = "厂商图标 URL，建议使用管理端图标上传接口返回值", example = "https://minio.example/tolink-public/providerIcon/openai.png")
+    private String iconUrl;
+
+    @Schema(description = "厂商图标 OSS object key，建议使用管理端图标上传接口返回值", example = "providerIcon/openai.png")
+    private String iconObjectKey;
+
     @NotBlank(message = "API 地址不能为空")
     @Schema(description = "默认API地址（模板值）", example = "https://api.openai.com/v1")
     private String apiBaseUrl;

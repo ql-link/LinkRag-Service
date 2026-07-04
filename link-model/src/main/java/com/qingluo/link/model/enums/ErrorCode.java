@@ -32,6 +32,9 @@ public enum ErrorCode {
     MODEL_CONFIG_INCOMPLETE(10014, "模型能力缺少协议或入口，无法保存或展开", 400),
     INVALID_PROTOCOL(10015, "协议不在支持范围内", 400),
     SYSTEM_PROVIDER_READONLY(10016, "系统服务厂商不支持用户自配", 400),
+    MODEL_SYNC_SOURCE_UNSUPPORTED(10017, "外部模型目录同步来源不支持", 400),
+    MODEL_SYNC_CANDIDATE_NOT_FOUND(10018, "外部模型候选项不存在", 404),
+    PROVIDER_HAS_NO_ACTIVE_MODEL(10019, "启用厂商前至少需要上架一个模型", 400),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),
