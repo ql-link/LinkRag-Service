@@ -23,16 +23,16 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 - `parse_task` 使用扁平 JSON，通过 `document_parse_file_id` 与共享数据库记录关联。
 - `parse_task` 对 PDF 文件可透传数据集级 `pdf_config.pdf_parser_backend` 为 `pdf_parser_backend`；Java 只在配置非空且值合法时写入，不在 MQ 层补默认值。
 - `parse_task` 含 `is_retry` + `previous_task_id`：重试复用上一轮 Markdown 坐标做阶段恢复，发送前完整性校验缺字段不发。端到端终态权威源为 `document_parse_pipeline.pipeline_status`（大写），Java 解析结果查询以 DB 为准（原 `document_parsed_log.task_status` 已删）。
-- `document_delete`（删除通知，Java -> Python）：删除事务 afterCommit **真实投递**（回滚不发），`QUEUE` 点对点；按删除范围分流——删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别，发送前完整性校验缺字段不发。生产侧**尽力发**：`DocumentDeleteNotifier` 对发送失败/发送器缺失仅告警留痕并吞掉、不外抛、不影响已提交的删除，无 DLQ、无对账兜底；幂等由 Python 按 id 删天然保证（不带去重/追踪字段）。
+- `document_delete`（删除通知，Java -> Python）：删除事务 afterCommit **真实投递**（回滚不发），`QUEUE` 点对点；按删除范围分流——删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别，发送前完整性校验缺字段不发。生产侧**尽力发**：`DocumentDeleteNotifier` 对发送失败/发送器缺失仅告警留痕并吞掉、不外抛、不影响已提交的删除，无 DLQ、无对账兜底；幂等由 Python 按 id 删天然保证（payload 不带去重/追踪字段）。
 - Python 负责解析终态持久化；Java 不再消费 `tolink.rag.parse_result`，前端终态展示通过 `parse-results` 查询接口读取 DB。
-- 消费入口（如 `ChatTurnKafkaReceiver`、`CacheCompensationKafkaReceiver`）在 `receive` 起始用 `TraceContext.startNew()` 自建 traceId、`finally` 清理，使每条消息的处理日志可独立串联（不改消息体契约，仅日志关联）。
+- MQ trace 只走传输 header，不改 Java/Python 共享消息体：`MQSend` 适配层通过 `link-observability` 的 `TraceHeaders` 把当前 MDC 的 `trace_id` 自动写入 `X-Trace-Id`；Kafka 消费入口（如 `ChatTurnKafkaReceiver`、`UsageReportKafkaReceiver`、`CacheCompensationKafkaReceiver`）读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并用 `TraceContext.start(...)` 恢复 MDC，缺失或非法时自建 trace，`finally` 清理。
 - `tolink.rag.parse_result` 已下线 Java 消费方，相关 listener、专用容器工厂、消息模型、异常分类、卡住扫描和指标均已删除。Python 停发由 LINK-166 协调发布。
 
 ## chat_turn 对话轮次落库（Python -> Java）
 
 - `ChatTurnMQ`（`tolink.rag.chat_turn`，`QUEUE`，routing_key = `conversation_id`）线格式为统一信封 `{"mq_type","mq_name","payload":{...}}`，业务字段在 `payload` 内、全 snake_case；`ChatTurnMQ.parseMsg` 先解包 `payload` 再反序列化（兼容无信封扁平结构），与 `parse_task` 的纯扁平 JSON 不同。
 - 一轮 = 「起点 `GENERATING` + 终态（`COMPLETED`/`FAILED`）」至少两条同 `turn_id` 的消息（旧 `success`/`partial`/`failed` 已退役）；空召回也发 `COMPLETED` 占位。
-- 链路：`ChatTurnKafkaReceiver`（薄适配层 + traceId）→ `ChatTurnConsumer`（实现 `ChatTurnMQ.MQReceiver`）→ `ChatTurnPersistenceService`（`@Transactional` 单事务）。
+- 链路：`ChatTurnKafkaReceiver`（薄适配层 + header trace 恢复）→ `ChatTurnConsumer`（实现 `ChatTurnMQ.MQReceiver`）→ `ChatTurnPersistenceService`（`@Transactional` 单事务）。
 - 单事务按 `turn_id` upsert：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态 `UPDATE` 同一行补齐 answer/references/模型快照/错误字段；**不写 `llm_usage_log`**（LINK-191：generate 用量改走 usage_report 通道，本通道只落对话内容；`provider_type`/`latency_ms` 仍在载荷但 `chat_message` 无对应列、不落库）；`UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`。对话标题由 Python 随 `chat_turn.title` 上报，Java 仅在当前标题为空或仍为默认“新对话”时写入，不发起 LLM 调用、不覆盖用户手动标题。
 - 按 `turn_id` 幂等 + 状态不回退：以 `(conversation_id, turn_id)` 定位同一行（`uk_chat_message_turn_id` 唯一索引），同 `turn_id` 重投不重复插入，终态写入后不被迟到/重投的 `GENERATING` 覆盖、重复终态跳过；归属校验要求 `conversation` 属于 payload `user_id`，按 `(conversation_id, turn_id)` 匹配防跨会话/跨用户写入，不匹配丢弃 + 告警。
 - topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `ChatTurnMQ` 自动注册创建；当前沿用 Boot 默认监听容器工厂。
@@ -40,7 +40,7 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 ## usage_report 全链路用量上报（Python -> Java）
 
 - `UsageReportMQ`（`tolink.rag.usage_report`，`QUEUE`，routing_key = `user_id`）线格式同为统一信封 `{"mq_type","mq_name","payload":{...}}`，业务字段全 snake_case；`UsageReportMQ.parseMsg` 先解包 `payload` 再反序列化（兼容无信封扁平结构），并校验 `stage`/`operation` 枚举与必填 token。
-- 链路：`UsageReportKafkaReceiver`（薄适配层 + traceId）→ `UsageReportConsumer`（实现 `UsageReportMQ.MQReceiver`）→ `UsageReportPersistenceService`，每条上报 `INSERT llm_usage_log` 一行。
+- 链路：`UsageReportKafkaReceiver`（薄适配层 + header trace 恢复）→ `UsageReportConsumer`（实现 `UsageReportMQ.MQReceiver`）→ `UsageReportPersistenceService`，每条上报 `INSERT llm_usage_log` 一行。
 - 承载**全部模型调用**用量（解析侧 embed/vision/table、召回侧 embed/rerank，以及对话 generate `stage='chat'`/`operation='generate'`）；自 LINK-191 起 generate 用量统一经本通道落 `llm_usage_log`，`chat_turn` 通道不再写本表。Java 按 `stage`/`operation` 通用落库，无需特判 generate。
 - 旁路、最终一致：偶发丢条/重复可接受，未启用强去重（信封 `message_id` 仅排障）；`config_id`/`latency_ms` 缺省落 NULL；`task_id` 当前无独立列，仅日志审计不落库。瘦身后 `llm_usage_log` 已无 `conversation_id`/`message_id`/`request_id`/`fallback_config_id` 列，Java 落库不再写这些字段（载荷亦不再带 `conversation_id`/`request_id`，旧上游若带则忽略）。
 - topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `UsageReportMQ` 自动注册创建。

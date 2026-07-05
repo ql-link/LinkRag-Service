@@ -22,7 +22,7 @@ MQ 实现事实来源：
 - Topic/Queue 名称变更是破坏性变更。
 - 消息字段新增、删除、重命名、类型变化必须同步本文档和相关消费方。
 - Java/Python 双端共享的消息必须保持幂等字段和状态字段语义稳定。
-- 日志链路：Java 消费入口按消息自建 traceId 仅用于本端日志串联，**不写入消息体、不属于消息契约**；消息字段不变。
+- 日志链路：跨端 trace 只走 MQ 传输 header，标准 header 为 `X-Trace-Id`；Java `MQSend` 适配层通过 `link-observability` 的 `TraceHeaders` 把当前 MDC 的 `trace_id` 自动写入 header，Java Kafka 消费入口会读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复到 MDC，缺失或非法时自建 trace。**trace header 不写入业务 payload，不改变消息字段契约**。
 
 ## 已下线 topic
 
@@ -49,6 +49,8 @@ MQ 实现事实来源：
 - `previous_task_id`（重试时填上一轮失败任务 `task_id`，首次解析为空）
 
 `pdf_parser_backend` 不在 Java MQ 层补默认值；未传时应由 Python 按「数据集配置 → 环境默认 → 系统内置默认」继续兜底，避免把缺省字段伪装成显式指定。
+
+发送时 Java MQ 适配层会随消息附带 `X-Trace-Id` header（取当前 MDC `trace_id`），Python 消费端据此绑定日志上下文；payload 仍保持上述字段，不新增 `trace_id` 字段。
 
 阶段恢复重试约定：`is_retry=true` 时复用上一轮 `document_parsed_log` 的 `parsed_bucket_name` / `parsed_object_key` 作为本次 `md_bucket` / `md_object_key`，让 Python 从失败的后处理阶段（含稀疏向量）续跑，不重新解析原文件。Java 发送前完整性校验：`is_retry=true` 时 `previous_task_id`、`md_bucket`、`md_object_key` 必须非空，缺字段不发送。`is_retry` 由 DB 状态（`document_parse_pipeline.pipeline_status=FAILED` 且已产出 Markdown）推导，与 `trigger_mode` 解耦。
 
@@ -78,7 +80,7 @@ MQ 实现事实来源：
 
 > **LINK-191 变更**：本载荷已**移除 `prompt_tokens` / `completion_tokens` / `total_tokens`**，对话 generate 用量改由统一 Token 用量消息 `tolink.rag.usage_report`（`stage='chat'`/`operation='generate'`）承接；本通道**只持久化对话内容、不再写 `llm_usage_log`**。`provider_type` / `latency_ms` 仍保留在载荷中（供追踪），但 `chat_message` 无对应列，不落库。
 
-Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）在**单事务**内**按 `turn_id` upsert**：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态（`COMPLETED`/`FAILED`）`UPDATE` 同一行并补齐 answer/references/模型快照/错误字段，**不写 `llm_usage_log`**（generate 用量改走 usage_report 通道）。同时 `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`；若载荷带 `title`，仅在当前标题为空或仍为默认“新对话”时写入。三条必做约束：
+Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）先从 Kafka header 恢复 `trace_id` 到 MDC，再在**单事务**内**按 `turn_id` upsert**：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态（`COMPLETED`/`FAILED`）`UPDATE` 同一行并补齐 answer/references/模型快照/错误字段，**不写 `llm_usage_log`**（generate 用量改走 usage_report 通道）。同时 `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`；若载荷带 `title`，仅在当前标题为空或仍为默认“新对话”时写入。三条必做约束：
 
 - **按 `turn_id` upsert + 幂等**：以 `(conversation_id, turn_id)` 定位同一轮的行（`chat_message.turn_id` 已建唯一索引 `uk_chat_message_turn_id`），同一 `turn_id` 多次到达（重发/重试）不重复插入。
 - **状态不回退**：终态写入后不再被迟到/重投的 `GENERATING` 覆盖；重复终态视为重投跳过。
@@ -108,7 +110,7 @@ Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersis
 
 > **LINK-191 变更**：`llm_usage_log` 瘦身后已无 `conversation_id` / `message_id` / `request_id` / `fallback_config_id` 列，本载荷亦移除 `conversation_id` / `request_id`（旧上游若仍发，Java 反序列化忽略、不报错）；generate 用量行因此**无法回溯到具体对话**（有意为之）。
 
-Java 消费链路：`UsageReportKafkaReceiver` → `UsageReportConsumer` → `UsageReportPersistenceService`，每条上报 `INSERT llm_usage_log` 一行。
+Java 消费链路：`UsageReportKafkaReceiver`（从 Kafka header 恢复 `trace_id`）→ `UsageReportConsumer` → `UsageReportPersistenceService`，每条上报 `INSERT llm_usage_log` 一行。
 
 可靠性边界：
 
@@ -139,6 +141,7 @@ topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `UsageReportMQ`
 - **删数据集**发 `dataset` 范围（仅 `dataset_id`）：Python 按 `dataset_id` 删该数据集名下全部衍生产物（`document_parse_file` / `document_parsed_log` 行 + OSS 清洗文件/Markdown/向量）；删超大数据集消息体恒定，不下发文件 id 列表。
 - **删文件**发 `file` 范围（`original_file_id`）：Python 按该 id 删对应衍生产物。
 - 发送时机：删除事务 afterCommit（回滚不发）。发送前完整性校验：`delete_type` 合法、`dataset_id`/`user_id` 非空、`file` 范围 `original_file_id` 非空，缺字段不投递。
+- 发送时 Java MQ 适配层会随消息附带 `X-Trace-Id` header（取当前 MDC `trace_id`），Python 消费端据此绑定日志上下文；payload 不新增 `trace_id` 字段。
 - 可靠性：Java 生产侧**尽力发**——发送失败仅告警留痕并吞掉、不影响已提交的删除，**无 DLQ、无对账兜底**（接受偶尔漏发，漏发的衍生产物为惰性垃圾、不影响活记录）。
-- 幂等：Python 按 id 删天然幂等（删二次 no-op、删不存在产物 no-op），故消息**不带去重/追踪字段**。
+- 幂等：Python 按 id 删天然幂等（删二次 no-op、删不存在产物 no-op），故 payload **不带去重/追踪字段**。
 - Python 侧消费与删除实现在另一仓库；发布需两端协调（点对点队列，消费端就绪前 producer 不单独上生产，避免无消费者积压）。

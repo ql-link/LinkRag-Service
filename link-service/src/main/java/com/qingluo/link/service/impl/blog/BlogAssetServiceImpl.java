@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
 import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.core.exception.BusinessException;
-import com.qingluo.link.core.log.AuditLog;
+import com.qingluo.link.observability.log.AuditLog;
 import com.qingluo.link.mapper.BlogAssetMapper;
 import com.qingluo.link.mapper.BlogPostMapper;
 import com.qingluo.link.model.dto.entity.BlogAsset;

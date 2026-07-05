@@ -3,7 +3,7 @@ package com.qingluo.link.service.impl;
 import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.core.exception.ConflictException;
-import com.qingluo.link.core.log.AuditLog;
+import com.qingluo.link.observability.log.AuditLog;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.LoginRequest;

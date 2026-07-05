@@ -49,4 +49,5 @@ python3 scripts/check_skills.py
 ## Skill 与项目结构
 
 - 改 / 增 skill 后跑 `check_skills.py`；skill 清单与治理见 [.ai/skills/README.md](../.ai/skills/README.md)
+- 当前主模块边界见 [internals/project_structure.md](internals/project_structure.md)；横向可观测能力独立在 `link-observability`，不要再把 trace/access/audit 新代码塞回 `link-core`
 - 非 docs 目录结构变动（新增模块、迁脚本等）同步 `AGENTS.md` 的结构树（`agents-tree-sync` skill）

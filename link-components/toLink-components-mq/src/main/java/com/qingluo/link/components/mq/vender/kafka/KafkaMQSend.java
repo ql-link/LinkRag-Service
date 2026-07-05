@@ -2,8 +2,14 @@ package com.qingluo.link.components.mq.vender.kafka;
 
 import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
+import com.qingluo.link.observability.trace.TraceHeaders;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.internals.RecordHeader;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.util.Assert;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
  * Kafka implementation hidden behind the business-facing MQSend contract.
@@ -19,7 +25,10 @@ public class KafkaMQSend implements MQSend {
     @Override
     public void send(AbstractMQ abstractMQ) {
         validate(abstractMQ);
-        kafkaTemplate.send(abstractMQ.getMQName(), abstractMQ.getMessage());
+        ProducerRecord<String, String> record =
+                new ProducerRecord<>(abstractMQ.getMQName(), abstractMQ.getMessage());
+        addHeaders(record, TraceHeaders.withCurrentTrace(abstractMQ.getHeaders()));
+        kafkaTemplate.send(record);
     }
 
     @Override
@@ -33,5 +42,10 @@ public class KafkaMQSend implements MQSend {
         Assert.hasText(abstractMQ.getMQName(), "Kafka topic must not be blank");
         Assert.notNull(abstractMQ.getMQType(), "MQ type must not be null");
         Assert.notNull(abstractMQ.getMessage(), "MQ message must not be null");
+    }
+
+    private void addHeaders(ProducerRecord<String, String> record, Map<String, String> headers) {
+        headers.forEach((name, value) ->
+                record.headers().add(new RecordHeader(name, value.getBytes(StandardCharsets.UTF_8))));
     }
 }

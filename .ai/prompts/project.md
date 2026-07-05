@@ -19,6 +19,7 @@
 | Mapper | `link-mapper/src/main/java/com/qingluo/link/mapper` |
 | Redis / MQ / OSS 组件 | `link-components/` |
 | 全局异常、认证上下文、工具类 | `link-core/src/main/java/com/qingluo/link/core` |
+| 链路追踪、访问日志、审计日志 | `link-observability/src/main/java/com/qingluo/link/observability` |
 | 数据库脚本 | `scripts/db/schema.sql`、`scripts/db/init.sql` |
 
 ### 1.2 常用命令
@@ -47,6 +48,7 @@ python3 scripts/check_docs_sync.py --working
 | 模块 | 职责 |
 | --- | --- |
 | `link-model` | Entity、请求/响应 DTO、枚举、统一响应模型 |
+| `link-observability` | trace_id 上下文、HTTP Trace Filter、MDC 透传、MQ trace header 工具、访问日志、审计日志 |
 | `link-core` | 异常体系、全局异常处理、认证上下文、加密与基础工具 |
 | `link-components` | Redis、MQ、OSS 等横向组件 |
 | `link-mapper` | MyBatis-Plus Mapper |
@@ -71,6 +73,7 @@ toLink-Service/
 ├── link-service/            业务逻辑（用户 / LLM 配置 / 数据集 / 知识文件 / 解析任务 / 用量）
 ├── link-model/              Entity、请求/响应 DTO、枚举、统一响应模型
 ├── link-mapper/             MyBatis-Plus Mapper
+├── link-observability/      trace_id、访问日志、审计日志
 ├── link-core/               异常体系、全局异常处理、认证上下文、加密与工具
 ├── link-components/         横向组件
 │   ├── toLink-components-mq/     MQ 抽象与多厂商适配

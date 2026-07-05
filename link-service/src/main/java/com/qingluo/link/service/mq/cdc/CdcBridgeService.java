@@ -2,7 +2,7 @@ package com.qingluo.link.service.mq.cdc;
 
 import com.alibaba.fastjson.JSON;
 import com.qingluo.link.components.mq.MQSend;
-import com.qingluo.link.core.trace.TraceContext;
+import com.qingluo.link.observability.trace.TraceContext;
 import com.qingluo.link.service.mq.CacheCompensationMQ;
 import com.qingluo.link.service.mq.cdc.CdcCacheEvictMapping.MappingRule;
 import lombok.RequiredArgsConstructor;

@@ -29,7 +29,7 @@ public class PrivateFileResolver {
     }
 
     public File getPrivateFile(OssSavePlaceEnum place, String objectKey) {
-        Path target = resolvePrivatePath(objectKey);
+        Path target = resolvePath(place, objectKey);
         if (Files.exists(target) || OssServiceTypeEnum.LOCAL.getServiceName().equals(ossProperties.getServiceType())) {
             return target.toFile();
         }
@@ -51,7 +51,7 @@ public class PrivateFileResolver {
     }
 
     public void evictPrivateFile(String objectKey) {
-        Path target = resolvePrivatePath(objectKey);
+        Path target = resolvePath(OssSavePlaceEnum.PRIVATE, objectKey);
         try {
             Files.deleteIfExists(target);
             Files.deleteIfExists(Path.of(target.toString() + ".notexists"));
@@ -59,11 +59,16 @@ public class PrivateFileResolver {
         }
     }
 
-    private Path resolvePrivatePath(String objectKey) {
+    private Path resolvePath(OssSavePlaceEnum place, String objectKey) {
         if (!StringUtils.hasText(objectKey)) {
             throw new IllegalArgumentException("Object key is blank");
         }
-        Path base = Path.of(ossProperties.getFilePrivatePath()).toAbsolutePath().normalize();
+        Path base = switch (place) {
+            case RAW -> Path.of(ossProperties.getFileRootPath(), "raw");
+            case PRIVATE -> Path.of(ossProperties.getFilePrivatePath());
+            case PUBLIC -> Path.of(ossProperties.getFilePublicPath());
+        };
+        base = base.toAbsolutePath().normalize();
         Path target = base.resolve(objectKey).normalize();
         if (!target.startsWith(base)) {
             throw new IllegalArgumentException("Illegal object key: " + objectKey);

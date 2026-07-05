@@ -24,8 +24,10 @@ mvn -pl link-service test
 
 ## 日志与可观测测试
 
-- 链路追踪/访问/审计组件在 `link-core/src/test/java/com/qingluo/link/core/` 下用纯 JUnit/Mockito + `MockHttpServletRequest/Response` 承接：`trace/TraceContextTest`（traceId 生成、白名单防注入、MDC 读写清理）、`trace/TraceIdFilterTest`（复用/新建/注入拒绝/响应头/请求后清理）、`trace/MdcTaskDecoratorTest`（透传与执行后清理，含异常路径）、`web/AccessLogFilterTest`（放行/不吞异常/文档静态路径跳过）、`log/AuditLogTest`（写入 `AUDIT` logger + `action=` 前缀 + 占位渲染，用 logback `ListAppender` 断言）。
-- 审计埋点调用 `AuthContext.getCurrentUserId()` 取操作人，该方法在无 Web 上下文/未登录时降级返回 `null`（不抛异常），故 Service 纯单测无需搭建 sa-token 上下文。
+- 链路追踪/访问/审计组件在 `link-observability/src/test/java/com/qingluo/link/observability/` 下用纯 JUnit/Mockito + `MockHttpServletRequest/Response` 承接：`trace/TraceContextTest`（trace_id 生成、白名单防注入、MDC 主键 `trace_id` 与旧 `traceId` 兼容双写、读写清理）、`trace/TraceIdFilterTest`（复用/新建/注入拒绝/响应头/请求后清理）、`trace/MdcTaskDecoratorTest`（透传与执行后清理，含异常路径）、`web/AccessLogFilterTest`（放行/不吞异常/文档静态路径跳过）、`log/AuditLogTest`（写入 `AUDIT` logger + `action=` 前缀 + 占位渲染，用 logback `ListAppender` 断言）。
+- 管理端日志查询代理测试分层：`link-service` 的 `LokiLogQueryBuilderTest` 覆盖 service/level/trace_id/keyword 安全 LogQL，`LokiLogParserTest` 覆盖 Java JSON Lines、Python Loguru `serialize=True` 与非 JSON 原始行，`AdminLogQueryServiceImplTest` 覆盖 Loki labels 正常/异常兜底；`link-api` 的 `AdminLogControllerTest` 覆盖 ADMIN 可访问、普通 USER 403 和 snake_case 响应字段。
+- MQ trace header 测试：`toLink-components-mq` 的 `KafkaMQSendTest` 覆盖发送时从 MDC 写入 `X-Trace-Id` header 且显式 header 不被覆盖；`link-service` 的 `KafkaTraceHeadersTest` 覆盖 Python header 别名读取，`ChatTurnKafkaReceiverTest` / `UsageReportKafkaReceiverTest` 覆盖 Kafka header 恢复到 MDC 后再进入业务 receiver，并在 finally 清理。
+- 审计埋点调用 `AuthContext.getCurrentUserId()` 取操作人，该方法在无 Web 上下文/未登录时降级返回 `null`（不抛异常），故 Service 纯单测无需搭建 sa-token 上下文；访问日志的用户 ID 通过 `link-core` 的 `AuthCurrentUserProvider` 桥接到 `link-observability`，观测模块自身不依赖 Sa-Token。
 
 ## Spec-as-Test 要求
 

@@ -122,7 +122,7 @@ class CdcBridgeServiceTest {
     @DisplayName("消息字段完整：event_id/source_table/operation_type/occurred_at/trace_id 齐全且过 validate")
     void payloadFieldsComplete() {
         // 模拟 Receiver 已 startNew 的 MDC traceId，验证 buildPayload 正确取用，锁住 acceptance「trace_id 非空」
-        org.slf4j.MDC.put(com.qingluo.link.core.trace.TraceContext.TRACE_ID_KEY, "trace-xyz");
+        org.slf4j.MDC.put(com.qingluo.link.observability.trace.TraceContext.TRACE_ID_KEY, "trace-xyz");
         try {
             service.handle(canal("sys_user", "UPDATE", row("id", "100")));
 
@@ -134,7 +134,7 @@ class CdcBridgeServiceTest {
             assertThat(p.getOccurredAt()).isNotBlank();
             assertThat(p.getTraceId()).isEqualTo("trace-xyz");
         } finally {
-            org.slf4j.MDC.remove(com.qingluo.link.core.trace.TraceContext.TRACE_ID_KEY);
+            org.slf4j.MDC.remove(com.qingluo.link.observability.trace.TraceContext.TRACE_ID_KEY);
         }
     }
 
