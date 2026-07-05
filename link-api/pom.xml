@@ -18,6 +18,13 @@
     </properties>
 
     <dependencies>
+        <!-- link-observability -->
+        <dependency>
+            <groupId>com.qingluo</groupId>
+            <artifactId>link-observability</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- link-core -->
         <dependency>
             <groupId>com.qingluo</groupId>
@@ -36,6 +43,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- JSON logback encoder for Java/Python unified log collection -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
         </dependency>
 
         <!-- Spring Boot Starter Validation -->

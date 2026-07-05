@@ -3,7 +3,7 @@ package com.qingluo.link.service.impl.document;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
-import com.qingluo.link.core.trace.TraceContext;
+import com.qingluo.link.observability.trace.TraceContext;
 import com.qingluo.link.service.config.DocumentUploadAsyncProperties;
 import java.time.LocalDateTime;
 import java.util.List;

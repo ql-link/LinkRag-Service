@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  日志配置：控制台 + 按天滚动文件。
-  - 当天日志写入 ${LOG_PATH}/${appName}.log；跨天后自动归档为 ${appName}-yyyy-MM-dd.log。
+  日志配置：控制台 + 按天滚动 JSON Lines 文件。
+  - 当天日志写入 ${LOG_PATH}/yyyy-MM-dd/${appName}.log。
   - error 级别额外单独落一份按天滚动文件，便于排查 500 等系统异常。
+  - 输出字段与 Python 端日志追踪约定对齐：time / level / service / host / pid / trace_id / logger_name / message / exception。
   - 日志级别仍由 application.yml 的 logging.level 控制（Spring Boot 在此基础上叠加生效）。
   - 日志目录可用环境变量 LOG_PATH 覆盖（默认 logs）。
 -->
@@ -10,14 +11,23 @@
 
     <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="tolink-service"/>
     <property name="LOG_PATH" value="${LOG_PATH:-logs}"/>
-    <property name="PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level ${PID:- } --- [%thread] [%X{traceId:-}] %logger{40} : %msg%n"/>
 
     <!-- 控制台 -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>${PATTERN}</pattern>
-            <charset>UTF-8</charset>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <timestamp>time</timestamp>
+                <version>[ignore]</version>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <logger>logger_name</logger>
+                <thread>[ignore]</thread>
+                <message>message</message>
+                <stackTrace>exception</stackTrace>
+            </fieldNames>
+            <includeContext>false</includeContext>
+            <includeMdcKeyName>trace_id</includeMdcKeyName>
+            <customFields>{"service":"${appName}","host":"${HOSTNAME:-unknown}","pid":"${PID:-}"}</customFields>
         </encoder>
     </appender>
 
@@ -29,9 +39,20 @@
             <totalSizeCap>5GB</totalSizeCap>
             <cleanHistoryOnStart>false</cleanHistoryOnStart>
         </rollingPolicy>
-        <encoder>
-            <pattern>${PATTERN}</pattern>
-            <charset>UTF-8</charset>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <timestamp>time</timestamp>
+                <version>[ignore]</version>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <logger>logger_name</logger>
+                <thread>[ignore]</thread>
+                <message>message</message>
+                <stackTrace>exception</stackTrace>
+            </fieldNames>
+            <includeContext>false</includeContext>
+            <includeMdcKeyName>trace_id</includeMdcKeyName>
+            <customFields>{"service":"${appName}","host":"${HOSTNAME:-unknown}","pid":"${PID:-}"}</customFields>
         </encoder>
     </appender>
 
@@ -47,9 +68,20 @@
             <maxHistory>7</maxHistory>
             <totalSizeCap>2GB</totalSizeCap>
         </rollingPolicy>
-        <encoder>
-            <pattern>${PATTERN}</pattern>
-            <charset>UTF-8</charset>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <timestamp>time</timestamp>
+                <version>[ignore]</version>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <logger>logger_name</logger>
+                <thread>[ignore]</thread>
+                <message>message</message>
+                <stackTrace>exception</stackTrace>
+            </fieldNames>
+            <includeContext>false</includeContext>
+            <includeMdcKeyName>trace_id</includeMdcKeyName>
+            <customFields>{"service":"${appName}","host":"${HOSTNAME:-unknown}","pid":"${PID:-}"}</customFields>
         </encoder>
     </appender>
 

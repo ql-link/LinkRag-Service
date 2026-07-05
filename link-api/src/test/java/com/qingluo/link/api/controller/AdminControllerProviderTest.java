@@ -4,18 +4,25 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
+import com.qingluo.link.service.cache.UserCacheService;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -83,6 +90,9 @@ class AdminControllerProviderTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @MockBean
+    private UserCacheService userCacheService;
+
     /**
      * 管理员用户 ID
      */
@@ -97,6 +107,14 @@ class AdminControllerProviderTest {
      * 管理员登录令牌
      */
     private String adminToken;
+
+    @BeforeEach
+    void setupUserCacheMock() {
+        given(userCacheService.getOrLoad(anyLong(), any())).willAnswer(invocation -> {
+            Supplier<UserProfileDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
+    }
 
     /**
      * 测试前置准备：插入管理员和测试厂商
@@ -176,7 +194,7 @@ class AdminControllerProviderTest {
                 "\"iconObjectKey\":\"providerIcon/google-new.png\"," +
                 "\"apiBaseUrl\":\"https://generativelanguage.googleapis.com/v1beta\"," +
                 "\"defaultProtocol\":\"google\"," +
-                "\"isActive\":true," +
+                "\"isActive\":false," +
                 "\"priority\":80" +
                 "}";
 

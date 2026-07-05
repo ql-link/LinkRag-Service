@@ -8,7 +8,13 @@ import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
 @MapperScan("com.qingluo.link.mapper")
-@ComponentScan({"com.qingluo.link.service", "com.qingluo.link.core", "com.qingluo.link.components", "com.qingluo.link.api"})
+@ComponentScan({
+        "com.qingluo.link.service",
+        "com.qingluo.link.core",
+        "com.qingluo.link.observability",
+        "com.qingluo.link.components",
+        "com.qingluo.link.api"
+})
 public class LinkApplication {
 
     public static void main(String[] args) {

@@ -109,12 +109,13 @@ LinkRag 由三个仓库协作组成：
 LinkRag-Service 是 Maven 多模块项目，依赖自上而下逐层复用：
 
 ```text
-link-api         # Controller 与 Spring Boot 启动入口
-link-service     # 核心业务服务（用户 / 配置 / 数据集 / 文件 / 解析 / 用量 / 召回 / 缓存补偿）
-link-mapper      # MyBatis-Plus Mapper
-link-components  # Redis / MQ / OSS 横向组件
-link-core        # 异常体系、全局异常处理、认证上下文、加密与基础工具
-link-model       # Entity、请求 / 响应 DTO、枚举、统一响应模型
+link-api           # Controller 与 Spring Boot 启动入口
+link-service       # 核心业务服务（用户 / 配置 / 数据集 / 文件 / 解析 / 用量 / 召回 / 缓存补偿）
+link-mapper        # MyBatis-Plus Mapper
+link-components    # Redis / MQ / OSS 横向组件
+link-observability # trace_id、访问日志、审计日志
+link-core          # 异常体系、全局异常处理、认证上下文、加密与基础工具
+link-model         # Entity、请求 / 响应 DTO、枚举、统一响应模型
 ```
 
 两端协作的四条共享通道与详细边界，见内部文档：
@@ -138,9 +139,12 @@ link-model       # Entity、请求 / 响应 DTO、枚举、统一响应模型
 | 缓存 | Redis / Lettuce |
 | MQ | Kafka / RabbitMQ 组件抽象（默认 Kafka） |
 | 文件 | 本地存储 / MinIO OSS 组件 |
+| 日志 | Logback + logstash-logback-encoder（JSON Lines） |
+| 可观测 | `link-observability`（trace_id / AccessLog / AuditLog） |
 | 测试 | JUnit 5、Mockito、SpringBootTest、MockMvc |
 
 > MinIO 8.5.x 依赖 OkHttp 4.x API，根 `pom.xml` 已统一锁定 OkHttp `4.12.0` / Okio `3.6.0`，避免被 Spring Boot 2.5 的默认依赖管理降级到 OkHttp 3.x。
+> Java 端日志经 `logstash-logback-encoder` 输出 JSON Lines，`link-observability` 统一提供 `trace_id`、访问日志与审计日志，顶层 `trace_id` 与 Python 端 `X-Trace-Id` 追踪口径对齐。
 
 ## 快速开始
 

@@ -1,9 +1,11 @@
 package com.qingluo.link.service.mq.cdc;
 
 import com.qingluo.link.components.mq.MQMsgReceiver;
-import com.qingluo.link.core.trace.TraceContext;
+import com.qingluo.link.observability.trace.TraceContext;
 import com.qingluo.link.service.mq.config.CdcBridgeKafkaConfig;
+import com.qingluo.link.service.mq.kafka.KafkaTraceHeaders;
 import lombok.RequiredArgsConstructor;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -23,12 +25,20 @@ public class CdcBridgeKafkaReceiver implements MQMsgReceiver {
     private final CdcBridgeService cdcBridgeService;
 
     @Override
+    public void receive(String msg) {
+        receiveWithTrace(msg, null);
+    }
+
     @KafkaListener(
             topics = "${tolink.cache-consistency.cdc.source-topic}",
             groupId = "${tolink.cache-consistency.cdc.group-id:tolink-cdc-bridge}",
             containerFactory = "cdcBridgeKafkaListenerContainerFactory")
-    public void receive(String msg) {
-        TraceContext.startNew();
+    public void receive(ConsumerRecord<String, String> record) {
+        receiveWithTrace(record.value(), KafkaTraceHeaders.traceId(record.headers()));
+    }
+
+    private void receiveWithTrace(String msg, String inboundTraceId) {
+        TraceContext.start(inboundTraceId);
         try {
             cdcBridgeService.handle(msg);
         } finally {

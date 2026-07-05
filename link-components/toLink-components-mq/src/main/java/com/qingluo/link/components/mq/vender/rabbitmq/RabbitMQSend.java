@@ -4,9 +4,13 @@ import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.constant.MQProperties;
 import com.qingluo.link.components.mq.MQSend;
 import com.qingluo.link.components.mq.constant.MQSendType;
-import java.util.Objects;
+import com.qingluo.link.observability.trace.TraceHeaders;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.util.Assert;
+
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * RabbitMQ implementation hidden behind the business-facing MQSend contract.
@@ -24,14 +28,16 @@ public class RabbitMQSend implements MQSend {
     @Override
     public void send(AbstractMQ abstractMQ) {
         validate(abstractMQ);
+        MessagePostProcessor headers = headersPostProcessor(abstractMQ);
         if (Objects.equals(MQSendType.BROADCAST, abstractMQ.getMQType())) {
             rabbitTemplate.convertAndSend(
                     mqProperties.getFanoutExchangeNamePrefix() + abstractMQ.getMQName(),
                     "",
-                    abstractMQ.getMessage());
+                    abstractMQ.getMessage(),
+                    headers);
             return;
         }
-        rabbitTemplate.convertAndSend(abstractMQ.getMQName(), abstractMQ.getMessage());
+        rabbitTemplate.convertAndSend("", abstractMQ.getMQName(), abstractMQ.getMessage(), headers);
     }
 
     @Override
@@ -50,6 +56,8 @@ public class RabbitMQSend implements MQSend {
                 abstractMQ.getMQName(),
                 abstractMQ.getMessage(),
                 message -> {
+                    TraceHeaders.withCurrentTrace(abstractMQ.getHeaders())
+                            .forEach((name, value) -> message.getMessageProperties().setHeader(name, value));
                     message.getMessageProperties().setDelay(Math.toIntExact(delay * 1000L));
                     return message;
                 });
@@ -60,5 +68,13 @@ public class RabbitMQSend implements MQSend {
         Assert.hasText(abstractMQ.getMQName(), "MQ name must not be blank");
         Assert.notNull(abstractMQ.getMQType(), "MQ type must not be null");
         Assert.notNull(abstractMQ.getMessage(), "MQ message must not be null");
+    }
+
+    private MessagePostProcessor headersPostProcessor(AbstractMQ abstractMQ) {
+        Map<String, String> headers = TraceHeaders.withCurrentTrace(abstractMQ.getHeaders());
+        return message -> {
+            headers.forEach((name, value) -> message.getMessageProperties().setHeader(name, value));
+            return message;
+        };
     }
 }

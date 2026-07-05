@@ -3,7 +3,7 @@ package com.qingluo.link.service.impl.admin;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qingluo.link.core.exception.NotFoundException;
-import com.qingluo.link.core.log.AuditLog;
+import com.qingluo.link.observability.log.AuditLog;
 import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;

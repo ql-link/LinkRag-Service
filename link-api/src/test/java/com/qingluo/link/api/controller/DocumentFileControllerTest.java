@@ -335,8 +335,8 @@ class DocumentFileControllerTest {
         Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
         String objectKey = jdbcTemplate.queryForObject(
             "SELECT object_key FROM document_original_file WHERE id = ?", String.class, fileId);
-        Path privateFile = Path.of("/tmp/tolink-document-file-test/private").resolve(objectKey);
-        assertThat(Files.exists(privateFile)).isTrue();
+        Path rawFile = Path.of("/tmp/tolink-document-file-test/raw").resolve(objectKey);
+        assertThat(Files.exists(rawFile)).isTrue();
 
         mockMvc.perform(get("/api/v1/datasets/{datasetId}/files", datasetId)
                 .header("satoken", token))
@@ -352,7 +352,7 @@ class DocumentFileControllerTest {
             .andExpect(jsonPath("$.code").value(200));
 
         // 隐性删除：保留 OSS 原文件对象（不物理删、不清缓存）
-        assertThat(Files.exists(privateFile)).isTrue();
+        assertThat(Files.exists(rawFile)).isTrue();
 
         // 原文件行软删保留：物理存在但对列表不可见
         Integer physicalCount = jdbcTemplate.queryForObject(
