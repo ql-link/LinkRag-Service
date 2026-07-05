@@ -12,8 +12,9 @@ services:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       # 让 Spring 额外加载挂载进来的外部配置，优先级高于 jar 内打包的同名文件
       - SPRING_CONFIG_ADDITIONAL_LOCATION=file:/app/config/
-      # 管理端日志查询代理访问 Loki；默认走宿主机 3100 端口，可覆盖为同网络内的 http://tolink-loki:3100
-      - OBSERVABILITY_LOKI_BASE_URL=${OBSERVABILITY_LOKI_BASE_URL:-http://host.docker.internal:3100}
+      - RECALL_SESSION_STREAM_BASE_URL=${RECALL_SESSION_STREAM_BASE_URL:-http://117.72.214.40:8000}
+      # 管理端日志查询代理访问 Loki；云服务器默认走主机 VPN 地址，可覆盖为同网络内的 http://tolink-loki:3100
+      - OBSERVABILITY_LOKI_BASE_URL=${OBSERVABILITY_LOKI_BASE_URL:-http://${HOST_VPN_IP:-100.86.10.52}:3100}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

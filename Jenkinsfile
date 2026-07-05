@@ -11,6 +11,9 @@ pipeline {
         IMAGE      = 'tolink-service'
         TAG        = "${env.GIT_COMMIT?.take(8) ?: env.BUILD_NUMBER}"
         DEPLOY_DIR = '/opt/tolink/toLink-Service'   // TODO: 本机部署目录，内含 .env 和 deploy/docker-compose.yml
+        HOST_VPN_IP = '100.86.10.52'
+        RECALL_SESSION_STREAM_BASE_URL = 'http://117.72.214.40:8000'
+        OBSERVABILITY_LOKI_BASE_URL = 'http://100.86.10.52:3100'
     }
 
     stages {
@@ -44,6 +47,9 @@ pipeline {
                 sh """
                     cd ${DEPLOY_DIR}
                     export TAG=${TAG} SPRING_PROFILES_ACTIVE=prod
+                    export HOST_VPN_IP=${HOST_VPN_IP}
+                    export RECALL_SESSION_STREAM_BASE_URL=${RECALL_SESSION_STREAM_BASE_URL}
+                    export OBSERVABILITY_LOKI_BASE_URL=${OBSERVABILITY_LOKI_BASE_URL}
                     docker compose -f deploy/docker-compose.yml up -d
                 """
             }
