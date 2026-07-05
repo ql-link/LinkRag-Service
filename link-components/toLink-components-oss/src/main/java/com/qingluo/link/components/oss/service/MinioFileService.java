@@ -149,6 +149,10 @@ public class MinioFileService implements IOssService {
     }
 
     private String buildPublicUrl(String bucket, String objectKey) {
+        String publicBaseUrl = normalizePublicBaseUrl();
+        if (StringUtils.hasText(publicBaseUrl)) {
+            return publicBaseUrl + "/" + objectKey;
+        }
         return normalizeEndpoint() + "/" + bucket + "/" + objectKey;
     }
 
@@ -201,5 +205,16 @@ public class MinioFileService implements IOssService {
             endpoint = endpoint.substring(0, endpoint.length() - 1);
         }
         return endpoint;
+    }
+
+    private String normalizePublicBaseUrl() {
+        String publicBaseUrl = ossProperties.getPublicBaseUrl();
+        if (!StringUtils.hasText(publicBaseUrl)) {
+            return null;
+        }
+        while (publicBaseUrl.endsWith("/")) {
+            publicBaseUrl = publicBaseUrl.substring(0, publicBaseUrl.length() - 1);
+        }
+        return publicBaseUrl;
     }
 }

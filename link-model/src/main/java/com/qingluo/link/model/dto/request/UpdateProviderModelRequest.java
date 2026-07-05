@@ -19,7 +19,7 @@ public class UpdateProviderModelRequest {
     @Schema(description = "能力标识，如 CHAT/EMBEDDING/SPARSE_EMBEDDING", example = "CHAT")
     private String capability;
 
-    @Schema(description = "调用协议，如 openai/anthropic/google/jina/dashscope", example = "openai")
+    @Schema(description = "调用协议，如 openai/anthropic/google/jina/dashscope/bge_m3/doubao_vision", example = "openai")
     private String protocol;
 
     @Schema(description = "调用入口完整端点 URL（google 等协议例外可存协议基地址）", example = "https://api.openai.com/v1/chat/completions")

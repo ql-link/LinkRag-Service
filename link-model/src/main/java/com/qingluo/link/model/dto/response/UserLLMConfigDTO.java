@@ -24,6 +24,9 @@ public class UserLLMConfigDTO {
     @Schema(description = "厂商类型", example = "openai")
     private String providerType;
 
+    @Schema(description = "厂商图标 URL；LinkRag 只读项来自系统厂商表", example = "https://minio.example/tolink-public/providerIcon/linkrag.png")
+    private String iconUrl;
+
     @Schema(description = "模型名称", example = "gpt-4")
     private String modelName;
 

@@ -288,11 +288,17 @@ public class BlogPostServiceImpl implements BlogPostService {
 
     private Set<String> knownPublicUrls(Long postId) {
         Set<String> urls = new HashSet<>();
+        String publicBucket = ossService.getBucketName(OssSavePlaceEnum.PUBLIC);
         blogAssetMapper.selectList(new LambdaQueryWrapper<BlogAsset>()
                 .eq(BlogAsset::getPostId, postId))
             .forEach(asset -> {
                 if (StringUtils.hasText(asset.getPublicUrl())) {
                     urls.add(asset.getPublicUrl());
+                }
+                if (StringUtils.hasText(asset.getObjectKey())) {
+                    if (StringUtils.hasText(publicBucket)) {
+                        urls.add("/" + publicBucket + "/" + asset.getObjectKey());
+                    }
                 }
             });
         return urls;

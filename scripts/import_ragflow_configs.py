@@ -91,10 +91,11 @@ SKIP_STEMS: set[str] = {
 #   - 模型层 llm_provider_model.api_base_url   = 「完整端点 URL」，Python 执行端直打、不再拼后缀。
 #     完整 URL = 基地址 + (protocol, capability) 端点后缀；google 全能力 / dashscope ASR 为例外（保留 base）。
 
-# 14 家重点厂商（is_active=TRUE），其余厂商整体 is_active=FALSE。
+# 17 家重点厂商（is_active=TRUE），其余厂商整体 is_active=FALSE。
 ACTIVE_PROVIDER_TYPES: set[str] = {
     "openai", "claude", "gemini", "xai", "aliyun", "deepseek", "glm",
-    "moonshot", "volcengine", "baidu", "hunyuan", "baichuan", "xunfei", "jina",
+    "moonshot", "volcengine", "hunyuan", "minimax", "jina",
+    "mimo", "huggingface", "openrouter", "siliconflow",
 }
 
 # 厂商层默认协议（provider_url_seed.md §1）。未列出的默认 openai。
@@ -106,7 +107,7 @@ PROVIDER_DEFAULT_PROTOCOL: dict[str, str] = {
 }
 
 # 厂商层默认 api_base_url（provider_url_seed.md §1）。
-# 仅 14 家重点厂商需要权威覆盖；未列出的沿用 RAGFlow 源 url.default。
+# 仅 17 家重点厂商需要权威覆盖；未列出的沿用 RAGFlow 源 url.default。
 PROVIDER_BASE_URL: dict[str, str] = {
     "openai":     "https://api.openai.com/v1",
     "claude":     "https://api.anthropic.com",
@@ -117,11 +118,13 @@ PROVIDER_BASE_URL: dict[str, str] = {
     "glm":        "https://open.bigmodel.cn/api/paas/v4",
     "moonshot":   "https://api.moonshot.cn/v1",
     "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
-    "baidu":      "https://qianfan.baidubce.com/v2",
     "hunyuan":    "https://api.hunyuan.cloud.tencent.com/v1",
-    "baichuan":   "https://api.baichuan-ai.com/v1",
-    "xunfei":     "https://spark-api-open.xf-yun.com/v1",
+    "minimax":    "https://api.minimaxi.com",
     "jina":       "https://api.jina.ai/v1",
+    "mimo":       "https://token-plan-cn.xiaomimimo.com/v1",
+    "huggingface": "https://router.huggingface.co/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "siliconflow": "https://api.siliconflow.cn/v1",
 }
 
 # 模型能力层 (provider_type, capability) → (protocol, api_base_url) 特例覆盖
@@ -131,6 +134,7 @@ MODEL_PROTOCOL_OVERRIDE: dict[tuple[str, str], tuple[str, str]] = {
     ("aliyun", "ASR"):    ("dashscope", "https://dashscope.aliyuncs.com/api/v1"),
     ("jina", "RERANK"):    ("jina", "https://api.jina.ai/v1"),
     ("jina", "EMBEDDING"): ("jina", "https://api.jina.ai/v1"),
+    ("volcengine", "SPARSE_EMBEDDING"): ("doubao_vision", "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"),
 }
 
 # (protocol, capability) → 端点后缀（拼在协议基地址后得到完整 URL）。
@@ -157,16 +161,16 @@ PROTOCOL_CAPABILITY_SUFFIX: dict[tuple[str, str], str | None] = {
     ("jina", "SPARSE_EMBEDDING"): "/embeddings",
     ("dashscope", "RERANK"): "/services/rerank/text-rerank/text-rerank",  # 千问原生嵌套 rerank
     ("dashscope", "ASR"):    None,                  # 例外：异步轮询，本期不做
+    ("bge_m3", "SPARSE_EMBEDDING"): None,           # 例外：本地 BGE-M3 服务直打完整 /encode
+    ("doubao_vision", "SPARSE_EMBEDDING"): None,    # 例外：火山多模态 embedding 端点直打
 }
 
 # 模型能力层 (provider_type, capability) → is_active=FALSE 的特例
 # （provider_url_seed.md §4 已决规则①④）。
 MODEL_INACTIVE: set[tuple[str, str]] = {
     ("deepseek", "EMBEDDING"),  # DeepSeek 无 embedding 端点
-    ("xunfei", "EMBEDDING"),    # 讯飞星火无 OpenAI 兼容 embedding 入口
     # 以下 rerank/chat 行所属厂商默认 openai/jina 协议，但该 (protocol, capability) 本期无可直打端点，
     # 下架避免目录暴露 Python 无法服务的组合（与上面「无兼容入口」同理）：
-    ("baidu", "RERANK"),  # 百度 rerank 非 OpenAI 兼容端点，本期未接入
     ("glm", "RERANK"),    # 智谱 rerank 非 OpenAI 兼容端点，本期未接入
     ("jina", "CHAT"),     # jina-vlm 被归为 CHAT，但 jina 协议本期只接 RERANK/EMBEDDING（未接入组合）
 }

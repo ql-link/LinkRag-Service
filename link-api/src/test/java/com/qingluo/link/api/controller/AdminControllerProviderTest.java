@@ -4,17 +4,25 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.entity.SystemProvider;
+import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
+import com.qingluo.link.service.cache.UserCacheService;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -82,6 +90,9 @@ class AdminControllerProviderTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @MockBean
+    private UserCacheService userCacheService;
+
     /**
      * 管理员用户 ID
      */
@@ -96,6 +107,14 @@ class AdminControllerProviderTest {
      * 管理员登录令牌
      */
     private String adminToken;
+
+    @BeforeEach
+    void setupUserCacheMock() {
+        given(userCacheService.getOrLoad(anyLong(), any())).willAnswer(invocation -> {
+            Supplier<UserProfileDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
+    }
 
     /**
      * 测试前置准备：插入管理员和测试厂商
@@ -125,6 +144,8 @@ class AdminControllerProviderTest {
         provider.setId(TEST_PROVIDER_ID);
         provider.setProviderType("google");
         provider.setProviderName("Google AI");
+        provider.setIconUrl("https://minio.example/tolink-public/providerIcon/google.png");
+        provider.setIconObjectKey("providerIcon/google.png");
         provider.setApiBaseUrl("https://generativelanguage.googleapis.com/v1");
         provider.setIsActive(true);
         provider.setPriority(80);
@@ -169,9 +190,11 @@ class AdminControllerProviderTest {
         String requestJson = "{" +
                 "\"providerType\":\"" + providerType + "\"," +
                 "\"providerName\":\"Google AI\"," +
+                "\"iconUrl\":\"https://minio.example/tolink-public/providerIcon/google-new.png\"," +
+                "\"iconObjectKey\":\"providerIcon/google-new.png\"," +
                 "\"apiBaseUrl\":\"https://generativelanguage.googleapis.com/v1beta\"," +
                 "\"defaultProtocol\":\"google\"," +
-                "\"isActive\":true," +
+                "\"isActive\":false," +
                 "\"priority\":80" +
                 "}";
 
@@ -181,6 +204,22 @@ class AdminControllerProviderTest {
                 .content(requestJson))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
+    @Order(2)
+    @DisplayName("上传厂商图标 - POST /api/v1/admin/providers/icon")
+    void Should_UploadProviderIcon_When_FileValid() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "provider.png", MediaType.IMAGE_PNG_VALUE, "provider-icon".getBytes());
+
+        mockMvc.perform(multipart("/api/v1/admin/providers/icon")
+                .file(file)
+                .header("satoken", adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.iconUrl").exists())
+            .andExpect(jsonPath("$.data.iconObjectKey").value(org.hamcrest.Matchers.startsWith("providerIcon/")));
     }
 
     /**
@@ -193,7 +232,7 @@ class AdminControllerProviderTest {
      * </ol>
      */
     @Test
-    @Order(2)
+    @Order(3)
     @DisplayName("获取厂商列表 - GET /api/v1/admin/providers")
     void Should_ReturnProviderList_When_ListProviders() throws Exception {
         mockMvc.perform(get("/api/v1/admin/providers")
@@ -202,7 +241,9 @@ class AdminControllerProviderTest {
                 .param("size", "10"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
-            .andExpect(jsonPath("$.data.items").isArray());
+            .andExpect(jsonPath("$.data.items").isArray())
+            .andExpect(jsonPath("$.data.items[?(@.providerType=='google')].iconUrl").isNotEmpty())
+            .andExpect(jsonPath("$.data.items[?(@.providerType=='google')].iconObjectKey").isNotEmpty());
     }
 
     /**
@@ -225,7 +266,7 @@ class AdminControllerProviderTest {
      * </ul>
      */
     @Test
-    @Order(3)
+    @Order(4)
     @DisplayName("更新厂商 - PATCH /api/v1/admin/providers/{id}")
     void Should_UpdateProvider_When_DataValid() throws Exception {
         String requestJson = "{\"providerName\":\"Google AI Updated\",\"priority\":90}";
@@ -254,7 +295,7 @@ class AdminControllerProviderTest {
      * <p>isActive: true → false（禁用该厂商）</p>
      */
     @Test
-    @Order(4)
+    @Order(5)
     @DisplayName("切换厂商启用状态 - PATCH /api/v1/admin/providers/{id}/active")
     void Should_ToggleProviderActive_When_DataValid() throws Exception {
         mockMvc.perform(patch("/api/v1/admin/providers/" + TEST_PROVIDER_ID + "/active")
@@ -280,7 +321,7 @@ class AdminControllerProviderTest {
      * <p>根据实现可能是物理删除或逻辑删除（is_deleted 标志）</p>
      */
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("删除厂商 - DELETE /api/v1/admin/providers/{id}")
     void Should_DeleteProvider_When_DataValid() throws Exception {
         mockMvc.perform(delete("/api/v1/admin/providers/" + TEST_PROVIDER_ID)
