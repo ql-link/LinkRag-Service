@@ -3,6 +3,8 @@ package com.qingluo.link.service.impl.document;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.qingluo.link.components.mq.MQSend;
+import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
+import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
@@ -21,7 +23,14 @@ import com.qingluo.link.model.dto.response.FileParseResultDTO;
 import com.qingluo.link.model.dto.response.FileParseSubmitDTO;
 import com.qingluo.link.service.DocumentParseTaskService;
 import com.qingluo.link.service.constant.ParsePipelineStatus;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetObjectKeys;
 import com.qingluo.link.service.mq.DocumentParseTaskMQ;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -68,6 +77,7 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
     private final DocumentParsedLogMapper documentParsedLogMapper;
     private final DocumentParsePipelineMapper documentParsePipelineMapper;
     private final ObjectProvider<MQSend> mqSendProvider;
+    private final IOssService ossService;
 
     /** 入口分类结果。RETRY 携带复用旧 Markdown 坐标与上一轮 task_id。 */
     private enum SubmitKind { FIRST, RETRY, REJECT, RUNNING }
@@ -88,7 +98,21 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
     @Override
     @Transactional
     public FileParseSubmitDTO submitManualParse(Long userId, Long fileId) {
+        return submitManualParse(userId, fileId, false);
+    }
+
+    @Override
+    @Transactional
+    public FileParseSubmitDTO submitManualParse(Long userId, Long fileId, boolean ignoreMissingAssets) {
         DocumentOriginalFile file = getOwnedUploadedFile(userId, fileId);
+        List<String> missingAssets = loadMissingAssets(file);
+        if (!ignoreMissingAssets && !missingAssets.isEmpty()) {
+            FileParseSubmitDTO dto = buildSubmitDTO(file);
+            dto.setFrontendStatus("asset_missing");
+            dto.setMissingAssets(missingAssets);
+            dto.setCanContinue(true);
+            return dto;
+        }
         DocumentParseFile parseFile = requireParseFile(fileId);
         Classification classification = classify(parseFile);
         switch (classification.kind()) {
@@ -376,7 +400,36 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
         dto.setFileId(file.getId());
         dto.setOriginalFilename(file.getOriginalFilename());
         dto.setFrontendStatus("parsing");
+        dto.setCanContinue(false);
+        dto.setMissingAssets(List.of());
         return dto;
+    }
+
+    private List<String> loadMissingAssets(DocumentOriginalFile file) {
+        if (!MarkdownAssetObjectKeys.isMarkdown(file.getFileSuffix())) {
+            return List.of();
+        }
+        String manifestKey = MarkdownAssetObjectKeys.manifestKey(file.getUserId(), file.getDatasetId(), file.getId());
+        Path temp = null;
+        try {
+            temp = Files.createTempFile("tolink-md-assets-manifest-", ".json");
+            if (!ossService.downloadFile(OssSavePlaceEnum.RAW, manifestKey, temp.toString())) {
+                return List.of();
+            }
+            JSONObject manifest = JSON.parseObject(Files.readString(temp, StandardCharsets.UTF_8));
+            JSONArray missing = manifest == null ? null : manifest.getJSONArray("missingAssets");
+            return missing == null ? List.of() : missing.toJavaList(String.class);
+        } catch (Exception e) {
+            log.warn("Read markdown asset manifest failed, fileId={}, manifestKey={}", file.getId(), manifestKey, e);
+            return List.of();
+        } finally {
+            if (temp != null) {
+                try {
+                    Files.deleteIfExists(temp);
+                } catch (Exception ignored) {
+                }
+            }
+        }
     }
 
     private DocumentParsedLog findLogByTaskId(String taskId) {

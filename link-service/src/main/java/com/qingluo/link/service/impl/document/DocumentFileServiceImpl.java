@@ -20,11 +20,19 @@ import com.qingluo.link.service.DocumentFileRuntimeConfigService;
 import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import com.qingluo.link.service.config.DocumentFileProperties;
 import com.qingluo.link.service.config.DocumentFileRuntimeConfig;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetNormalizer;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetObjectKeys;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetPathNormalizer;
+import com.qingluo.link.service.impl.document.markdown.MarkdownUploadBundle;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -56,6 +64,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
     private final DocumentFileRuntimeConfigService documentFileRuntimeConfigService;
     private final DocumentUploadAsyncExecutor asyncExecutor;
     private final DocumentUploadTempStorage tempStorage;
+    private final MarkdownAssetNormalizer markdownAssetNormalizer;
 
     @Override
     @Transactional
@@ -64,6 +73,13 @@ public class DocumentFileServiceImpl implements DocumentFileService {
      * OSS 上传、终态回写与（parseImmediately 时的）解析投递在事务提交后于专用线程池异步完成。
      */
     public DocumentFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately) {
+        return upload(userId, datasetId, file, parseImmediately, null, null);
+    }
+
+    @Override
+    @Transactional
+    public DocumentFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately,
+                                  List<MultipartFile> assets, List<String> assetRelativePaths) {
         assertOwnedDataset(userId, datasetId);
         assertFilePresent(file);
 
@@ -85,9 +101,34 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
         }
 
+        MarkdownUploadBundle markdownBundle = null;
         String objectKey = buildObjectKey(userId, datasetId, originalFilename);
+        if (MarkdownAssetObjectKeys.isMarkdown(suffix)) {
+            List<Path> tempAssets = new ArrayList<>();
+            try {
+                Map<String, Path> assetTempFiles = markdownAssetNormalizer.materializedAssetPaths(
+                    assets, assetRelativePaths, asset -> materializeAsset(asset, tempAssets));
+                markdownBundle = markdownAssetNormalizer.prepare(new MarkdownAssetNormalizer.PrepareCommand(
+                    userId,
+                    datasetId,
+                    record.getId(),
+                    originalFilename,
+                    tempFile,
+                    assets,
+                    assetRelativePaths,
+                    assetTempFiles,
+                    normalizeBaseUrl(properties.getInternalBaseUrl())
+                )).bundle();
+                objectKey = markdownBundle.normalizedObjectKey();
+            } catch (RuntimeException e) {
+                tempStorage.delete(tempFile);
+                tempAssets.forEach(tempStorage::delete);
+                throw e;
+            }
+        }
         DocumentUploadAsyncExecutor.UploadTask task = new DocumentUploadAsyncExecutor.UploadTask(
-            record.getId(), tempFile, objectKey, file.getContentType(), parseImmediately, userId);
+            record.getId(), tempFile, objectKey, file.getContentType(), parseImmediately, userId, markdownBundle);
+        MarkdownUploadBundle bundleForCleanup = markdownBundle;
 
         // 事务提交后再提交异步任务，确保池线程能看到已提交的 uploading 记录；
         // 若事务回滚（如后续异常）则清理已物化的临时文件，避免泄漏。
@@ -103,6 +144,7 @@ public class DocumentFileServiceImpl implements DocumentFileService {
                 public void afterCompletion(int status) {
                     if (status != TransactionSynchronization.STATUS_COMMITTED) {
                         tempStorage.delete(tempFile);
+                        cleanupBundle(bundleForCleanup);
                     }
                 }
             });
@@ -110,6 +152,27 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             asyncExecutor.submit(task);
         }
         return toDTO(record);
+    }
+
+    private void cleanupBundle(MarkdownUploadBundle bundle) {
+        if (bundle == null) {
+            return;
+        }
+        tempStorage.delete(bundle.normalizedMarkdown());
+        tempStorage.delete(bundle.manifestFile());
+        for (MarkdownUploadBundle.AssetFile asset : bundle.assets()) {
+            tempStorage.delete(asset.tempFile());
+        }
+    }
+
+    private Path materializeAsset(MultipartFile asset, List<Path> tempAssets) {
+        try {
+            Path path = tempStorage.materialize(asset);
+            tempAssets.add(path);
+            return path;
+        } catch (IOException e) {
+            throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
+        }
     }
 
     /**
@@ -274,6 +337,37 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             throw new BusinessException(404, "文件不存在", 404);
         }
         return new DocumentFileDownloadResource(file, record.getOriginalFilename(), record.getContentType());
+    }
+
+    @Override
+    public DocumentFileDownloadResource openMarkdownAsset(Long fileId, String path) {
+        DocumentOriginalFile record = documentOriginalFileMapper.selectOne(new LambdaQueryWrapper<DocumentOriginalFile>()
+            .eq(DocumentOriginalFile::getId, fileId));
+        if (record == null || !Boolean.TRUE.equals(record.getIsUploadSuccess())) {
+            throw new BusinessException(404, "文件不存在", 404);
+        }
+        String normalizedPath = MarkdownAssetPathNormalizer.normalize(path);
+        String objectKey = MarkdownAssetObjectKeys.assetKey(
+            record.getUserId(), record.getDatasetId(), record.getId(), normalizedPath);
+        File file = privateFileResolver.getPrivateFile(OssSavePlaceEnum.RAW, objectKey);
+        if (!file.exists() || !file.isFile()) {
+            throw new BusinessException(404, "图片不存在", 404);
+        }
+        return new DocumentFileDownloadResource(file, assetFilename(normalizedPath), probeContentType(file.toPath()));
+    }
+
+    private String assetFilename(String normalizedPath) {
+        int index = normalizedPath.lastIndexOf('/');
+        return index >= 0 ? normalizedPath.substring(index + 1) : normalizedPath;
+    }
+
+    private String probeContentType(Path path) {
+        try {
+            String contentType = Files.probeContentType(path);
+            return StringUtils.hasText(contentType) ? contentType : "application/octet-stream";
+        } catch (IOException e) {
+            return "application/octet-stream";
+        }
     }
 
     /**

@@ -32,9 +32,13 @@ public class DocumentFileController {
     @SaCheckLogin
     public Result<DocumentFileDTO> upload(@PathVariable Long datasetId,
                                            @RequestParam("file") MultipartFile file,
-                                           @RequestParam(defaultValue = "false") boolean parseImmediately) {
+                                           @RequestParam(defaultValue = "false") boolean parseImmediately,
+                                           @RequestParam(value = "assets", required = false) List<MultipartFile> assets,
+                                           @RequestParam(value = "assetRelativePaths", required = false)
+                                           List<String> assetRelativePaths) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(documentFileService.upload(userId, datasetId, file, parseImmediately));
+        return Result.success(documentFileService.upload(
+            userId, datasetId, file, parseImmediately, assets, assetRelativePaths));
     }
 
     @GetMapping("/api/v1/datasets/{datasetId}/files")
@@ -64,9 +68,11 @@ public class DocumentFileController {
 
     @PostMapping("/api/v1/files/{fileId}/parse")
     @SaCheckLogin
-    public Result<FileParseSubmitDTO> createParseTask(@PathVariable Long fileId) {
+    public Result<FileParseSubmitDTO> createParseTask(@PathVariable Long fileId,
+                                                       @RequestParam(defaultValue = "false")
+                                                       boolean ignoreMissingAssets) {
         Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(documentParseTaskService.submitManualParse(userId, fileId));
+        return Result.success(documentParseTaskService.submitManualParse(userId, fileId, ignoreMissingAssets));
     }
 
     @DeleteMapping("/api/v1/files/{fileId}")

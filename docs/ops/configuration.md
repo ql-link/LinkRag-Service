@@ -146,8 +146,10 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
-| `DOCUMENT_FILE_INTERNAL_BASE_URL` | 内部服务访问地址 | 否 | `http://tolink-service:8080` | `http://localhost:8080` |
-| `DOCUMENT_FILE_SERVICE_TOKEN` | 内部服务 Token | 否 | 空 | `your-service-token-here` |
+| `DOCUMENT_FILE_INTERNAL_BASE_URL` | Python 访问 Java 的内部服务地址，用于原文件与 Markdown 配套图片内部 URL | 否 | `http://tolink-service:8080` | `http://localhost:8080` |
+| `DOCUMENT_FILE_SERVICE_TOKEN` | 现有内部原文件下载 Token；Markdown 图片内部读取首版不强制使用 | 否 | 空 | `your-service-token-here` |
+
+Markdown 配套图片内部 URL 依赖 `DOCUMENT_FILE_INTERNAL_BASE_URL` 拼装，接口首版不做复杂鉴权，部署时必须通过网络策略确保仅 Python RAG 服务可访问，不能暴露到公网。
 
 ### 4.11 LLM（LLM_*）
 

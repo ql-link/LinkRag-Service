@@ -57,6 +57,19 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 | `RAW` | `tolink-rag-raw` | 对象 key（字符串路径，私有桶不可匿名访问） |
 | `PRIVATE` | `tolink-rag-docs` | 对象 key（字符串路径，私有桶不可匿名访问） |
 
+## RAG Markdown 配套图片对象规则
+
+Markdown 原文、normalized Markdown、配套图片和缺图 manifest 均写入 RAW 私有桶 `tolink-rag-raw`，按文件记录聚合：
+
+| 对象 | Key | 说明 |
+| --- | --- | --- |
+| 原始 Markdown | `user-{userId}/dataset-{datasetId}/file-{fileId}/original/{filename}` | 审计/排障保留，不作为 Python 解析入口 |
+| normalized Markdown | `user-{userId}/dataset-{datasetId}/file-{fileId}/normalized/{filename}` | `document_original_file.object_key` 指向此对象，Python 从这里读取 Markdown |
+| 配套图片 | `user-{userId}/dataset-{datasetId}/file-{fileId}/assets/{relativePath}` | 由 Java 内部图片接口读取，normalized Markdown 引用内部 URL |
+| manifest | `user-{userId}/dataset-{datasetId}/file-{fileId}/assets-manifest.json` | 记录缺失图片与已改写图片，用于解析提交前提醒 |
+
+内部图片 URL 不要求 RAW 桶匿名读；Java 通过对象 key 读取后返回给 Python。首版该内部接口依赖内网隔离，不应暴露公网。
+
 ## 用户头像对象规则
 
 用户头像写入公开桶 `tolink-public`（`OssSavePlaceEnum.PUBLIC`），上传成功后将公开访问地址写入 `sys_user.avatar_url`。MinIO 部署下公开访问地址优先使用 `tolink.oss.public-base-url` 生成，例如生产环境返回 `/tolink-public/avatar/...`，由前端 Nginx 反向代理到 MinIO；未配置时才回退为 `{endpoint}/{publicBucket}/{objectKey}`。对象 key 按用户分目录，便于后续按用户排查和清理历史头像。

@@ -197,15 +197,19 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | DELETE | `/api/v1/datasets/{datasetId}` | 删除数据集 |
 | GET | `/api/v1/datasets/{datasetId}/parse-config` | 读取数据集解析/检索配置（回显已存；`recall` 新增项缺失时补默认） |
 | PUT | `/api/v1/datasets/{datasetId}/parse-config` | 全量保存数据集解析/检索配置（整页保存，整行四类覆盖） |
-| POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件（异步：立即返回 `uploadStatus=UPLOADING`） |
+| POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件（异步：立即返回 `uploadStatus=UPLOADING`；Markdown 可带配套图片） |
 | GET | `/api/v1/datasets/{datasetId}/files` | 文件列表（支持按 `uploadStatus` 过滤，前端据此轮询上传终态） |
 | GET | `/api/v1/files/recent` | 当前用户全局最近文档列表 |
 | GET | `/api/v1/files/{fileId}` | 文件详情 |
 | DELETE | `/api/v1/files/{fileId}` | 删除文件 |
-| POST | `/api/v1/files/{fileId}/parse` | 提交解析 |
+| POST | `/api/v1/files/{fileId}/parse` | 提交解析（Markdown 缺图时可返回缺失列表，确认后可忽略继续） |
 | GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 解析结果列表 |
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
+
+> Markdown 配套图片：`POST .../files` 可选传 `assets`（多文件）与 `assetRelativePaths`（与 assets 一一对应）。Java 端扫描 Markdown 中的本地相对图片引用，按规范化相对路径匹配图片，不按上传顺序匹配；已匹配图片写入 RAW 桶 `assets/` 前缀并在 normalized Markdown 中改写为内部图片 URL，缺失图片保留原始相对链接并写入 manifest。`document_original_file.object_key` 指向 normalized Markdown。非法路径（如 `../secret.png`）或同一路径不同内容的配套图片返回 400。
+
+> Markdown 缺图解析提醒：`POST /api/v1/files/{fileId}/parse` 默认 `ignoreMissingAssets=false`。如果 manifest 中存在缺失图片，接口不投递 MQ，返回 `frontendStatus=asset_missing`、`missingAssets=[...]`、`canContinue=true`；前端提示用户补传或确认忽略。用户确认后以 `ignoreMissingAssets=true` 再次提交，Java 允许投递解析任务。
 
 > 创建数据集：`POST /api/v1/datasets` 请求体除 `name`/`description` 外，必须提供 `sparse_embedding_config_id` 与 `dense_embedding_config_id`。两者分别指向当前用户启用中的 `llm_user_config.id`，能力必须为 `SPARSE_EMBEDDING` / `EMBEDDING`；不存在、停用、越权或能力不匹配均返回 400。创建成功时 Java 同步写入 `dataset_parse_config` 默认行并固化这两个绑定，后续解析构建向量与召回都以该数据集绑定为准，不再按用户“当前默认模型”漂移。
 
@@ -217,6 +221,9 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | --- | --- | --- |
 | POST | `/api/v1/oss-files/{bizType}` | 通用 OSS 上传 |
 | GET | `/api/v1/internal/files/{fileId}/content` | Python 端读取私有文件内容 |
+| GET | `/api/v1/internal/files/{fileId}/assets?path={relativePath}` | Python 端读取 Markdown 配套图片（内部网络接口） |
+
+`/api/v1/internal/files/{fileId}/assets` 只按 `fileId + path` 读取该文件 `assets/` 前缀下的对象，不接受任意 object key。首版不做复杂鉴权，部署侧必须保证该接口只在 Java 与 Python 的内部网络可达，不暴露公网。
 
 ## Feedback
 

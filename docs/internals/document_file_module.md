@@ -28,6 +28,17 @@
 - **持久性兜底**：`DocumentUploadStuckScanner` 定时把超时仍 `uploading` 的记录置 `failed`；启动时清理残留临时文件。
 - **孤儿对象**：OSS 成功但 DB 回写失败时打告警日志（含 `objectKey`）留痕，记录仍 `uploading` 由超时扫描兜底，首版不做 OSS 对象补偿删除。
 
+## Markdown 配套图片规范化
+
+Markdown 上传可携带 `assets` 与 `assetRelativePaths`。Java 端重新扫描 Markdown 图片引用，按规范化相对路径匹配配套图片，生成 normalized Markdown 后再交 Python 解析：
+
+- 支持 `![alt](path)` 与 `<img src="path">`。
+- `http` / `https` / `data` / `file` 图片不按本地配套图片处理。
+- 本地相对路径会 URL decode、统一分隔符并拒绝空路径、绝对路径、`..` 越级和控制字符。
+- 匹配成功的图片上传到 RAW 桶 `user-{userId}/dataset-{datasetId}/file-{fileId}/assets/{path}`，normalized Markdown 中改写为 `/api/v1/internal/files/{fileId}/assets?path={path}` 形式的内部 URL。
+- 缺失图片写入 `assets-manifest.json`，normalized Markdown 保留原始相对链接；点击解析时返回 `asset_missing` 提醒，用户确认忽略后仍可解析。
+- `parseImmediately=true` 且存在缺失图片时不自动投递解析，避免绕过前端提醒。
+
 ## 删除（隐性删除）
 
 删除文档文件（`DELETE /api/v1/files/{fileId}`）或数据集（`DELETE /api/v1/datasets/{datasetId}`）采用隐性删除：

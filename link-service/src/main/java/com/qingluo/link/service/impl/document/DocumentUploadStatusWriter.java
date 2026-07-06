@@ -53,6 +53,12 @@ public class DocumentUploadStatusWriter {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markUploadSuccess(Long recordId, String objectKey, boolean parseImmediately, Long userId) {
+        markUploadSuccess(recordId, objectKey, parseImmediately, userId, false);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markUploadSuccess(Long recordId, String objectKey, boolean parseImmediately, Long userId,
+                                  boolean hasMissingAssets) {
         String fileUrl = normalizeBaseUrl(properties.getInternalBaseUrl())
             + "/api/v1/internal/files/" + recordId + "/content";
         int updated = documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
@@ -73,7 +79,7 @@ public class DocumentUploadStatusWriter {
             return;
         }
         initializeParseFileIfAbsent(record);
-        if (parseImmediately) {
+        if (parseImmediately && !hasMissingAssets) {
             submitAutoParseAfterCommit(userId, record);
         }
     }

@@ -14,6 +14,7 @@
 - Java -> Python：`tolink.rag.parse_task`
 - Java -> Python：`tolink.rag.document_delete`（删除通知，触发 Python 删衍生产物）
 - Python 读取原文：`GET /api/v1/internal/files/{fileId}/content`
+- Python 读取 Markdown 配套图片：`GET /api/v1/internal/files/{fileId}/assets?path={normalizedRelativePath}`。该接口仅暴露 Java 已归一化并上传的相对图片路径，部署上依赖内网隔离，当前不要求额外服务鉴权。
 
 ## 联调关注点
 
@@ -26,6 +27,7 @@
 - **链路追踪**：Java 端日志已接入 `trace_id`（HTTP 入口复用/新建 `X-Trace-Id` 头并回写响应头，异步线程透传 MDC）。Java -> Python 的 MQ 消息由 Java `MQSend` 适配层自动携带 `X-Trace-Id` header；Python -> Java 的 Kafka 消息由 Java 消费入口读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复 MDC。trace 只走传输 header，不写入 `parse_task` / `document_delete` / `chat_turn` / `usage_report` 业务 payload。
 - **集中日志查询**：Java 管理端新增 `/api/v1/admin/logs` 查询代理，只访问 Loki 内网地址，不让前端直连 Loki。Java 服务名固定为 `tolink-service`；Python RAG 服务联调时必须把 `LOG_SERVICE_NAME` 设置为 `tolink-rag`，否则前端无法按 Java/Python 服务区分日志。
 - **上传异步化**：上传接口立即返回 `uploadStatus=UPLOADING`，OSS 上传/终态回写在 Java 侧线程池异步完成；`parseImmediately=true` 的解析任务**只在 OSS 上传成功后**才投递（不会对尚未落 OSS 的文件触发解析）。Python 侧无需改动，仍以收到 `parse_task` 为准；前端需改为按 `uploadStatus` 轮询获取上传终态。
+- **Markdown 配套图片归一化**：用户上传 Markdown 时可同时上传图片目录内文件，前端按 `assets[]` + `assetRelativePaths[]` 传入。Java 端扫描 Markdown 本地图片引用，按归一化相对路径匹配配套图片，上传原始 Markdown、normalized Markdown、图片对象和 manifest；`document_original_file.object_key` 指向 normalized Markdown，Python 读取 `/content` 时拿到的就是可解析文档。Markdown 中未匹配到的图片保留原链接并写入 manifest；用户点击解析时 Java 返回 `frontendStatus=asset_missing`、`missingAssets` 和 `canContinue=true` 给前端提醒，前端可带 `ignoreMissingAssets=true` 继续解析，不强制补齐全部图片。
 - **隐性删除 + 删除通知**：删除数据集/文件为软删保留原文件——Java 端不物理删 OSS 对象、不删解析表（`document_parse_file` / `document_parsed_log`）；这些衍生产物与 Python 侧 OSS 产物（清洗文件/向量）由 Python 负责删除。Java 在删除事务提交后（afterCommit）经 `tolink.rag.document_delete` **真实投递删除通知**（删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别；尽力发、失败仅告警吞掉、无 DLQ；回滚不发）。**Python 侧需消费该通知并按范围删衍生产物（重复消息幂等、删不存在产物 no-op），本仓库未实现**。⚠️ **发布需两端协调**：该队列为点对点，Python 消费端就绪前 Java producer 不应单独上生产（否则消息无消费者会在 broker 积压）。
 
 ## 解析数据契约

@@ -2,6 +2,7 @@ package com.qingluo.link.service.impl.document;
 
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
 import com.qingluo.link.components.oss.service.IOssService;
+import com.qingluo.link.service.impl.document.markdown.MarkdownUploadBundle;
 import java.nio.file.Path;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -48,6 +49,7 @@ public class DocumentUploadAsyncExecutor {
                 task.recordId(), task.objectKey(), e);
             statusWriter.markUploadFailed(task.recordId(), "服务繁忙，请稍后重试");
             tempStorage.delete(task.tempFile());
+            cleanupBundle(task.markdownBundle());
         }
     }
 
@@ -56,14 +58,18 @@ public class DocumentUploadAsyncExecutor {
      */
     void runUpload(UploadTask task) {
         try {
-            String result = ossService.upload2PreviewUrl(
-                OssSavePlaceEnum.RAW, task.tempFile().toFile(), task.contentType(), task.objectKey());
+            String result = task.markdownBundle() == null ? uploadSingle(task) : uploadMarkdownBundle(task);
             if (!StringUtils.hasText(result)) {
                 statusWriter.markUploadFailed(task.recordId(), "文件上传失败，请稍后重试");
                 return;
             }
             try {
-                statusWriter.markUploadSuccess(task.recordId(), result, task.parseImmediately(), task.userId());
+                if (task.markdownBundle() == null) {
+                    statusWriter.markUploadSuccess(task.recordId(), result, task.parseImmediately(), task.userId());
+                } else {
+                    statusWriter.markUploadSuccess(
+                        task.recordId(), result, task.parseImmediately(), task.userId(), task.markdownBundle().hasMissingAssets());
+                }
             } catch (Exception e) {
                 // OSS 成功但 DB 回写失败 → 孤儿对象：留痕含 objectKey，记录仍 uploading 由超时扫描兜底，首版不补偿删除。
                 log.warn("孤儿对象：OSS 上传成功但 DB 回写失败，objectKey={}, recordId={}",
@@ -79,6 +85,47 @@ public class DocumentUploadAsyncExecutor {
             }
         } finally {
             tempStorage.delete(task.tempFile());
+            cleanupBundle(task.markdownBundle());
+        }
+    }
+
+    private String uploadSingle(UploadTask task) {
+        return ossService.upload2PreviewUrl(
+            OssSavePlaceEnum.RAW, task.tempFile().toFile(), task.contentType(), task.objectKey());
+    }
+
+    private String uploadMarkdownBundle(UploadTask task) {
+        MarkdownUploadBundle bundle = task.markdownBundle();
+        if (!upload(bundle.originalMarkdown(), "text/markdown; charset=utf-8", bundle.originalObjectKey())) {
+            return null;
+        }
+        for (MarkdownUploadBundle.AssetFile asset : bundle.assets()) {
+            if (!upload(asset.tempFile(), asset.contentType(), asset.objectKey())) {
+                return null;
+            }
+        }
+        if (!upload(bundle.manifestFile(), "application/json; charset=utf-8", bundle.manifestObjectKey())) {
+            return null;
+        }
+        if (!upload(bundle.normalizedMarkdown(), "text/markdown; charset=utf-8", bundle.normalizedObjectKey())) {
+            return null;
+        }
+        return bundle.normalizedObjectKey();
+    }
+
+    private boolean upload(Path file, String contentType, String objectKey) {
+        return StringUtils.hasText(ossService.upload2PreviewUrl(
+            OssSavePlaceEnum.RAW, file.toFile(), contentType, objectKey));
+    }
+
+    private void cleanupBundle(MarkdownUploadBundle bundle) {
+        if (bundle == null) {
+            return;
+        }
+        tempStorage.delete(bundle.normalizedMarkdown());
+        tempStorage.delete(bundle.manifestFile());
+        for (MarkdownUploadBundle.AssetFile asset : bundle.assets()) {
+            tempStorage.delete(asset.tempFile());
         }
     }
 
@@ -86,6 +133,11 @@ public class DocumentUploadAsyncExecutor {
      * 异步上传上下文：请求线程构造，携带池线程所需的全部数据（不再依赖请求期对象）。
      */
     public record UploadTask(Long recordId, Path tempFile, String objectKey, String contentType,
-                             boolean parseImmediately, Long userId) {
+                             boolean parseImmediately, Long userId, MarkdownUploadBundle markdownBundle) {
+
+        public UploadTask(Long recordId, Path tempFile, String objectKey, String contentType,
+                          boolean parseImmediately, Long userId) {
+            this(recordId, tempFile, objectKey, contentType, parseImmediately, userId, null);
+        }
     }
 }

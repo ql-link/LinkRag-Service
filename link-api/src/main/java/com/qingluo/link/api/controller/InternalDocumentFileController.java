@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -42,6 +43,18 @@ public class InternalDocumentFileController {
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(contentType))
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFilename)
+            .body(resource);
+    }
+
+    @GetMapping("/api/v1/internal/files/{fileId}/assets")
+    public ResponseEntity<?> downloadAsset(@PathVariable Long fileId, @RequestParam("path") String path) {
+        DocumentFileDownloadResource download = documentFileService.openMarkdownAsset(fileId, path);
+        Resource resource = new FileSystemResource(download.getFile());
+        String contentType = StringUtils.hasText(download.getContentType())
+            ? download.getContentType()
+            : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(contentType))
             .body(resource);
     }
 

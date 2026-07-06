@@ -11,7 +11,6 @@ import com.qingluo.link.service.cache.DocumentFileConfigCacheService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -153,9 +152,8 @@ class DocumentFileControllerTest {
             "SELECT object_key FROM document_original_file WHERE id = ?", String.class, fileId);
         String bucketName = jdbcTemplate.queryForObject(
             "SELECT bucket_name FROM document_original_file WHERE id = ?", String.class, fileId);
-        LocalDate today = LocalDate.now();
-        assertThat(objectKey).isEqualTo("%d/%d/%04d/%02d/%02d/%s".formatted(
-            userId, datasetId, today.getYear(), today.getMonthValue(), today.getDayOfMonth(), "guide.MD"));
+        assertThat(objectKey).isEqualTo("user-%d/dataset-%d/file-%d/normalized/guide.MD"
+            .formatted(userId, datasetId, fileId));
         assertThat(bucketName).isEqualTo("local-raw");
     }
 
@@ -563,6 +561,78 @@ class DocumentFileControllerTest {
         assertThat(recordingMQSend.messages().get(0).getMessage()).contains("\"original_file_id\":" + fileId)
             .contains("\"document_parse_file_id\":")
             .contains("\"trigger_mode\":\"upload_auto\"");
+    }
+
+    @Test
+    void Should_NormalizeMarkdownAndServeUploadedAsset_When_MarkdownUploadsCompanionImages() throws Exception {
+        String filename = "asset-" + System.nanoTime() + ".md";
+        MockMultipartFile file = new MockMultipartFile(
+            "file", filename, "text/markdown", "![a](images/a.png)".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile asset = new MockMultipartFile(
+            "assets", "a.png", "image/png", "img-a".getBytes(StandardCharsets.UTF_8));
+
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(file)
+                .file(asset)
+                .param("assetRelativePaths", "images/a.png")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andReturn();
+        Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString())
+            .get("data").get("id").asLong();
+
+        String objectKey = jdbcTemplate.queryForObject(
+            "SELECT object_key FROM document_original_file WHERE id = ?", String.class, fileId);
+        assertThat(objectKey).isEqualTo("user-%d/dataset-%d/file-%d/normalized/%s"
+            .formatted(userId, datasetId, fileId, filename));
+        Path normalized = Path.of("/tmp/tolink-document-file-test/raw").resolve(objectKey);
+        assertThat(Files.readString(normalized, StandardCharsets.UTF_8))
+            .contains("http://tolink-service:8080/api/v1/internal/files/%d/assets?path=images%%2Fa.png"
+                .formatted(fileId));
+
+        mockMvc.perform(get("/api/v1/internal/files/{fileId}/assets", fileId)
+                .param("path", "images/a.png"))
+            .andExpect(status().isOk())
+            .andExpect(content().string("img-a"));
+    }
+
+    @Test
+    void Should_ReturnMissingAssetsPromptAndAllowContinue_When_MarkdownStillHasUnuploadedImages() throws Exception {
+        String filename = "missing-" + System.nanoTime() + ".md";
+        MockMultipartFile file = new MockMultipartFile(
+            "file", filename, "text/markdown",
+            "![a](images/a.png) ![m](missing.png)".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile asset = new MockMultipartFile(
+            "assets", "a.png", "image/png", "img-a".getBytes(StandardCharsets.UTF_8));
+
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(file)
+                .file(asset)
+                .param("assetRelativePaths", "images/a.png")
+                .param("parseImmediately", "true")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andReturn();
+        Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString())
+            .get("data").get("id").asLong();
+        assertThat(recordingMQSend.messages()).isEmpty();
+
+        mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.frontendStatus").value("asset_missing"))
+            .andExpect(jsonPath("$.data.canContinue").value(true))
+            .andExpect(jsonPath("$.data.missingAssets[0]").value("missing.png"));
+        assertThat(recordingMQSend.messages()).isEmpty();
+
+        mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
+                .param("ignoreMissingAssets", "true")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.frontendStatus").value("parsing"))
+            .andExpect(jsonPath("$.data.canContinue").value(false));
+        assertThat(recordingMQSend.messages()).hasSize(1);
     }
 
     @Test
