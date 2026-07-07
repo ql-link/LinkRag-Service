@@ -391,7 +391,9 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
     user_id             BIGINT NOT NULL,
     dataset_id          BIGINT NOT NULL,
     sparse_embedding_config_id BIGINT,
+    sparse_embedding_config_source VARCHAR(16) NOT NULL DEFAULT 'USER',
     dense_embedding_config_id  BIGINT,
+    dense_embedding_config_source  VARCHAR(16) NOT NULL DEFAULT 'USER',
     -- 生产 MySQL 为 JSON 列；H2 测试库降级为 VARCHAR 存 JSON 文本：H2 的 JSON 列经 JDBC setString
     -- 会被当作「一个 JSON 字符串字面量」而非 JSON 文档，与 MyBatis JacksonTypeHandler 不兼容，
     -- 故测试库用 VARCHAR（TypeHandler setString/getString JSON 文本，行为与生产一致）。
@@ -405,6 +407,6 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_user_dataset ON dataset_parse_config(user_id, dataset_id);
-CREATE INDEX IF NOT EXISTS idx_dataset_parse_sparse_config ON dataset_parse_config(sparse_embedding_config_id);
-CREATE INDEX IF NOT EXISTS idx_dataset_parse_dense_config ON dataset_parse_config(dense_embedding_config_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_parse_sparse_config ON dataset_parse_config(sparse_embedding_config_source, sparse_embedding_config_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_parse_dense_config ON dataset_parse_config(dense_embedding_config_source, dense_embedding_config_id);
 CREATE INDEX IF NOT EXISTS idx_dataset_parse_config_dataset ON dataset_parse_config(dataset_id);

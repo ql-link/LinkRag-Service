@@ -111,7 +111,9 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         DatasetParseConfigResponse resp = new DatasetParseConfigResponse();
         resp.setChunking(entity.getChunkingConfig() != null ? entity.getChunkingConfig() : new ChunkingConfig());
         resp.setSparseEmbeddingConfigId(entity.getSparseEmbeddingConfigId());
+        resp.setSparseEmbeddingConfigSource(normalizeStoredSource(entity.getSparseEmbeddingConfigSource()));
         resp.setDenseEmbeddingConfigId(entity.getDenseEmbeddingConfigId());
+        resp.setDenseEmbeddingConfigSource(normalizeStoredSource(entity.getDenseEmbeddingConfigSource()));
         resp.setEnhancement(entity.getEnhancementConfig() != null
             ? entity.getEnhancementConfig() : new EnhancementConfig());
         resp.setPdf(entity.getPdfConfig() != null ? entity.getPdfConfig() : new PdfConfig());
@@ -123,7 +125,9 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         DatasetParseConfigResponse resp = new DatasetParseConfigResponse();
         resp.setChunking(new ChunkingConfig());
         resp.setSparseEmbeddingConfigId(null);
+        resp.setSparseEmbeddingConfigSource(null);
         resp.setDenseEmbeddingConfigId(null);
+        resp.setDenseEmbeddingConfigSource(null);
         resp.setEnhancement(new EnhancementConfig());
         resp.setPdf(new PdfConfig());
         resp.setRecall(fillRecallDefaults(new RecallConfig()));
@@ -158,16 +162,29 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         Long sparse = request.getSparseEmbeddingConfigId() != null
             ? request.getSparseEmbeddingConfigId()
             : existing != null ? existing.getSparseEmbeddingConfigId() : null;
+        String sparseSource = request.getSparseEmbeddingConfigSource() != null
+            ? request.getSparseEmbeddingConfigSource()
+            : existing != null ? normalizeStoredSource(existing.getSparseEmbeddingConfigSource()) : null;
         Long dense = request.getDenseEmbeddingConfigId() != null
             ? request.getDenseEmbeddingConfigId()
             : existing != null ? existing.getDenseEmbeddingConfigId() : null;
+        String denseSource = request.getDenseEmbeddingConfigSource() != null
+            ? request.getDenseEmbeddingConfigSource()
+            : existing != null ? normalizeStoredSource(existing.getDenseEmbeddingConfigSource()) : null;
         if (existing != null) {
-            validateBindingImmutable("sparse_embedding_config_id", existing.getSparseEmbeddingConfigId(), sparse);
-            validateBindingImmutable("dense_embedding_config_id", existing.getDenseEmbeddingConfigId(), dense);
+            validateBindingImmutable("sparse_embedding_config_id/source",
+                existing.getSparseEmbeddingConfigId(), normalizeStoredSource(existing.getSparseEmbeddingConfigSource()),
+                sparse, sparseSource);
+            validateBindingImmutable("dense_embedding_config_id/source",
+                existing.getDenseEmbeddingConfigId(), normalizeStoredSource(existing.getDenseEmbeddingConfigSource()),
+                dense, denseSource);
         }
-        embeddingConfigValidator.validateBindingPair(userId, sparse, dense);
-        target.setSparseEmbeddingConfigId(sparse);
-        target.setDenseEmbeddingConfigId(dense);
+        DatasetEmbeddingConfigValidator.ResolvedBindingPair bindings =
+            embeddingConfigValidator.validateAndResolveBindingPair(userId, sparse, sparseSource, dense, denseSource);
+        target.setSparseEmbeddingConfigId(bindings.sparse().configId());
+        target.setSparseEmbeddingConfigSource(bindings.sparse().source());
+        target.setDenseEmbeddingConfigId(bindings.dense().configId());
+        target.setDenseEmbeddingConfigSource(bindings.dense().source());
     }
 
     private ChunkingConfig normalizeChunking(ChunkingConfig source) {
@@ -240,10 +257,17 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         }
     }
 
-    private void validateBindingImmutable(String fieldName, Long existingId, Long requestedId) {
-        if (existingId != null && !Objects.equals(existingId, requestedId)) {
+    private void validateBindingImmutable(String fieldName, Long existingId, String existingSource,
+                                          Long requestedId, String requestedSource) {
+        if (existingId != null
+            && (!Objects.equals(existingId, requestedId)
+            || !Objects.equals(existingSource, normalizeStoredSource(requestedSource)))) {
             throw new BusinessException(400, fieldName + " 已绑定，不能修改", 400);
         }
+    }
+
+    private String normalizeStoredSource(String source) {
+        return source != null ? source.trim().toUpperCase(Locale.ROOT) : DatasetEmbeddingConfigValidator.SOURCE_USER;
     }
 
     private RecallConfig fillRecallDefaults(RecallConfig source) {
