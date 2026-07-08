@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
+import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
@@ -48,6 +50,7 @@ class DocumentParseTaskServiceImplTest {
     @Mock private DocumentParsePipelineMapper documentParsePipelineMapper;
     @Mock private org.springframework.beans.factory.ObjectProvider<MQSend> mqSendProvider;
     @Mock private MQSend mqSend;
+    @Mock private IOssService ossService;
     @InjectMocks private DocumentParseTaskServiceImpl service;
 
     @BeforeAll
@@ -197,6 +200,23 @@ class DocumentParseTaskServiceImplTest {
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("正在解析中");
 
+        verify(documentParseFileMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void Should_RejectRunningBeforeReadingMarkdownMissingAssets() {
+        DocumentOriginalFile file = ownedFile();
+        file.setFileSuffix("md");
+        given(documentOriginalFileMapper.selectOne(any())).willReturn(file);
+        given(documentParseFileMapper.selectOne(any())).willReturn(parseFile("task-run"));
+        given(documentParsedLogMapper.selectOne(any())).willReturn(log("task-run", "rag-md", "parsed/x.md"));
+        given(documentParsePipelineMapper.selectOne(any())).willReturn(pipeline("PROCESSING"));
+
+        assertThatThrownBy(() -> service.submitManualParse(401L, 101L))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("正在解析中");
+
+        verify(ossService, never()).downloadFile(any(), anyString(), anyString());
         verify(documentParseFileMapper, never()).update(any(), any());
     }
 

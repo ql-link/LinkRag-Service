@@ -105,6 +105,14 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
     @Transactional
     public FileParseSubmitDTO submitManualParse(Long userId, Long fileId, boolean ignoreMissingAssets) {
         DocumentOriginalFile file = getOwnedUploadedFile(userId, fileId);
+        DocumentParseFile parseFile = requireParseFile(fileId);
+        Classification classification = classify(parseFile);
+        if (classification.kind() == SubmitKind.RUNNING) {
+            throw new BusinessException(409, "文件正在解析中，请勿重复提交", 409);
+        }
+        if (classification.kind() == SubmitKind.REJECT) {
+            throw new BusinessException(409, "文件已解析成功，无需重复解析", 409);
+        }
         List<String> missingAssets = loadMissingAssets(file);
         if (!ignoreMissingAssets && !missingAssets.isEmpty()) {
             FileParseSubmitDTO dto = buildSubmitDTO(file);
@@ -113,12 +121,7 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
             dto.setCanContinue(true);
             return dto;
         }
-        DocumentParseFile parseFile = requireParseFile(fileId);
-        Classification classification = classify(parseFile);
         switch (classification.kind()) {
-            case RUNNING -> throw new BusinessException(409, "文件正在解析中，请勿重复提交", 409);
-            // 已成功（含稀疏向量阶段）的文件友好拒绝，不发 MQ。
-            case REJECT -> throw new BusinessException(409, "文件已解析成功，无需重复解析", 409);
             case RETRY -> submit(file, parseFile, TRIGGER_MANUAL_RETRY, classification.retry());
             case FIRST -> submit(file, parseFile, TRIGGER_MANUAL_RETRY, null);
             default -> throw new IllegalStateException("unexpected classification: " + classification.kind());

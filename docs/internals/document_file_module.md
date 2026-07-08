@@ -32,10 +32,11 @@
 
 Markdown 上传可携带 `assets` 与 `assetRelativePaths`。Java 端重新扫描 Markdown 图片引用，按规范化相对路径匹配配套图片，生成 normalized Markdown 后再交 Python 解析：
 
-- 支持 `![alt](path)` 与 `<img src="path">`。
+- 支持 `![alt](path)`、`![alt](<path with spaces>)`、`<img src="path">` 与 reference-style 图片定义。
 - `http` / `https` / `data` / `file` 图片不按本地配套图片处理。
 - 本地相对路径会 URL decode、统一分隔符并拒绝空路径、绝对路径、`..` 越级和控制字符。
-- 匹配成功的图片上传到 RAW 桶 `user-{userId}/dataset-{datasetId}/file-{fileId}/assets/{path}`，normalized Markdown 中改写为 `/api/v1/internal/files/{fileId}/assets?path={path}` 形式的内部 URL。
+- 配套图片只允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，单图最大 10MB，并校验 MIME 与文件头。
+- 匹配成功的图片上传到 RAW 桶 `user-{userId}/dataset-{datasetId}/file-{fileId}/assets/{path}`，normalized Markdown 中改写为 `/api/v1/internal/files/{fileId}/assets?path={path}` 形式的内部 URL；配置服务 token 时 URL 追加 `token` 查询参数，图片读取接口也接受 Bearer token。
 - 缺失图片写入 `assets-manifest.json`，normalized Markdown 保留原始相对链接；点击解析时返回 `asset_missing` 提醒，用户确认忽略后仍可解析。
 - `parseImmediately=true` 且存在缺失图片时不自动投递解析，避免绕过前端提醒。
 

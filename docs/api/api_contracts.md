@@ -207,7 +207,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
 
-> Markdown 配套图片：`POST .../files` 可选传 `assets`（多文件）与 `assetRelativePaths`（与 assets 一一对应）。Java 端扫描 Markdown 中的本地相对图片引用，按规范化相对路径匹配图片，不按上传顺序匹配；已匹配图片写入 RAW 桶 `assets/` 前缀并在 normalized Markdown 中改写为内部图片 URL，缺失图片保留原始相对链接并写入 manifest。`document_original_file.object_key` 指向 normalized Markdown。非法路径（如 `../secret.png`）或同一路径不同内容的配套图片返回 400。
+> Markdown 配套图片：`POST .../files` 可选传 `assets`（多文件）与 `assetRelativePaths`（与 assets 一一对应）。Java 端扫描 Markdown 中的本地相对图片引用，按规范化相对路径匹配图片，不按上传顺序匹配；支持 `![alt](path)`、`![alt](<path with spaces>)`、`<img src="path">` 和 reference-style 图片定义。已匹配图片写入 RAW 桶 `assets/` 前缀并在 normalized Markdown 中改写为内部图片 URL，缺失图片保留原始相对链接并写入 manifest。`document_original_file.object_key` 指向 normalized Markdown。非法路径（如 `../secret.png`）、非 `jpg` / `jpeg` / `png` / `gif` / `webp`、MIME/文件头不匹配、单图超过 10MB、同一路径不同内容的配套图片均返回 400。
 
 > Markdown 缺图解析提醒：`POST /api/v1/files/{fileId}/parse` 默认 `ignoreMissingAssets=false`。如果 manifest 中存在缺失图片，接口不投递 MQ，返回 `frontendStatus=asset_missing`、`missingAssets=[...]`、`canContinue=true`；前端提示用户补传或确认忽略。用户确认后以 `ignoreMissingAssets=true` 再次提交，Java 允许投递解析任务。
 
@@ -223,7 +223,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | GET | `/api/v1/internal/files/{fileId}/content` | Python 端读取私有文件内容 |
 | GET | `/api/v1/internal/files/{fileId}/assets?path={relativePath}` | Python 端读取 Markdown 配套图片（内部网络接口） |
 
-`/api/v1/internal/files/{fileId}/assets` 只按 `fileId + path` 读取该文件 `assets/` 前缀下的对象，不接受任意 object key。首版不做复杂鉴权，部署侧必须保证该接口只在 Java 与 Python 的内部网络可达，不暴露公网。
+`/api/v1/internal/files/{fileId}/assets` 只按 `fileId + path` 读取该文件 `assets/` 前缀下的对象，不接受任意 object key。配置 `tolink.document-file.service-token` 后，该接口接受 `Authorization: Bearer <token>` 或 normalized Markdown URL 中的 `token=<token>` 查询参数；部署侧仍必须保证该接口只在 Java 与 Python 的内部网络可达，不暴露公网。
 
 ## Feedback
 

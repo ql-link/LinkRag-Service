@@ -86,6 +86,9 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         String originalFilename = normalizeOriginalFilename(file.getOriginalFilename());
         validateFile(file, originalFilename);
         String suffix = extractSuffix(originalFilename);
+        if (!MarkdownAssetObjectKeys.isMarkdown(suffix) && hasCompanionAssetInput(assets, assetRelativePaths)) {
+            throw new BusinessException(400, "仅 Markdown 文件支持配套图片", 400);
+        }
 
         // 同名分流：撞 failed 复用旧行重置 uploading；撞 uploading/success 拦截 400；无同名则新建。
         DocumentOriginalFile record = resolveTargetRecord(userId, datasetId, originalFilename, suffix, file);
@@ -117,8 +120,10 @@ public class DocumentFileServiceImpl implements DocumentFileService {
                     assets,
                     assetRelativePaths,
                     assetTempFiles,
-                    normalizeBaseUrl(properties.getInternalBaseUrl())
+                    normalizeBaseUrl(properties.getInternalBaseUrl()),
+                    properties.getServiceToken()
                 )).bundle();
+                cleanupUnusedTempAssets(tempAssets, markdownBundle);
                 objectKey = markdownBundle.normalizedObjectKey();
             } catch (RuntimeException e) {
                 tempStorage.delete(tempFile);
@@ -154,6 +159,11 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         return toDTO(record);
     }
 
+    private boolean hasCompanionAssetInput(List<MultipartFile> assets, List<String> assetRelativePaths) {
+        return (assets != null && !assets.isEmpty())
+            || (assetRelativePaths != null && !assetRelativePaths.isEmpty());
+    }
+
     private void cleanupBundle(MarkdownUploadBundle bundle) {
         if (bundle == null) {
             return;
@@ -162,6 +172,20 @@ public class DocumentFileServiceImpl implements DocumentFileService {
         tempStorage.delete(bundle.manifestFile());
         for (MarkdownUploadBundle.AssetFile asset : bundle.assets()) {
             tempStorage.delete(asset.tempFile());
+        }
+    }
+
+    private void cleanupUnusedTempAssets(List<Path> tempAssets, MarkdownUploadBundle bundle) {
+        if (tempAssets == null || tempAssets.isEmpty() || bundle == null) {
+            return;
+        }
+        List<Path> retained = bundle.assets().stream()
+            .map(MarkdownUploadBundle.AssetFile::tempFile)
+            .toList();
+        for (Path temp : tempAssets) {
+            if (!retained.contains(temp)) {
+                tempStorage.delete(temp);
+            }
         }
     }
 

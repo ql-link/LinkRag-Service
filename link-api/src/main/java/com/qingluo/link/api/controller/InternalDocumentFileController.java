@@ -47,7 +47,14 @@ public class InternalDocumentFileController {
     }
 
     @GetMapping("/api/v1/internal/files/{fileId}/assets")
-    public ResponseEntity<?> downloadAsset(@PathVariable Long fileId, @RequestParam("path") String path) {
+    public ResponseEntity<?> downloadAsset(@PathVariable Long fileId,
+                                           @RequestParam("path") String path,
+                                           @RequestParam(value = "token", required = false) String token,
+                                           @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false)
+                                           String authorization) {
+        if (!isServiceTokenValid(authorization, token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Result.error(401, "服务鉴权失败"));
+        }
         DocumentFileDownloadResource download = documentFileService.openMarkdownAsset(fileId, path);
         Resource resource = new FileSystemResource(download.getFile());
         String contentType = StringUtils.hasText(download.getContentType())
@@ -59,10 +66,17 @@ public class InternalDocumentFileController {
     }
 
     private boolean isServiceTokenValid(String authorization) {
+        return isServiceTokenValid(authorization, null);
+    }
+
+    private boolean isServiceTokenValid(String authorization, String token) {
         String expected = properties.getServiceToken();
-        if (!StringUtils.hasText(expected) || !StringUtils.hasText(authorization)) {
+        if (!StringUtils.hasText(expected)) {
             return false;
         }
-        return authorization.equals("Bearer " + expected);
+        if (StringUtils.hasText(authorization) && authorization.equals("Bearer " + expected)) {
+            return true;
+        }
+        return StringUtils.hasText(token) && token.equals(expected);
     }
 }

@@ -569,7 +569,7 @@ class DocumentFileControllerTest {
         MockMultipartFile file = new MockMultipartFile(
             "file", filename, "text/markdown", "![a](images/a.png)".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile asset = new MockMultipartFile(
-            "assets", "a.png", "image/png", "img-a".getBytes(StandardCharsets.UTF_8));
+            "assets", "a.png", "image/png", pngBytes());
 
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
@@ -588,13 +588,35 @@ class DocumentFileControllerTest {
             .formatted(userId, datasetId, fileId, filename));
         Path normalized = Path.of("/tmp/tolink-document-file-test/raw").resolve(objectKey);
         assertThat(Files.readString(normalized, StandardCharsets.UTF_8))
-            .contains("http://tolink-service:8080/api/v1/internal/files/%d/assets?path=images%%2Fa.png"
+            .contains("http://tolink-service:8080/api/v1/internal/files/%d/assets?path=images%%2Fa.png&token=test-service-token"
                 .formatted(fileId));
 
         mockMvc.perform(get("/api/v1/internal/files/{fileId}/assets", fileId)
                 .param("path", "images/a.png"))
+            .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/internal/files/{fileId}/assets", fileId)
+                .param("path", "images/a.png")
+                .param("token", "test-service-token"))
             .andExpect(status().isOk())
-            .andExpect(content().string("img-a"));
+            .andExpect(content().bytes(pngBytes()));
+    }
+
+    @Test
+    void Should_RejectInvalidCompanionImage_When_MarkdownAssetContentIsNotImage() throws Exception {
+        String filename = "invalid-asset-" + System.nanoTime() + ".md";
+        MockMultipartFile file = new MockMultipartFile(
+            "file", filename, "text/markdown", "![a](images/a.png)".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile asset = new MockMultipartFile(
+            "assets", "a.png", "image/png", "not-png".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(file)
+                .file(asset)
+                .param("assetRelativePaths", "images/a.png")
+                .header("satoken", token))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("配套图片内容不是有效图片"));
     }
 
     @Test
@@ -604,7 +626,7 @@ class DocumentFileControllerTest {
             "file", filename, "text/markdown",
             "![a](images/a.png) ![m](missing.png)".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile asset = new MockMultipartFile(
-            "assets", "a.png", "image/png", "img-a".getBytes(StandardCharsets.UTF_8));
+            "assets", "a.png", "image/png", pngBytes());
 
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
@@ -749,6 +771,14 @@ class DocumentFileControllerTest {
             .andExpect(status().isOk())
             .andReturn();
         return objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
+    }
+
+    private byte[] pngBytes() {
+        return new byte[]{
+            (byte) 0x89, 0x50, 0x4e, 0x47,
+            0x0d, 0x0a, 0x1a, 0x0a,
+            0x00, 0x00, 0x00, 0x01
+        };
     }
 
     private Long createUser(String username) {
