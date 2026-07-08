@@ -17,6 +17,7 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 - `PrivateFileResolver`：私有对象本地解析与缓存。
 - `OssObjectKeyGenerator`、`OssUploadRuleRegistry`：业务对象 key 与上传规则。
 - `OssApplicationService`：业务上传门面。`upload(bizType, file)` 返回 preview 值（公开桶=URL、私有桶=key）；`uploadAndDescribe(bizType, file)` 返回 `UploadResult{objectKey, previewUrl}`，供需要持有 object key 的调用方使用；`uploadAndDescribe(bizType, file, objectKey)` 允许调用方在复用同一套 bizType 校验规则时指定对象 key，用于 key 需要携带业务归属信息的场景。
+- `LocalOssPreviewController`：local OSS 模式下提供 `GET /api/v1/oss-files/public/**` 公开预览路由，按 `tolink.oss.file-public-path` / `file-root-path/public` 读取本地文件；`tolink.oss.public-base-url` 默认指向该路由前缀。
 
 ## 约定
 

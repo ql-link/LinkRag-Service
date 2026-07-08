@@ -184,20 +184,30 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
 );
 
 -- 创建索引
-CREATE INDEX IF NOT EXISTS idx_sys_user_username ON sys_user(username);
-CREATE INDEX IF NOT EXISTS idx_sys_user_email ON sys_user(email);
-CREATE INDEX IF NOT EXISTS idx_llm_user_config_user_id ON llm_user_config(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_username ON sys_user(username);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_email ON sys_user(email);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_provider_type ON llm_system_provider(provider_type);
+CREATE INDEX IF NOT EXISTS idx_provider_cap ON llm_provider_model(provider_id, capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_user_provider_model_capability ON llm_user_config(user_id, provider_id, model_name, capability, is_system_preset);
+CREATE INDEX IF NOT EXISTS idx_user_active_default ON llm_user_config(user_id, is_active, is_default);
+CREATE INDEX IF NOT EXISTS idx_user_provider_cap ON llm_user_config(user_id, provider_type, capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_provider_model_cap ON llm_provider_model(provider_id, model_name, capability);
 CREATE INDEX IF NOT EXISTS idx_sync_job_provider ON llm_provider_model_sync_job(provider_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_sync_job_source_status ON llm_provider_model_sync_job(sync_source, status);
+CREATE INDEX IF NOT EXISTS idx_sync_candidate_job ON llm_provider_model_sync_candidate(job_id);
 CREATE INDEX IF NOT EXISTS idx_sync_candidate_provider_status ON llm_provider_model_sync_candidate(provider_id, review_status);
+CREATE INDEX IF NOT EXISTS idx_sync_candidate_model_cap ON llm_provider_model_sync_candidate(provider_id, model_name, inferred_capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_sync_candidate_provider_source_model_cap ON llm_provider_model_sync_candidate(provider_id, sync_source, model_name, inferred_capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_preset_provider_model_cap ON llm_system_preset(provider_id, model_name, capability);
-CREATE INDEX IF NOT EXISTS idx_chat_conversation_user_pinned_updated ON chat_conversation(user_id, is_pinned, updated_at);
+CREATE INDEX IF NOT EXISTS idx_system_preset_default ON llm_system_preset(provider_type, capability, is_active, is_default);
+CREATE INDEX IF NOT EXISTS idx_chat_conversation_user_active_list ON chat_conversation(user_id, is_pinned, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_dataset_updated ON chat_conversation(dataset_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_chat_message_conversation_id ON chat_message(conversation_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_chat_message_turn_id ON chat_message(turn_id);
-CREATE INDEX IF NOT EXISTS idx_llm_usage_log_user_id ON llm_usage_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_created ON chat_message(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_message_request_id ON chat_message(request_id);
+CREATE INDEX IF NOT EXISTS idx_user_date ON llm_usage_log(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_config_date ON llm_usage_log(config_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_usage_stage_operation ON llm_usage_log(stage, operation);
 
 -- 8. 文档文件原文件表
 CREATE TABLE IF NOT EXISTS document_original_file (
