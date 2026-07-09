@@ -115,6 +115,7 @@ class UserLLMConfigServiceImplTest {
         // 返回给用户的 Key 为脱敏形式，且均为自配行
         assertThat(result).hasSize(5);
         assertThat(result).allMatch(dto -> "EN****1234".equals(dto.getApiKeyMasked()));
+        assertThat(result).allMatch(dto -> "USER".equals(dto.getSource()));
         assertThat(result).allMatch(dto -> Boolean.FALSE.equals(dto.getIsSystemPreset()));
         verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }

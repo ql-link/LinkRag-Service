@@ -18,6 +18,9 @@ import java.time.LocalDateTime;
 @Schema(description = "用户LLM配置")
 public class UserLLMConfigDTO {
 
+    @Schema(description = "配置来源：USER=用户自配，SYSTEM=LinkRag系统兜底", example = "USER")
+    private String source;
+
     @Schema(description = "配置ID", example = "1")
     private Long id;
 

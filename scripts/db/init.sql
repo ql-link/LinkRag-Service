@@ -414,8 +414,10 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '配置唯一标识',
     user_id             BIGINT UNSIGNED NOT NULL COMMENT '所属用户 ID',
     dataset_id          BIGINT UNSIGNED NOT NULL COMMENT '所属数据集 ID，对应 dataset.id',
-    sparse_embedding_config_id BIGINT UNSIGNED DEFAULT NULL COMMENT '稀疏向量模型配置 ID，对应 llm_user_config.id，能力为 SPARSE_EMBEDDING',
-    dense_embedding_config_id  BIGINT UNSIGNED DEFAULT NULL COMMENT '稠密向量模型配置 ID，对应 llm_user_config.id，能力为 EMBEDDING',
+    sparse_embedding_config_id BIGINT UNSIGNED DEFAULT NULL COMMENT '稀疏向量模型配置 ID，source=USER 对应 llm_user_config.id，source=SYSTEM 对应 llm_system_preset.id，能力为 SPARSE_EMBEDDING',
+    sparse_embedding_config_source VARCHAR(16) NOT NULL DEFAULT 'USER' COMMENT '稀疏向量模型配置来源：USER/SYSTEM',
+    dense_embedding_config_id  BIGINT UNSIGNED DEFAULT NULL COMMENT '稠密向量模型配置 ID，source=USER 对应 llm_user_config.id，source=SYSTEM 对应 llm_system_preset.id，能力为 EMBEDDING',
+    dense_embedding_config_source  VARCHAR(16) NOT NULL DEFAULT 'USER' COMMENT '稠密向量模型配置来源：USER/SYSTEM',
     chunking_config     JSON            NOT NULL COMMENT '分块配置（7 项：heading_break_level / min_candidate_chunk_tokens / overlap_tokens / max_chunk_tokens / hard_max_tokens / stage_two_algorithm / protected_neighbor_overlap）',
     enhancement_config  JSON            NOT NULL COMMENT 'Markdown 增强配置（3 项开关：enable_table_enhancement / enable_image_enhancement / enable_heading_hierarchy；增强模型不在此选择，统一用发起用户 CHAT/VISION 默认模型）',
     pdf_config          JSON            NOT NULL COMMENT 'PDF 解析配置（1 项：pdf_parser_backend）',
@@ -425,8 +427,8 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     UNIQUE KEY uk_user_dataset (user_id, dataset_id),
-    INDEX idx_dataset_parse_sparse_config (sparse_embedding_config_id),
-    INDEX idx_dataset_parse_dense_config (dense_embedding_config_id),
+    INDEX idx_dataset_parse_sparse_config (sparse_embedding_config_source, sparse_embedding_config_id),
+    INDEX idx_dataset_parse_dense_config (dense_embedding_config_source, dense_embedding_config_id),
     INDEX idx_dataset_parse_config_dataset (dataset_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '数据集解析/检索参数配置表';
 
