@@ -30,6 +30,15 @@
 | [mq_module.md](internals/mq_module.md) | MQ 组件架构 |
 | [object_storage_module.md](internals/object_storage_module.md) | OSS / MinIO 对象存储 |
 | [document_file_module.md](internals/document_file_module.md) | 知识文件 / 文档上传 |
+| [llm_config_module.md](internals/llm_config_module.md) | LLM 厂商、模型能力、用户配置和系统预设 |
+| [provider_model_sync_module.md](internals/provider_model_sync_module.md) | 外部模型目录同步、候选审核和发布 |
+| [blog_module.md](internals/blog_module.md) | 博客草稿、Markdown 正文、PUBLIC OSS 图片资源 |
+| [feedback_module.md](internals/feedback_module.md) | 用户反馈、公开附件和管理员处理 |
+| [recall_session_module.md](internals/recall_session_module.md) | 召回 session JWT 签发和数据集授权范围 |
+| [chat_module.md](internals/chat_module.md) | 对话生命周期和 chat_turn 幂等落库 |
+| [usage_module.md](internals/usage_module.md) | usage_report 入库和用量聚合查询 |
+| [admin_log_module.md](internals/admin_log_module.md) | Loki 查询代理、日志过滤和 trace_id 排障 |
+| [testing.md](internals/testing.md) | 测试约定 |
 
 ### [ops/](ops/) — 启动与配置
 | 文件 | 内容 |

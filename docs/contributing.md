@@ -34,7 +34,7 @@
 高风险改动必须同步对应文档，否则 pre-commit 阻断：
 
 - API / DTO 变更 → `docs/api/api_contracts.md`
-- Entity / 数据库脚本 → `docs/api/mysql_schema.md`
+- Entity / 数据库脚本 → `docs/api/mysql_schema.md` + `scripts/db/init.sql` + `link-api/src/main/resources/schema.sql`
 - MQ 消息 / 消费者 → `docs/api/mq_contracts.md`、`docs/internals/mq_module.md`
 - 规则在 `.claude/doc-sync-rules.yaml`，由 pre-commit 三道门禁强制
 

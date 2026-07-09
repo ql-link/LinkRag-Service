@@ -36,7 +36,7 @@ when_to_use: "用户要求生成技术方案、technical_design.md、技术实�
 | Redis 缓存 | `docs/internals/cache_module.md` |
 | OSS / 文件存储 | `docs/internals/object_storage_module.md` |
 | MQ 消息 | `docs/api/mq_contracts.md` + `mq-middleware` skill |
-| 数据库表 | `docs/api/mysql_schema.md` + `scripts/db/schema.sql` |
+| 数据库表 | `docs/api/mysql_schema.md` + `scripts/db/init.sql` + `link-api/src/main/resources/schema.sql` |
 
 ## 输出
 

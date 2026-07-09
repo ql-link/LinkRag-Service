@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-toLink-Service 采用 **三文件分层配置架构**，将配置按职责清晰分离：
+toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 
 - **公共基础层**：环境无关的通用配置，所有环境共享
 - **Profile 层**：环境相关的连接信息和运行参数，按 profile 隔离
@@ -13,7 +13,7 @@ toLink-Service 采用 **三文件分层配置架构**，将配置按职责清晰
 1. **职责分离** — 公共配置与环境配置互不干扰
 2. **安全加固** — 配置文件中不保留任何真实密码、IP 地址或密钥
 3. **开发友好** — 克隆项目后零配置即可启动（local profile 使用 H2 内存数据库）
-4. **部署统一** — 同一份 `application-dev.yml` 通过环境变量差异化同时服务 dev 和 prod
+4. **部署统一** — `application-dev.yml` / `application-prod.yml` 使用同一组环境变量注入连接和敏感值
 5. **命名规范** — 环境变量采用统一前缀命名，废弃历史别名
 
 ## 2. 配置文件清单与职责
@@ -21,8 +21,9 @@ toLink-Service 采用 **三文件分层配置架构**，将配置按职责清晰
 | 文件 | 路径 | 职责 | 适用场景 |
 |------|------|------|----------|
 | `application.yml` | `link-api/src/main/resources/` | 环境无关的公共基础配置 | 所有环境始终加载 |
-| `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + localhost） | 本地开发，克隆即启动 |
-| `application-dev.yml` | `link-api/src/main/resources/` | 部署环境配置（纯环境变量引用） | 开发服务器 / 生产环境 |
+| `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + localhost Redis + local OSS + MQ none） | 本地开发，克隆即启动 |
+| `application-dev.yml` | `link-api/src/main/resources/` | 开发服务器配置（环境变量引用，带开发默认容量） | 开发服务器 |
+| `application-prod.yml` | `link-api/src/main/resources/` | 生产环境配置（环境变量引用，带生产默认容量） | 生产环境 |
 | `schema.sql` | `link-api/src/main/resources/` | local profile 的 H2 初始化表结构 | 本地启动与 local profile 测试 |
 
 ### 各文件包含内容
@@ -31,7 +32,7 @@ toLink-Service 采用 **三文件分层配置架构**，将配置按职责清晰
 |------|------|--------|
 | `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 限制、allowed-suffixes、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
 | `application-local.yml` | H2 内存数据库及 `classpath:schema.sql` 初始化、localhost Redis（无密码）、Kafka listener 禁用、MQ=none、OSS=local、固定测试密钥 | 真实服务器 IP、真实密码 |
-| `application-dev.yml` | 所有连接通过 `${ENV_VAR}` 引用；连接池/线程池/日志通过 `${ENV_VAR:default}` 控制 | 真实密码、真实 IP、废弃别名 |
+| `application-dev.yml` / `application-prod.yml` | 所有连接通过 `${ENV_VAR}` 引用；连接池/线程池/日志通过 `${ENV_VAR:default}` 控制 | 真实密码、真实 IP、废弃别名 |
 
 ## 3. Profile 加载优先级
 
@@ -51,7 +52,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 - `application.yml` 中定义了 `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:local}`，默认激活 `local` profile
 - 当 profile 为 `local` 时，`application-local.yml` 中的配置覆盖 `application.yml` 的同名属性
-- 当 profile 为 `dev` 时，`application-dev.yml` 中的配置覆盖 `application.yml` 的同名属性
+- 当 profile 为 `dev` / `prod` 时，对应 `application-dev.yml` / `application-prod.yml` 覆盖 `application.yml` 的同名属性
 - 环境变量始终具有最高优先级，可覆盖任何文件中的配置值
 
 ### 示例
@@ -108,7 +109,8 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
-| `TOLINK_MQ_VENDOR` | MQ 供应商类型 | 否 | `kafka` | `kafka` / `rabbitmq` / `none` |
+| `TOLINK_MQ_VENDER` | MQ 供应商类型（历史属性名为 `vender`） | 否 | `kafka` | `kafka` / `rabbitMQ` / `none` |
+| `TOLINK_MQ_VENDOR` | `TOLINK_MQ_VENDER` 的兼容别名 | 否 | 空 | `kafka` |
 
 ### 4.7 MinIO（MINIO_*）
 
@@ -182,9 +184,9 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
 | `LOG_LEVEL` | 应用日志级别（`application.yml` 已接 `${LOG_LEVEL:info}`，对 `com.qingluo.link` 生效） | 否 | `info` | `debug`（本地排查） |
-| `MYBATIS_LOG_IMPL` | MyBatis SQL 日志实现类 | 否 | `org.apache.ibatis.logging.stdout.StdOutImpl` | `org.apache.ibatis.logging.nologging.NoLoggingImpl`（生产） |
+| `SQL_LOG_LEVEL` | Mapper SQL 日志级别（SLF4J） | 否 | `info` | `debug`（排查）/ `info`（生产） |
 | `LOG_PATH` | JSON Lines 日志输出目录（`logback-spring.xml` 按天文件夹滚动、保留 7 天；Docker 部署挂载到宿主） | 否 | `logs` | `/app/logs` |
-| `OBSERVABILITY_LOKI_BASE_URL` | Java 管理端日志查询代理访问 Loki 的内网地址；不应暴露给前端或公网 | 否 | `http://localhost:3100` | `http://tolink-loki:3100` |
+| `OBSERVABILITY_LOKI_BASE_URL` | Java 管理端日志查询代理访问 Loki 的内网地址；不应暴露给前端或公网 | 否 | `http://localhost:3100` | `http://100.86.10.52:3100` |
 
 **链路追踪（trace_id）**：`link-observability` 提供 `TraceIdFilter` / `TraceContext` / `MdcTaskDecorator` / `TraceHeaders`。`TraceIdFilter` 为每个 HTTP 请求建立 `trace_id` 写入 MDC（优先复用上游 `X-Trace-Id` 头，缺失或非法则新建，并回写响应头）；异步线程池经 `MdcTaskDecorator` 透传。MQ 生产侧由 `MQSend` 适配层把当前 MDC `trace_id` 写入 `X-Trace-Id` header；Kafka 消费入口读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复 MDC，缺失或非法时自建。日志输出为 JSON Lines，Java 顶层字段包括 `time` / `level` / `service` / `host` / `pid` / `trace_id` / `logger_name` / `message` / `exception`。
 
@@ -275,7 +277,7 @@ The following profiles are active: local
 
 ## 6. 开发/生产环境部署
 
-开发服务器和生产环境共用 `application-dev.yml`，通过环境变量差异化配置。
+开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`，两者都通过环境变量注入连接与敏感值。
 
 ### 部署步骤
 
@@ -286,8 +288,9 @@ cp .env.example .env
 # 2. 编辑 .env，填入实际值
 vim .env
 
-# 3. 设置 profile 为 dev
-# 在 .env 中确保：SPRING_PROFILES_ACTIVE=dev
+# 3. 设置 profile
+# 开发服务器：SPRING_PROFILES_ACTIVE=dev
+# 生产环境：SPRING_PROFILES_ACTIVE=prod
 
 # 4. 加载环境变量并启动
 export $(grep -v '^#' .env | xargs)
@@ -296,7 +299,7 @@ mvn spring-boot:run -pl link-api
 
 ### 开发环境 vs 生产环境差异
 
-开发环境和生产环境使用相同的 `application-dev.yml`，通过以下环境变量实现差异化：
+开发环境和生产环境使用相同变量名，默认容量不同；生产可继续通过以下环境变量覆盖：
 
 | 参数 | 开发环境（默认值） | 生产环境（建议值） |
 |------|-------------------|-------------------|
@@ -309,7 +312,7 @@ mvn spring-boot:run -pl link-api
 | `THREAD_POOL_KEEP_ALIVE_SECONDS` | `60` | `60` |
 | `THREAD_POOL_THREAD_NAME_PREFIX` | `document-file-upload-` | `document-file-upload-` |
 | `LOG_LEVEL` | `debug` | `info` |
-| `MYBATIS_LOG_IMPL` | `StdOutImpl` | `NoLoggingImpl` |
+| `SQL_LOG_LEVEL` | `info`，排查时 `debug` | `info` / `warn` |
 
 ### Docker 部署示例
 

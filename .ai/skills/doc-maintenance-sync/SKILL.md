@@ -19,7 +19,7 @@ when_to_use: "当用户要求修改项目文档，或代码/配置/数据库/MQ/
 1. 修改 `AGENTS.md` 或 `CLAUDE.md`
 2. 新增、删除、重命名、移动源码、脚本、测试、Skill 或配置入口，导致项目结构文档不准确
 3. 修改 HTTP Controller / API DTO，影响接口路径、请求/响应结构
-4. 修改 Entity / Mapper / `scripts/db/schema.sql`，影响表结构
+4. 修改 Entity / Mapper / `scripts/db/init.sql` / `link-api/src/main/resources/schema.sql`，影响表结构
 5. 修改 MQ 消息对象、消费者、生产者、Topic 定义
 6. 修改 Redis 缓存 key、过期策略、数据结构
 7. 修改 OSS 文件入口、存储路径约定
@@ -39,7 +39,7 @@ when_to_use: "当用户要求修改项目文档，或代码/配置/数据库/MQ/
 | 变更内容 | 必查文档 |
 | --- | --- |
 | Controller / API DTO 变更 | `docs/api/api_contracts.md` |
-| Entity / Mapper / DDL 变更 | `docs/api/mysql_schema.md` + `scripts/db/schema.sql` |
+| Entity / Mapper / DDL 变更 | `docs/api/mysql_schema.md` + `scripts/db/init.sql` + `link-api/src/main/resources/schema.sql` |
 | MQ 消息对象、消费者、生产者、Topic 变更 | `docs/api/mq_contracts.md` + `docs/internals/mq_module.md` |
 | Redis 缓存 key、TTL、结构变更 | `docs/internals/cache_module.md` |
 | OSS 存储路径、文件入口变更 | `docs/internals/object_storage_module.md` + `docs/internals/document_file_module.md` |
@@ -70,7 +70,7 @@ when_to_use: "当用户要求修改项目文档，或代码/配置/数据库/MQ/
 - 不要把 `AGENTS.md` 重新膨胀成完整知识库；它只保留入口和阅读路径。
 - 不要为了文档同步引入与用户请求无关的架构重写。
 - 不要把测试报告、一次性排障记录写入稳定架构文档；这类内容放在 PR 描述。
-- 以真实代码、`scripts/db/schema.sql`、`application.yml` 和当前文档为准，不从记忆臆造。
+- 以真实代码、`scripts/db/init.sql`、`link-api/src/main/resources/schema.sql`、`application.yml` 和当前文档为准，不从记忆臆造。
 
 ## 最终回复
 

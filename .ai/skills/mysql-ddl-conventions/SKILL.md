@@ -9,7 +9,8 @@ when_to_use: "当用户要求设计新的数据库表、编写 DDL 语句、补�
 ## 0. 必读
 
 - `docs/api/mysql_schema.md`：现有表结构与字段说明
-- `scripts/db/schema.sql`：当前 DDL 权威来源，新表风格与现有表保持一致
+- `scripts/db/init.sql`：当前 DDL 权威来源，新表风格与现有表保持一致
+- `link-api/src/main/resources/schema.sql`：local / test H2 schema，字段与索引需跟 `init.sql` 对齐
 
 ## 1. 命名规范
 
@@ -114,6 +115,7 @@ COMMENT='表用途说明';
 
 DDL 落地后必须同步：
 
-1. `scripts/db/schema.sql`：追加或更新建表语句
-2. `docs/api/mysql_schema.md`：更新表说明和字段描述
-3. `link-model` 模块：创建或更新对应 Entity（`@TableName`、`@TableId`、`@TableField`）
+1. `scripts/db/init.sql`：追加或更新建表语句
+2. `link-api/src/main/resources/schema.sql`：同步 local / test H2 表结构、唯一键和索引
+3. `docs/api/mysql_schema.md`：更新表说明和字段描述
+4. `link-model` 模块：创建或更新对应 Entity（`@TableName`、`@TableId`、`@TableField`）
