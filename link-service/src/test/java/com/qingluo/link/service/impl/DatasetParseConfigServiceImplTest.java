@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
@@ -21,6 +22,7 @@ import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -52,6 +54,15 @@ class DatasetParseConfigServiceImplTest {
     static void initMpTableInfo() {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
         TableInfoHelper.initTableInfo(assistant, DatasetParseConfig.class);
+    }
+
+    @BeforeEach
+    void setupBindingValidator() {
+        lenient().when(embeddingConfigValidator.validateAndResolveBindingPair(anyLong(), any(), any(), any(), any()))
+            .thenReturn(new DatasetEmbeddingConfigValidator.ResolvedBindingPair(
+                new DatasetEmbeddingConfigValidator.ResolvedBinding(11L, DatasetEmbeddingConfigValidator.SOURCE_USER),
+                new DatasetEmbeddingConfigValidator.ResolvedBinding(12L, DatasetEmbeddingConfigValidator.SOURCE_USER)
+            ));
     }
 
     @Test

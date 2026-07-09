@@ -112,9 +112,9 @@ private String status;
 
 ## 3. 典型示例（参考 UsageController）
 
-已有完整注解的 Controller 参考 [UsageController.java](link-api/src/main/java/com/qingluo/link/api/controller/UsageController.java)，已有 DTO 注解参考 [DatasetDTO.java](link-model/src/main/java/com/qingluo/link/model/dto/response/DatasetDTO.java)。
+已有完整注解的 Controller 参考 [UsageController.java](../../../link-api/src/main/java/com/qingluo/link/api/controller/UsageController.java)，已有 DTO 注解参考 [DatasetDTO.java](../../../link-model/src/main/java/com/qingluo/link/model/dto/response/DatasetDTO.java)。
 
-缺少注解的 Controller 示例：[OssFileController.java](link-api/src/main/java/com/qingluo/link/api/controller/OssFileController.java)（仅有 `@RestController`，无 `@Tag` / `@Operation`）。
+缺少注解的 Controller 示例：[OssFileController.java](../../../link-api/src/main/java/com/qingluo/link/api/controller/OssFileController.java)（仅有 `@RestController`，无 `@Tag` / `@Operation`）。
 
 ## 4. 执行流程
 

@@ -1,0 +1,84 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:tolink;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+  h2:
+    console:
+      enabled: true
+
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DB:0}
+    timeout: 2s
+    lettuce:
+      shutdown-timeout: 100ms
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: 1000ms
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      auto-startup: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    com.qingluo.link.mapper: ${SQL_LOG_LEVEL:info}
+
+tolink:
+  mq:
+    vender: none
+    scan-base-packages:
+      - com.qingluo
+    kafka-auto-create-topics: false
+    kafka-topic-partitions: 1
+    kafka-topic-replicas: 1
+  oss:
+    service-type: local
+    file-root-path: ${OSS_FILE_ROOT_PATH:${user.home}/.tolink/oss}
+    public-base-url: /api/v1/oss-files/public
+    minio:
+      endpoint:
+      raw-bucket-name: tolink-rag-raw
+      private-bucket-name: tolink-rag-docs
+      public-bucket-name: tolink-public
+      access-key:
+      secret-key:
+    aliyun-oss:
+      endpoint:
+      public-bucket-name:
+      private-bucket-name:
+      access-key-id:
+      access-key-secret:
+  document-file:
+    max-size-bytes: 20971520
+    internal-base-url: http://localhost:8080
+    service-token: local-document-file-token
+  recall:
+    session-jwt-secret: ${RECALL_SESSION_JWT_SECRET:local-recall-session-secret-change-me}
+    session-jwt-exp-seconds: 30
+    session-stream-base-url: ${RECALL_SESSION_STREAM_BASE_URL:http://localhost:8000}
+  llm:
+    api-key:
+      secret: ${LLM_SECRET:2477ac52477ea5e852d8002649a98511491f8910a67cd6c0e9cd13987aa49601}

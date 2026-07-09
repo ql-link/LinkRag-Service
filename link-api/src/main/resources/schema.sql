@@ -184,20 +184,30 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
 );
 
 -- 创建索引
-CREATE INDEX IF NOT EXISTS idx_sys_user_username ON sys_user(username);
-CREATE INDEX IF NOT EXISTS idx_sys_user_email ON sys_user(email);
-CREATE INDEX IF NOT EXISTS idx_llm_user_config_user_id ON llm_user_config(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_username ON sys_user(username);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_email ON sys_user(email);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_provider_type ON llm_system_provider(provider_type);
+CREATE INDEX IF NOT EXISTS idx_provider_cap ON llm_provider_model(provider_id, capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_user_provider_model_capability ON llm_user_config(user_id, provider_id, model_name, capability, is_system_preset);
+CREATE INDEX IF NOT EXISTS idx_user_active_default ON llm_user_config(user_id, is_active, is_default);
+CREATE INDEX IF NOT EXISTS idx_user_provider_cap ON llm_user_config(user_id, provider_type, capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_provider_model_cap ON llm_provider_model(provider_id, model_name, capability);
 CREATE INDEX IF NOT EXISTS idx_sync_job_provider ON llm_provider_model_sync_job(provider_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_sync_job_source_status ON llm_provider_model_sync_job(sync_source, status);
+CREATE INDEX IF NOT EXISTS idx_sync_candidate_job ON llm_provider_model_sync_candidate(job_id);
 CREATE INDEX IF NOT EXISTS idx_sync_candidate_provider_status ON llm_provider_model_sync_candidate(provider_id, review_status);
+CREATE INDEX IF NOT EXISTS idx_sync_candidate_model_cap ON llm_provider_model_sync_candidate(provider_id, model_name, inferred_capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_sync_candidate_provider_source_model_cap ON llm_provider_model_sync_candidate(provider_id, sync_source, model_name, inferred_capability);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_preset_provider_model_cap ON llm_system_preset(provider_id, model_name, capability);
-CREATE INDEX IF NOT EXISTS idx_chat_conversation_user_pinned_updated ON chat_conversation(user_id, is_pinned, updated_at);
+CREATE INDEX IF NOT EXISTS idx_system_preset_default ON llm_system_preset(provider_type, capability, is_active, is_default);
+CREATE INDEX IF NOT EXISTS idx_chat_conversation_user_active_list ON chat_conversation(user_id, is_pinned, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_dataset_updated ON chat_conversation(dataset_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_chat_message_conversation_id ON chat_message(conversation_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_chat_message_turn_id ON chat_message(turn_id);
-CREATE INDEX IF NOT EXISTS idx_llm_usage_log_user_id ON llm_usage_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_created ON chat_message(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_message_request_id ON chat_message(request_id);
+CREATE INDEX IF NOT EXISTS idx_user_date ON llm_usage_log(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_config_date ON llm_usage_log(config_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_usage_stage_operation ON llm_usage_log(stage, operation);
 
 -- 8. 文档文件原文件表
 CREATE TABLE IF NOT EXISTS document_original_file (
@@ -391,7 +401,9 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
     user_id             BIGINT NOT NULL,
     dataset_id          BIGINT NOT NULL,
     sparse_embedding_config_id BIGINT,
+    sparse_embedding_config_source VARCHAR(16) NOT NULL DEFAULT 'USER',
     dense_embedding_config_id  BIGINT,
+    dense_embedding_config_source  VARCHAR(16) NOT NULL DEFAULT 'USER',
     -- 生产 MySQL 为 JSON 列；H2 测试库降级为 VARCHAR 存 JSON 文本：H2 的 JSON 列经 JDBC setString
     -- 会被当作「一个 JSON 字符串字面量」而非 JSON 文档，与 MyBatis JacksonTypeHandler 不兼容，
     -- 故测试库用 VARCHAR（TypeHandler setString/getString JSON 文本，行为与生产一致）。
@@ -405,6 +417,6 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_user_dataset ON dataset_parse_config(user_id, dataset_id);
-CREATE INDEX IF NOT EXISTS idx_dataset_parse_sparse_config ON dataset_parse_config(sparse_embedding_config_id);
-CREATE INDEX IF NOT EXISTS idx_dataset_parse_dense_config ON dataset_parse_config(dense_embedding_config_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_parse_sparse_config ON dataset_parse_config(sparse_embedding_config_source, sparse_embedding_config_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_parse_dense_config ON dataset_parse_config(dense_embedding_config_source, dense_embedding_config_id);
 CREATE INDEX IF NOT EXISTS idx_dataset_parse_config_dataset ON dataset_parse_config(dataset_id);

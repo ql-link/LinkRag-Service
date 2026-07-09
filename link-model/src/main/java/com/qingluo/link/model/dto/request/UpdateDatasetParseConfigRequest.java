@@ -22,13 +22,23 @@ public class UpdateDatasetParseConfigRequest {
 
     @JsonProperty("sparse_embedding_config_id")
     @JsonAlias("sparseEmbeddingConfigId")
-    @Schema(description = "稀疏向量模型配置 ID（llm_user_config.id，能力必须为 SPARSE_EMBEDDING）；已有绑定不可修改")
+    @Schema(description = "稀疏向量模型配置 ID（source=USER 时为 llm_user_config.id，source=SYSTEM 时为 llm_system_preset.id；能力必须为 SPARSE_EMBEDDING）；已有绑定不可修改")
     private Long sparseEmbeddingConfigId;
+
+    @JsonProperty("sparse_embedding_config_source")
+    @JsonAlias("sparseEmbeddingConfigSource")
+    @Schema(description = "稀疏向量模型配置来源：USER/SYSTEM；不传时后端按 ID 自动解析")
+    private String sparseEmbeddingConfigSource;
 
     @JsonProperty("dense_embedding_config_id")
     @JsonAlias("denseEmbeddingConfigId")
-    @Schema(description = "稠密向量模型配置 ID（llm_user_config.id，能力必须为 EMBEDDING）；已有绑定不可修改")
+    @Schema(description = "稠密向量模型配置 ID（source=USER 时为 llm_user_config.id，source=SYSTEM 时为 llm_system_preset.id；能力必须为 EMBEDDING）；已有绑定不可修改")
     private Long denseEmbeddingConfigId;
+
+    @JsonProperty("dense_embedding_config_source")
+    @JsonAlias("denseEmbeddingConfigSource")
+    @Schema(description = "稠密向量模型配置来源：USER/SYSTEM；不传时后端按 ID 自动解析")
+    private String denseEmbeddingConfigSource;
 
     @Valid
     @Schema(description = "分块策略配置")

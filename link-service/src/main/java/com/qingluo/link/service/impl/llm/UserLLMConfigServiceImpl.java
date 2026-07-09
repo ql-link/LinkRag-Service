@@ -46,6 +46,8 @@ import java.util.Objects;
 public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     private static final String LINKRAG_PROVIDER_TYPE = "linkrag";
+    private static final String SOURCE_USER = "USER";
+    private static final String SOURCE_SYSTEM = "SYSTEM";
 
     private final UserLLMConfigMapper userLLMConfigMapper;
     private final SystemPresetMapper systemPresetMapper;
@@ -432,6 +434,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
      */
     private UserLLMConfigDTO toDTO(UserLLMConfig config) {
         UserLLMConfigDTO dto = new UserLLMConfigDTO();
+        dto.setSource(SOURCE_USER);
         dto.setId(config.getId());
         dto.setProviderType(config.getProviderType());
         dto.setModelName(config.getModelName());
@@ -451,6 +454,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
 
     private UserLLMConfigDTO toLinkRagDTO(SystemPreset preset, boolean hasActiveUserDefault, String iconUrl) {
         UserLLMConfigDTO dto = new UserLLMConfigDTO();
+        dto.setSource(SOURCE_SYSTEM);
         dto.setId(preset.getId());
         dto.setProviderType(preset.getProviderType());
         dto.setIconUrl(iconUrl);

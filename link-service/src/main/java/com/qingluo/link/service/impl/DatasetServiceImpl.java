@@ -58,8 +58,11 @@ public class DatasetServiceImpl implements DatasetService {
      * 创建用户数据集。
      */
     public DatasetDTO create(Long userId, CreateDatasetRequest request) {
-        embeddingConfigValidator.validateBindingPair(
-            userId, request.getSparseEmbeddingConfigId(), request.getDenseEmbeddingConfigId());
+        DatasetEmbeddingConfigValidator.ResolvedBindingPair bindings =
+            embeddingConfigValidator.validateAndResolveBindingPair(
+                userId,
+                request.getSparseEmbeddingConfigId(), request.getSparseEmbeddingConfigSource(),
+                request.getDenseEmbeddingConfigId(), request.getDenseEmbeddingConfigSource());
 
         Dataset dataset = new Dataset();
         dataset.setUserId(userId);
@@ -72,7 +75,8 @@ public class DatasetServiceImpl implements DatasetService {
             throw new BusinessException(400, "当前用户下已存在同名数据集", 400);
         }
         insertDefaultParseConfig(userId, dataset.getId(),
-            request.getSparseEmbeddingConfigId(), request.getDenseEmbeddingConfigId());
+            bindings.sparse().configId(), bindings.sparse().source(),
+            bindings.dense().configId(), bindings.dense().source());
         return toDTO(dataset);
     }
 
@@ -187,12 +191,15 @@ public class DatasetServiceImpl implements DatasetService {
     }
 
     private void insertDefaultParseConfig(Long userId, Long datasetId,
-                                          Long sparseEmbeddingConfigId, Long denseEmbeddingConfigId) {
+                                          Long sparseEmbeddingConfigId, String sparseEmbeddingConfigSource,
+                                          Long denseEmbeddingConfigId, String denseEmbeddingConfigSource) {
         DatasetParseConfig config = new DatasetParseConfig();
         config.setUserId(userId);
         config.setDatasetId(datasetId);
         config.setSparseEmbeddingConfigId(sparseEmbeddingConfigId);
+        config.setSparseEmbeddingConfigSource(sparseEmbeddingConfigSource);
         config.setDenseEmbeddingConfigId(denseEmbeddingConfigId);
+        config.setDenseEmbeddingConfigSource(denseEmbeddingConfigSource);
         config.setChunkingConfig(new ChunkingConfig());
         config.setEnhancementConfig(new EnhancementConfig());
         config.setPdfConfig(new PdfConfig());

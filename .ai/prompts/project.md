@@ -20,7 +20,7 @@
 | Redis / MQ / OSS 组件 | `link-components/` |
 | 全局异常、认证上下文、工具类 | `link-core/src/main/java/com/qingluo/link/core` |
 | 链路追踪、访问日志、审计日志 | `link-observability/src/main/java/com/qingluo/link/observability` |
-| 数据库脚本 | `scripts/db/schema.sql`、`scripts/db/init.sql` |
+| 数据库脚本 | `scripts/db/init.sql`、`link-api/src/main/resources/schema.sql` |
 
 ### 1.2 常用命令
 
@@ -159,7 +159,7 @@ toLink-Service/
 | --- | --- |
 | 理解项目结构 | `docs/internals/project_structure.md` |
 | 修改接口 | `docs/api/api_contracts.md` + 对应 Controller |
-| 修改表、Entity、Mapper | `docs/api/mysql_schema.md` + `scripts/db/schema.sql` + Entity |
+| 修改表、Entity、Mapper | `docs/api/mysql_schema.md` + `scripts/db/init.sql` + `link-api/src/main/resources/schema.sql` + Entity |
 | 修改 MQ | `docs/api/mq_contracts.md` + `docs/internals/mq_module.md` |
 | 修改 Redis 缓存 | `docs/internals/cache_module.md` |
 | 修改 OSS / 文件上传 | `docs/internals/object_storage_module.md` + `docs/internals/document_file_module.md` |

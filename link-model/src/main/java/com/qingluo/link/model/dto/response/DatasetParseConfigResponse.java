@@ -19,12 +19,20 @@ import lombok.Data;
 public class DatasetParseConfigResponse {
 
     @JsonProperty("sparse_embedding_config_id")
-    @Schema(description = "稀疏向量模型配置 ID（llm_user_config.id）")
+    @Schema(description = "稀疏向量模型配置 ID")
     private Long sparseEmbeddingConfigId;
 
+    @JsonProperty("sparse_embedding_config_source")
+    @Schema(description = "稀疏向量模型配置来源：USER/SYSTEM")
+    private String sparseEmbeddingConfigSource;
+
     @JsonProperty("dense_embedding_config_id")
-    @Schema(description = "稠密向量模型配置 ID（llm_user_config.id）")
+    @Schema(description = "稠密向量模型配置 ID")
     private Long denseEmbeddingConfigId;
+
+    @JsonProperty("dense_embedding_config_source")
+    @Schema(description = "稠密向量模型配置来源：USER/SYSTEM")
+    private String denseEmbeddingConfigSource;
 
     @Schema(description = "分块策略配置")
     private ChunkingConfig chunking;

@@ -135,6 +135,7 @@ class ConfigControllerTest {
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.data").isArray())
             .andExpect(jsonPath("$.data.length()").value(3))
+            .andExpect(jsonPath("$.data[0].source").value("USER"))
             .andExpect(jsonPath("$.data[0].isSystemPreset").value(false))
             // 用户配置快照携带从模型能力层复制的协议
             .andExpect(jsonPath("$.data[0].protocol").value("openai"));
