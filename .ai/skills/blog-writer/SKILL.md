@@ -72,7 +72,7 @@ when_to_use: "当用户说'写一篇博客'、'生成博客'、'把这个需求�
 - Redis 组件：`link-components/toLink-components-redis/`
 - OSS 组件：`link-components/toLink-components-oss/`
 - 核心工具：`link-core/src/main/java/com/qingluo/link/core/`
-- 数据库脚本：`scripts/db/schema.sql`、`scripts/db/init.sql`
+- 数据库脚本：`scripts/db/init.sql`、`link-api/src/main/resources/schema.sql`
 - 测试：`link-service/src/test/`、`link-api/src/test/`
 
 读取原则：

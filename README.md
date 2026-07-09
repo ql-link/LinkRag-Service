@@ -166,8 +166,9 @@ mysql -h <DB_HOST> -u root -p < scripts/db/seed_llm_providers.sql
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` | MySQL 连接 |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` / `REDIS_DB` | Redis 连接 |
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka 地址 |
-| `TOLINK_MQ_VENDOR` | MQ 实现，默认 `kafka` |
-| `OSS_SERVICE_TYPE` / `OSS_FILE_ROOT_PATH` / `OSS_MINIO_*` | OSS 实现与配置 |
+| `TOLINK_MQ_VENDER` | MQ 实现，默认 `kafka`；历史属性名保留 `vender` |
+| `OSS_SERVICE_TYPE` / `OSS_FILE_ROOT_PATH` / `MINIO_*` / `ALIYUN_OSS_*` | OSS 实现与配置 |
+| `RECALL_SESSION_JWT_SECRET` / `RECALL_SESSION_STREAM_BASE_URL` | 前端直连 Python RAG 的 session 签发配置 |
 | `LLM_SECRET` | API Key 加密密钥，64 位十六进制字符串 |
 
 ### 3. 启动与测试
