@@ -17,6 +17,7 @@ Redis 基础能力由 `link-components/toLink-components-redis` 提供，业务�
 ## 约定
 
 业务代码不直接散落 Redis key 拼接。新增缓存目标优先扩展 `CacheEvictTarget` 和 `CacheKeyRouter`。
+Redis value/hash value 使用 Jackson JSON 序列化时必须绑定注册了 `JavaTimeModule` 的 `ObjectMapper`，避免包含 `LocalDateTime` 的实体（如 `ProviderModelShard.models[].createdAt`）回填 Redis 时序列化失败。
 
 ## Provider catalog cache（用户侧 LLM 厂商目录缓存）
 
