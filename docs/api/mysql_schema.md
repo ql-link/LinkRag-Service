@@ -7,6 +7,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；默认厂商与模型�
 | 表 | Entity | 业务域 |
 | --- | --- | --- |
 | `sys_user` | `SysUser` | 用户、角色、状态 |
+| `user_login_event` | `UserLoginEvent` | 成功登录追加事实，用于管理端日/周期活跃统计 |
 | `llm_system_provider` | `SystemProvider` | 系统 LLM 厂商（瘦身，去 `supported_models`/`config_schema`） |
 | `llm_provider_model` | `ProviderModel` | 厂商→模型→能力目录（取代 `supported_models` JSON） |
 | `llm_provider_model_sync_job` | `ProviderModelSyncJob` | 外部模型目录刷新任务（Java 管理端内部候选流，不参与运行决策） |
@@ -30,6 +31,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；默认厂商与模型�
 ## 约定
 
 - 表结构变更必须同步 `scripts/db/init.sql`、本地运行时 `link-api/src/main/resources/schema.sql`、Entity 和本文档。
+- `user_login_event` 每次普通登录成功或注册自动登录成功追加一行，`login_source` 为 `LOGIN` / `REGISTER`，失败登录不写。统计按 `created_at` 时间范围与 `user_id` 去重；`idx_user_login_event_created_user(created_at,user_id)` 支撑最大 90 天活跃范围查询，`sys_user.idx_sys_user_created_at(created_at)` 支撑新增用户范围查询。事件写入属于统计旁路，失败记录 ERROR 日志但不回滚认证。生产共享库需先通过正式迁移链创建事件表及用户创建时间索引，再发布读取它的 Java 版本。
 - `chat_message` 为「一行一轮」结构（对应 Python 仓库迁移 0021）：删 `role` / `token_count`，加 `query` / `answer`（原 `content` 改名）/ `references`(JSON，`JacksonTypeHandler`，列名为 MySQL 保留字需反引号包裹) / `request_id` / `status`。行数据由 Java 消费 `tolink.rag.chat_turn` 后落库（见 `docs/api/mq_contracts.md`），Python 不直接写本表；本仓不再保留独立历史迁移 SQL，当前结构已合入 `scripts/db/init.sql`。
 - `chat_message`「后台续跑 + 可靠落库」（chat-stream-resilient-persist，列结构归 **Python migration 0023**，Java 只读写行）：加 `turn_id`(VARCHAR(64)，唯一索引 `uk_chat_message_turn_id`，历史行 NULL，唯一索引允许多 NULL) / `error_code`(VARCHAR(64) nullable) / `error_message`(VARCHAR(512) nullable)；`status` 复用既有 `VARCHAR(16)`，值语义由 `success/partial/failed` 改为 `GENERATING/COMPLETED/FAILED`（列结构不变，旧历史行保留 `success`）。Java 按 `turn_id` upsert：`GENERATING` 起点插「生成中」行、终态更新同行，状态不回退、按 `turn_id` 幂等。Java 不自行改共享库 DDL，本仓 `scripts/db/init.sql` 与 H2 schema 仅本地/测试用并与 0023 保持字段名、索引一致。
 - `llm_usage_log` 升级为「全链路模型调用账本」（LINK-184）：增补 `stage`(VARCHAR(16) NOT NULL，`parse`/`recall`/`chat`) / `operation`(VARCHAR(16) NOT NULL，`embed`/`rerank`/`vision`/`table`/`generate`)，并放开 `config_id` 的 NOT NULL（系统配置调用如召回 query 编码落 NULL）。新增索引 `idx_usage_stage_operation (stage, operation)`。当前结构已合入 `scripts/db/init.sql`。

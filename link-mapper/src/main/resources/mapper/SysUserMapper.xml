@@ -55,4 +55,26 @@
         limit 1
     </select>
 
+    <select id="selectUserBreakdown" resultType="com.qingluo.link.model.dto.response.AdminUserCountBreakdownDTO">
+        SELECT
+            COALESCE(SUM(CASE WHEN role = 'USER' THEN 1 ELSE 0 END), 0) AS user,
+            COALESCE(SUM(CASE WHEN role = 'ADMIN' THEN 1 ELSE 0 END), 0) AS admin,
+            COALESCE(SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END), 0) AS enabled,
+            COALESCE(SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END), 0) AS disabled
+        FROM sys_user
+    </select>
+
+    <select id="countCreatedBetween" resultType="long">
+        SELECT COUNT(*) FROM sys_user
+        WHERE created_at &gt;= #{start} AND created_at &lt; #{end}
+    </select>
+
+    <select id="selectDailyCreatedBetween" resultType="com.qingluo.link.model.dto.response.UserDailyCountDTO">
+        SELECT CAST(created_at AS DATE) AS date, COUNT(*) AS count
+        FROM sys_user
+        WHERE created_at &gt;= #{start} AND created_at &lt; #{end}
+        GROUP BY CAST(created_at AS DATE)
+        ORDER BY date
+    </select>
+
 </mapper>
