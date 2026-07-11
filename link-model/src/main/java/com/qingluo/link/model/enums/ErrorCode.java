@@ -44,6 +44,7 @@ public enum ErrorCode {
     UNAUTHORIZED_ACCESS(20005, "无权访问该对话内容", 403),
     DUPLICATE_USERNAME(20006, "用户名已存在", 409),
     DUPLICATE_EMAIL(20007, "邮箱已被使用", 409),
+    INVALID_USER_STATISTICS_RANGE(20008, "用户统计范围仅支持7、30或90天", 400),
 
     // 召回 / RAG 相关 (30001-39999)
     // 召回 session 签发链路的数据集归属校验（前端直连 Python 召回，LINK-104）。
