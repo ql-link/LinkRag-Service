@@ -18,6 +18,7 @@
 | PATCH | `/api/v1/user/profile` | 更新当前用户资料 |
 | POST | `/api/v1/user/avatar` | 上传并更新当前用户头像 |
 | GET | `/api/v1/admin/users` | 管理员用户列表 |
+| GET | `/api/v1/admin/users/dashboard` | 用户统计看板，`days` 仅支持 7/30/90，默认 30 |
 | PATCH | `/api/v1/admin/users/{id}/status` | 启用/禁用用户 |
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
 | GET | `/api/v1/admin/document-file-config` | 查询文档文件上传配置 |
@@ -53,6 +54,8 @@
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
+
+`GET /api/v1/admin/users/dashboard` 仅允许 ADMIN 访问。统计包含 USER 和 ADMIN，按 `Asia/Shanghai` 自然日计算；活跃用户为周期内至少有一次成功登录事件的去重用户，注册自动登录计入，失败登录不计入。响应包含 `rangeDays`、`totalUsers`、`breakdown{user,admin,enabled,disabled}`、`newUsers{current,previous,growthRate}`、`activeUsers{current,previous,growthRate}`、`trend[{date,newUsers,activeUsers}]`。上一等长周期为零时增长率为 `null`；无数据日期补零。`days` 非 7/30/90 返回 `20008/400`。
 
 `POST /api/v1/admin/providers/icon` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `providerIcon` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS，object key 形如 `providerIcon/{uuid}.{suffix}`。上传成功后返回 `ProviderIconUploadDTO{ iconUrl, iconObjectKey }`；前端再将两者传给 `POST /api/v1/admin/providers` 或 `PATCH /api/v1/admin/providers/{id}`，分别写入 `llm_system_provider.icon_url` 与 `icon_object_key`。用户侧 `GET /api/v1/llm/providers` 返回可添加厂商的 `iconUrl`；`GET /api/v1/llm/configs` 的 LinkRag 只读配置项也返回 `iconUrl`，来源同为 `llm_system_provider`，用于替代前端硬编码厂商图标。
 
