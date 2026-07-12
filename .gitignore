@@ -19,12 +19,10 @@ release.properties
 # Spring profile 配置文件
 **/application-local.yml
 **/application-local.yaml
-!link-api/src/main/resources/application-local.yml
 **/application-dev.yml
 **/application-dev.yaml
-!link-api/src/main/resources/application-dev.yml
 **/application-prod.yml
-!link-api/src/main/resources/application-prod.yml
+**/application-prod.yaml
 **/application-personal.yml
 **/application-personal.yaml
 

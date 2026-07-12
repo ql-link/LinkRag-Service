@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qingluo.link.mapper.UserLoginEventMapper">
+
+    <select id="countDistinctUsersBetween" resultType="long">
+        SELECT COUNT(DISTINCT user_id)
+        FROM user_login_event
+        WHERE created_at &gt;= #{start} AND created_at &lt; #{end}
+    </select>
+
+    <select id="selectDailyActiveBetween" resultType="com.qingluo.link.model.dto.response.UserDailyCountDTO">
+        SELECT CAST(created_at AS DATE) AS date, COUNT(DISTINCT user_id) AS count
+        FROM user_login_event
+        WHERE created_at &gt;= #{start} AND created_at &lt; #{end}
+        GROUP BY CAST(created_at AS DATE)
+        ORDER BY date
+    </select>
+</mapper>

@@ -24,9 +24,11 @@ import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.ProviderIconUploadDTO;
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
+import com.qingluo.link.model.dto.response.AdminUserDashboardDTO;
 import com.qingluo.link.service.AdminDocumentFileConfigService;
 import com.qingluo.link.service.AdminProviderService;
 import com.qingluo.link.service.AdminUserService;
+import com.qingluo.link.service.AdminUserStatisticsService;
 import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.ProviderModelSyncService;
@@ -57,6 +59,7 @@ import java.util.List;
 public class AdminController {
 
     private final AdminUserService adminUserService;
+    private final AdminUserStatisticsService adminUserStatisticsService;
     private final AdminProviderService adminProviderService;
     private final AdminDocumentFileConfigService adminDocumentFileConfigService;
     private final ProviderModelService providerModelService;
@@ -79,6 +82,14 @@ public class AdminController {
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size) {
         return Result.success(adminUserService.listUsers(page, size));
+    }
+
+    @GetMapping("/users/dashboard")
+    @Operation(summary = "查询用户统计看板", description = "查询用户规模、角色状态分布、新增与登录活跃趋势")
+    public Result<AdminUserDashboardDTO> getUserDashboard(
+            @Parameter(description = "统计天数，仅支持7、30、90")
+            @RequestParam(defaultValue = "30") int days) {
+        return Result.success(adminUserStatisticsService.getDashboard(days));
     }
 
     /**

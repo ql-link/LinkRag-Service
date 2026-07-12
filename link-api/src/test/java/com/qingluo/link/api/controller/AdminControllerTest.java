@@ -103,6 +103,7 @@ class AdminControllerTest {
      * 普通用户 ID（用于测试修改操作）
      */
     private static final Long NORMAL_USER_ID = 99996L;
+    private static final Long READONLY_USER_ID = 99997L;
 
     /**
      * 测试厂商 ID
@@ -113,6 +114,7 @@ class AdminControllerTest {
      * 管理员登录令牌
      */
     private String adminToken;
+    private String userToken;
 
     /**
      * 测试前置准备：插入管理员和普通用户
@@ -149,6 +151,16 @@ class AdminControllerTest {
         normalUser.setStatus(1);
         sysUserMapper.insert(normalUser);
 
+        SysUser readonlyUser = new SysUser();
+        readonlyUser.setId(READONLY_USER_ID);
+        readonlyUser.setUsername("dashboarduser");
+        readonlyUser.setPasswordHash(passwordEncoder.encode("user123"));
+        readonlyUser.setNickname("看板普通用户");
+        readonlyUser.setEmail("dashboard-user@test.com");
+        readonlyUser.setRole("USER");
+        readonlyUser.setStatus(1);
+        sysUserMapper.insert(readonlyUser);
+
         // ===== 步骤 3: 插入 SystemProvider（外键依赖） =====
         SystemProvider provider = new SystemProvider();
         provider.setId(TEST_PROVIDER_ID);
@@ -162,6 +174,8 @@ class AdminControllerTest {
         // ===== 步骤 4: 管理员登录 =====
         StpUtil.login(ADMIN_USER_ID);
         adminToken = StpUtil.getTokenValue();
+        StpUtil.login(READONLY_USER_ID);
+        userToken = StpUtil.getTokenValue();
     }
 
     @BeforeEach
@@ -316,6 +330,61 @@ class AdminControllerTest {
         assertThat(captor.getValue().getMaxSizeBytes()).isEqualTo(1024L);
         assertThat(captor.getValue().getAllowedSuffixes()).containsExactly("pdf", "txt");
         assertThat(captor.getValue().getUpdatedBy()).isEqualTo(ADMIN_USER_ID);
+    }
+
+    @Test
+    @Order(7)
+    @DisplayName("管理员获取用户统计看板 - GET /api/v1/admin/users/dashboard")
+    void Should_ReturnUserDashboard_When_AdminQueriesStatistics() throws Exception {
+        jdbcTemplate.update("DELETE FROM user_login_event");
+        jdbcTemplate.update(
+            "INSERT INTO user_login_event(user_id, login_source, created_at) VALUES (?, 'LOGIN', CURRENT_TIMESTAMP)",
+            ADMIN_USER_ID);
+        jdbcTemplate.update(
+            "INSERT INTO user_login_event(user_id, login_source, created_at) VALUES (?, 'LOGIN', CURRENT_TIMESTAMP)",
+            ADMIN_USER_ID);
+
+        mockMvc.perform(get("/api/v1/admin/users/dashboard")
+                .header("satoken", adminToken)
+                .param("days", "7"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.rangeDays").value(7))
+            .andExpect(jsonPath("$.data.totalUsers").isNumber())
+            .andExpect(jsonPath("$.data.breakdown.admin").isNumber())
+            .andExpect(jsonPath("$.data.breakdown.user").isNumber())
+            .andExpect(jsonPath("$.data.activeUsers.current").value(1))
+            .andExpect(jsonPath("$.data.trend.length()").value(7))
+            .andExpect(jsonPath("$.data.username").doesNotExist())
+            .andExpect(jsonPath("$.data.email").doesNotExist());
+    }
+
+    @Test
+    @Order(8)
+    @DisplayName("用户统计看板拒绝不支持的时间范围")
+    void Should_ReturnBadRequest_When_DashboardRangeUnsupported() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users/dashboard")
+                .header("satoken", adminToken)
+                .param("days", "8"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(20008));
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("普通用户不能访问用户统计看板")
+    void Should_ReturnForbidden_When_NormalUserQueriesDashboard() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users/dashboard")
+                .header("satoken", userToken))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("未登录用户不能访问用户统计看板")
+    void Should_ReturnUnauthorized_When_AnonymousQueriesDashboard() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users/dashboard"))
+            .andExpect(status().isUnauthorized());
     }
 
     // ========================================================================

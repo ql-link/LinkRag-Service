@@ -4,6 +4,11 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Mapper;
+import com.qingluo.link.model.dto.response.AdminUserCountBreakdownDTO;
+import com.qingluo.link.model.dto.response.UserDailyCountDTO;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 系统用户 Mapper
@@ -30,4 +35,11 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      * 查询除当前用户外是否存在相同邮箱。
      */
     SysUser selectByEmailExcludingUserId(@Param("email") String email, @Param("userId") Long userId);
+
+    AdminUserCountBreakdownDTO selectUserBreakdown();
+
+    long countCreatedBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    List<UserDailyCountDTO> selectDailyCreatedBetween(
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

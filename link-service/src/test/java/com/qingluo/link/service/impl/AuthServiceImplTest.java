@@ -18,6 +18,7 @@ import com.qingluo.link.model.dto.request.UpdateProfileRequest;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.OssApplicationService;
+import com.qingluo.link.service.UserLoginEventRecorder;
 import com.qingluo.link.service.cache.UserCacheService;
 import com.qingluo.link.service.oss.UploadResult;
 import org.junit.jupiter.api.AfterEach;
@@ -54,6 +55,9 @@ class AuthServiceImplTest {
 
     @Mock
     private OssApplicationService ossApplicationService;
+
+    @Mock
+    private UserLoginEventRecorder userLoginEventRecorder;
 
     @InjectMocks
     private AuthServiceImpl authService;
@@ -94,6 +98,8 @@ class AuthServiceImplTest {
 
         authService.login(request);
 
+        verify(userLoginEventRecorder).record(1L, UserLoginEventRecorder.SOURCE_LOGIN);
+
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).updateById(captor.capture());
         assertThat(captor.getValue().getLastLoginAt()).isNotNull();
@@ -118,6 +124,8 @@ class AuthServiceImplTest {
         request.setEmail(" new@test.com ");
 
         authService.register(request);
+
+        verify(userLoginEventRecorder).record(anyLong(), eq(UserLoginEventRecorder.SOURCE_REGISTER));
 
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).insert(captor.capture());

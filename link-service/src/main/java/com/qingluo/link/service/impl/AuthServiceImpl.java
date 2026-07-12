@@ -15,6 +15,7 @@ import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
 import com.qingluo.link.service.OssApplicationService;
+import com.qingluo.link.service.UserLoginEventRecorder;
 import com.qingluo.link.service.cache.UserCacheService;
 import com.qingluo.link.service.oss.UploadResult;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final UserCacheService userCacheService;
     private final OssApplicationService ossApplicationService;
+    private final UserLoginEventRecorder userLoginEventRecorder;
 
     /**
      * 校验账号密码并创建登录态，成功后同步刷新最后登录时间。
@@ -66,6 +68,7 @@ public class AuthServiceImpl implements AuthService {
         user.setLastLoginAt(LocalDateTime.now());
         sysUserMapper.updateById(user);
         userCacheService.put(user.getId(), toDTO(user));
+        userLoginEventRecorder.record(user.getId(), UserLoginEventRecorder.SOURCE_LOGIN);
 
         AuditLog.event("LOGIN_SUCCESS", "userId={}, account={}", user.getId(), account);
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
@@ -101,6 +104,7 @@ public class AuthServiceImpl implements AuthService {
         sysUserMapper.insert(user);
         StpUtil.login(user.getId());
         userCacheService.put(user.getId(), toDTO(user));
+        userLoginEventRecorder.record(user.getId(), UserLoginEventRecorder.SOURCE_REGISTER);
 
         AuditLog.event("REGISTER", "userId={}, username={}", user.getId(), username);
         return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());

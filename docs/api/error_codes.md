@@ -27,6 +27,10 @@
 - 其余 `MODEL_NOT_SUPPORTED(10008)`（模型不支持该能力 / 目录无该模型能力）、`DUPLICATE_USER_CONFIG(10009)`、`NO_DEFAULT_CONFIG(10006)` 等以 `ErrorCode.java` 为准。
 - `GlobalExceptionHandler` 新增对 `MissingServletRequestParameterException` 的处理：缺少必填查询参数统一返回 400 `缺少必填参数: <name>`。
 
+## 用户与认证错误码（20001-20999）
+
+- `INVALID_USER_STATISTICS_RANGE(20008/400)`：管理端用户统计看板的 `days` 仅支持 `7`、`30`、`90`，缺省为 `30`。
+
 ## 召回错误码（recall）
 
 > **变更（LINK-122）**：旧召回网关链路（Java 中转代理 `/api/v1/recall/stream`）已废弃移除，其专用错误码
