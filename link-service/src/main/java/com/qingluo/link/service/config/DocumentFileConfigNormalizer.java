@@ -68,7 +68,8 @@ public final class DocumentFileConfigNormalizer {
             return false;
         }
         LinkedHashSet<String> normalized = normalize(suffixes);
-        return !normalized.isEmpty() && supportedSuffixes.containsAll(normalized);
+        LinkedHashSet<String> normalizedSupported = normalize(List.copyOf(supportedSuffixes));
+        return !normalized.isEmpty() && normalizedSupported.containsAll(normalized);
     }
 
     public static String writeSuffixes(Set<String> suffixes, ObjectMapper objectMapper) {

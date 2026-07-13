@@ -6,8 +6,6 @@ import com.baomidou.mybatisplus.core.config.GlobalConfig;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
-import com.qingluo.link.components.redis.service.CacheConsistencyService;
-import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.SystemPresetMapper;
@@ -24,7 +22,6 @@ import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.SystemProviderService;
-import com.qingluo.link.service.cache.UserLLMConfigCacheService;
 import com.qingluo.link.service.impl.llm.UserLLMConfigServiceImpl;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -64,11 +61,6 @@ class UserLLMConfigServiceImplTest {
     private LLMCapabilityService llmCapabilityService;
     @Mock
     private ApiKeyEncryptService apiKeyEncryptService;
-    @Mock
-    private CacheConsistencyService cacheConsistencyService;
-    @Mock
-    private UserLLMConfigCacheService userLLMConfigCacheService;
-
     @InjectMocks
     private UserLLMConfigServiceImpl service;
 
@@ -117,7 +109,6 @@ class UserLLMConfigServiceImplTest {
         assertThat(result).allMatch(dto -> "EN****1234".equals(dto.getApiKeyMasked()));
         assertThat(result).allMatch(dto -> "USER".equals(dto.getSource()));
         assertThat(result).allMatch(dto -> Boolean.FALSE.equals(dto.getIsSystemPreset()));
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
     @Test
@@ -249,7 +240,6 @@ class UserLLMConfigServiceImplTest {
         service.toggleModel(7L, request);
 
         verify(userLLMConfigMapper).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
     @Test
@@ -271,8 +261,6 @@ class UserLLMConfigServiceImplTest {
         assertThat(cfg.getIsActive()).isFalse();
         verify(userLLMConfigMapper).updateById(cfg);
         verify(userLLMConfigMapper, never()).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(cacheConsistencyService).evict(CacheEvictTarget.LLM_CONFIG, 11L);
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
     @Test
@@ -295,7 +283,6 @@ class UserLLMConfigServiceImplTest {
         assertThat(cfg.getIsActive()).isFalse();
         assertThat(cfg.getIsDefault()).isFalse();
         verify(userLLMConfigMapper).updateById(cfg);
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
     @Test
@@ -351,7 +338,6 @@ class UserLLMConfigServiceImplTest {
         assertThat(cfg.getIsDefault()).isTrue();
         verify(userLLMConfigMapper).update(eq(null), any(LambdaUpdateWrapper.class)); // clearOtherDefault
         verify(userLLMConfigMapper).updateById(cfg);
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
     @Test
@@ -364,7 +350,6 @@ class UserLLMConfigServiceImplTest {
         service.selectEffectiveModel(7L, request);
 
         verify(userLLMConfigMapper).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
         verify(systemProviderService, never()).getActiveByProviderType(any());
     }
 
@@ -412,8 +397,6 @@ class UserLLMConfigServiceImplTest {
         service.deleteConfig(7L, 11L);
 
         verify(userLLMConfigMapper).deleteById(11L);
-        verify(cacheConsistencyService).evict(CacheEvictTarget.LLM_CONFIG, 11L);
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
     @Test
@@ -422,7 +405,6 @@ class UserLLMConfigServiceImplTest {
         service.clearDefaultConfig(7L, "chat");
 
         verify(userLLMConfigMapper).update(eq(null), any(LambdaUpdateWrapper.class));
-        verify(cacheConsistencyService).evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, 7L);
     }
 
     @Test
@@ -431,8 +413,7 @@ class UserLLMConfigServiceImplTest {
         UserLLMConfig cfg = config(11L, 7L, "openai", "gpt-4o", "CHAT");
         cfg.setIsDefault(true);
         given(apiKeyEncryptService.maskApiKey("ENC")).willReturn("EN****");
-        UserLLMConfigDTO dto = toDto(cfg);
-        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of(dto));
+        given(userLLMConfigMapper.selectList(any())).willReturn(List.of(cfg));
 
         UserLLMConfigDTO result = service.getDefaultConfig(7L, "CHAT");
 
@@ -443,7 +424,7 @@ class UserLLMConfigServiceImplTest {
     @Test
     @DisplayName("六·无生效配置返回 NO_DEFAULT_CONFIG")
     void getDefaultConfig_throwsWhenNone() {
-        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of());
+        given(userLLMConfigMapper.selectList(any())).willReturn(List.of());
 
         assertThatThrownBy(() -> service.getDefaultConfig(7L, "CHAT"))
                 .isInstanceOf(BusinessException.class)
@@ -451,27 +432,25 @@ class UserLLMConfigServiceImplTest {
     }
 
     @Test
-    @DisplayName("读取配置列表命中用户配置缓存后在内存过滤")
-    void getConfigs_filtersCachedUserConfigsInMemory() {
+    @DisplayName("读取配置列表每次查询数据库后在内存过滤")
+    void getConfigs_filtersDatabaseUserConfigsInMemory() {
         UserLLMConfig chat = config(11L, 7L, "openai", "gpt-4o", "CHAT");
         UserLLMConfig embedding = config(12L, 7L, "openai", "text-embedding-3", "EMBEDDING");
         embedding.setIsActive(false);
         given(apiKeyEncryptService.maskApiKey("ENC")).willReturn("EN****");
-        List<UserLLMConfigDTO> cached = List.of(toDto(chat), toDto(embedding));
-        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any()))
-                .willReturn(cached);
+        given(userLLMConfigMapper.selectList(any())).willReturn(List.of(chat, embedding));
         given(systemPresetMapper.selectList(any())).willReturn(List.of());
 
         List<UserLLMConfigDTO> result = service.getConfigs(7L, "openai", "CHAT", true);
 
         assertThat(result).extracting(UserLLMConfigDTO::getModelName).containsExactly("gpt-4o");
-        verify(userLLMConfigMapper, never()).selectList(any());
+        verify(userLLMConfigMapper).selectList(any());
     }
 
     @Test
     @DisplayName("读取配置列表合并 LinkRag 只读配置，用户无默认时 LinkRag 为生效")
     void getConfigs_appendsReadonlyLinkRagConfig() {
-        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of());
+        given(userLLMConfigMapper.selectList(any())).willReturn(List.of());
         given(systemPresetMapper.selectList(any())).willReturn(List.of(linkRagPreset(100L, "CHAT", "linkrag-chat")));
         SystemProvider linkRagProvider = providerOf(99L, "linkrag", "https://api.linkrag.local/v1");
         linkRagProvider.setIconUrl("https://minio.example/tolink-public/providerIcon/linkrag.png");
@@ -497,8 +476,7 @@ class UserLLMConfigServiceImplTest {
         UserLLMConfig userDefault = config(11L, 7L, "openai", "gpt-4o", "CHAT");
         userDefault.setIsDefault(true);
         given(apiKeyEncryptService.maskApiKey("ENC")).willReturn("EN****");
-        UserLLMConfigDTO userDefaultDto = toDto(userDefault);
-        given(userLLMConfigCacheService.getOrLoadAll(eq(7L), any())).willReturn(List.of(userDefaultDto));
+        given(userLLMConfigMapper.selectList(any())).willReturn(List.of(userDefault));
         given(systemPresetMapper.selectList(any())).willReturn(List.of(linkRagPreset(100L, "CHAT", "linkrag-chat")));
         given(systemProviderService.getByProviderType("linkrag"))
                 .willReturn(providerOf(99L, "linkrag", "https://api.linkrag.local/v1"));

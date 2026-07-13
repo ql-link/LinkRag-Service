@@ -7,7 +7,6 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
-import com.qingluo.link.service.cache.UserCacheService;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -90,9 +89,6 @@ class AdminControllerProviderTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @MockBean
-    private UserCacheService userCacheService;
-
     /**
      * 管理员用户 ID
      */
@@ -107,14 +103,6 @@ class AdminControllerProviderTest {
      * 管理员登录令牌
      */
     private String adminToken;
-
-    @BeforeEach
-    void setupUserCacheMock() {
-        given(userCacheService.getOrLoad(anyLong(), any())).willAnswer(invocation -> {
-            Supplier<UserProfileDTO> supplier = invocation.getArgument(1);
-            return supplier.get();
-        });
-    }
 
     /**
      * 测试前置准备：插入管理员和测试厂商

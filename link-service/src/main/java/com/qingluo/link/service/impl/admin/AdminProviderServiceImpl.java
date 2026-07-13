@@ -2,8 +2,6 @@ package com.qingluo.link.service.impl.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.qingluo.link.components.redis.service.CacheConsistencyService;
-import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.observability.log.AuditLog;
@@ -31,7 +29,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
     private final SystemProviderMapper systemProviderMapper;
     private final ProviderModelMapper providerModelMapper;
-    private final CacheConsistencyService cacheConsistencyService;
     private final LLMProtocolService llmProtocolService;
 
     @Override
@@ -48,7 +45,7 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
     @Override
     /**
-     * 创建新的系统厂商配置并清理相关缓存。
+     * 创建新的系统厂商配置。
      */
     public void createProvider(CreateProviderRequest request) {
         llmProtocolService.validateProtocol(request.getDefaultProtocol());
@@ -74,7 +71,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         provider.setPriority(request.getPriority());
 
         systemProviderMapper.insert(provider);
-        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, request.getProviderType());
         AuditLog.event("PROVIDER_CREATE", "operatorId={}, providerId={}, providerType={}",
                 AuthContext.getCurrentUserId(), provider.getId(), request.getProviderType());
     }
@@ -116,12 +112,11 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
 
         systemProviderMapper.updateById(provider);
-        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
     }
 
     @Override
     /**
-     * 删除指定厂商配置并清理缓存。
+     * 删除指定厂商配置。
      */
     public void deleteProvider(Long id) {
         SystemProvider provider = systemProviderMapper.selectById(id);
@@ -130,7 +125,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
 
         systemProviderMapper.deleteById(id);
-        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
         AuditLog.event("PROVIDER_DELETE", "operatorId={}, providerId={}, providerType={}",
                 AuthContext.getCurrentUserId(), id, provider.getProviderType());
     }
@@ -150,7 +144,6 @@ public class AdminProviderServiceImpl implements AdminProviderService {
 
         provider.setIsActive(isActive);
         systemProviderMapper.updateById(provider);
-        cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
     }
 
     private void requireAtLeastOneActiveModel(Long providerId) {

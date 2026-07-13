@@ -21,8 +21,7 @@
 | GET | `/api/v1/admin/users/dashboard` | 用户统计看板，`days` 仅支持 7/30/90，默认 30 |
 | PATCH | `/api/v1/admin/users/{id}/status` | 启用/禁用用户 |
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
-| GET | `/api/v1/admin/document-file-config` | 查询文档文件上传配置 |
-| PATCH | `/api/v1/admin/document-file-config` | 修改文档文件上传配置 |
+| GET | `/api/v1/admin/document-file-config` | 只读查询当前实例通过 `tolink.document-file.*` 绑定的上传配置；`updatedBy` / `updatedAt` 返回 `null` |
 | GET | `/api/v1/admin/feedback` | 管理员反馈列表，支持 `page`、`pageSize`、`status`、`type` |
 | GET | `/api/v1/admin/feedback/{id}` | 管理员反馈详情 |
 | PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |

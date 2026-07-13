@@ -2,8 +2,6 @@ package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.qingluo.link.components.redis.service.CacheConsistencyService;
-import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.observability.log.AuditLog;
@@ -23,7 +21,6 @@ import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.SystemProviderService;
 import com.qingluo.link.service.UserLLMConfigService;
-import com.qingluo.link.service.cache.UserLLMConfigCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +36,7 @@ import java.util.Objects;
  *
  * <p>用户配置表只保存用户自配行（is_system_preset=false），按能力多行存储，靠 is_default
  * 表达「某能力用户自配当前生效哪一条」。系统兜底配置由 llm_system_preset 提供，不再注册镜像到本表。
- * Key 为厂商级——同厂商多行共用同一个加密 Key。缓存失效统一走 {@link CacheConsistencyService}。</p>
+ * Key 为厂商级——同厂商多行共用同一个加密 Key。配置读取以 MySQL 为唯一事实来源。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -55,8 +52,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     private final ProviderModelService providerModelService;
     private final LLMCapabilityService llmCapabilityService;
     private final ApiKeyEncryptService apiKeyEncryptService;
-    private final CacheConsistencyService cacheConsistencyService;
-    private final UserLLMConfigCacheService userLLMConfigCacheService;
 
     @Override
     /**
@@ -68,7 +63,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     public List<UserLLMConfigDTO> getConfigs(Long userId, String providerType, String capability, Boolean isActive) {
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
 
-        List<UserLLMConfigDTO> userConfigs = userLLMConfigCacheService.getOrLoadAll(userId, () -> loadAllConfigDTOs(userId));
+        List<UserLLMConfigDTO> userConfigs = loadAllConfigDTOs(userId);
         List<UserLLMConfigDTO> configs = new ArrayList<>(userConfigs);
         configs.addAll(loadLinkRagConfigDTOs(normalizedCapability, userConfigs));
 
@@ -80,7 +75,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     }
 
     /**
-     * 从数据库加载当前用户全部配置并转 DTO。调用方在缓存命中后做内存过滤，避免不同筛选条件拆出多份缓存。
+     * 从数据库加载当前用户全部配置并转 DTO。
      */
     private List<UserLLMConfigDTO> loadAllConfigDTOs(Long userId) {
         LambdaQueryWrapper<UserLLMConfig> wrapper = new LambdaQueryWrapper<>();
@@ -165,8 +160,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
             }
         }
 
-        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
-        result.forEach(config -> cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, config.getId()));
         // 审计：厂商级 Key 配置/更新（只记标识与影响行数，绝不记 Key 明文/密文）
         AuditLog.event("LLM_PROVIDER_SETUP", "userId={}, providerType={}, providerId={}, configRows={}",
                 userId, provider.getProviderType(), provider.getId(), result.size());
@@ -203,7 +196,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
                         .set(UserLLMConfig::getIsActive, request.getEnabled())
         );
 
-        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
     /**
@@ -221,8 +213,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         }
         userLLMConfigMapper.updateById(config);
 
-        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, config.getId());
-        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
     @Override
@@ -257,8 +247,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         clearOtherDefault(userId, capability, config.getId());
         config.setIsDefault(true);
         userLLMConfigMapper.updateById(config);
-        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, config.getId());
-        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
     /**
@@ -287,8 +275,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
     public void deleteConfig(Long userId, Long configId) {
         UserLLMConfig config = getConfigOrThrow(userId, configId);
         userLLMConfigMapper.deleteById(configId);
-        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, configId);
-        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
         AuditLog.event("LLM_CONFIG_DELETE", "userId={}, configId={}, providerType={}, modelName={}, capability={}",
                 userId, configId, config.getProviderType(), config.getModelName(), config.getCapability());
     }
@@ -310,7 +296,7 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
      */
     public UserLLMConfigDTO getDefaultConfig(Long userId, String capability) {
         String normalizedCapability = normalizeCapabilityIfPresent(capability);
-        return userLLMConfigCacheService.getOrLoadAll(userId, () -> loadAllConfigDTOs(userId)).stream()
+        return loadAllConfigDTOs(userId).stream()
                 .filter(dto -> Objects.equals(normalizedCapability, dto.getCapability()))
                 .filter(dto -> Boolean.TRUE.equals(dto.getIsDefault()))
                 .filter(dto -> Boolean.TRUE.equals(dto.getIsActive()))
@@ -338,8 +324,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
         clearOtherDefault(userId, normalizedCapability, configId);
         config.setIsDefault(true);
         userLLMConfigMapper.updateById(config);
-        cacheConsistencyService.evict(CacheEvictTarget.LLM_CONFIG, configId);
-        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
     @Override
@@ -353,7 +337,6 @@ public class UserLLMConfigServiceImpl implements UserLLMConfigService {
                         .eq(UserLLMConfig::getIsSystemPreset, false)
                         .set(UserLLMConfig::getIsDefault, false)
         );
-        cacheConsistencyService.evict(CacheEvictTarget.USER_DEFAULT_LLM_CONFIG, userId);
     }
 
     /**

@@ -1,7 +1,5 @@
 package com.qingluo.link.service.mq;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -11,8 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CacheCompensationMQTest {
 
     @Test
-    @DisplayName("Should_SerializeFlatJson_When_BuildCacheCompensationMessage")
-    void Should_SerializeFlatJson_When_BuildCacheCompensationMessage() {
+    @DisplayName("Should_RejectHistoricalBusinessTarget_When_NoActiveCacheTargets")
+    void Should_RejectHistoricalBusinessTarget_When_NoActiveCacheTargets() {
         CacheCompensationMQ mq = new CacheCompensationMQ(new CacheCompensationMQ.MsgPayload(
                 "evt-1",
                 "user",
@@ -23,12 +21,10 @@ class CacheCompensationMQTest {
                 "2026-05-06T12:00:00+08:00"
         ));
 
-        JSONObject json = JSON.parseObject(mq.getMessage());
-
         assertThat(mq.getMQName()).isEqualTo("tolink.cache.evict");
-        assertThat(json.getString("event_id")).isEqualTo("evt-1");
-        assertThat(json.getString("cache_target")).isEqualTo("user");
-        assertThat(json.getString("route_id")).isEqualTo("1001");
+        assertThatThrownBy(mq::getMessage)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Unknown cache target: user");
     }
 
     @Test

@@ -150,6 +150,10 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 |------|------|----------|--------|--------|
 | `DOCUMENT_FILE_INTERNAL_BASE_URL` | 内部服务访问地址 | 否 | `http://tolink-service:8080` | `http://localhost:8080` |
 | `DOCUMENT_FILE_SERVICE_TOKEN` | 内部服务 Token | 否 | 空 | `your-service-token-here` |
+| `TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES` | 单文件上传大小上限（字节） | 否 | `20971520` | `10485760` |
+| `TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES` | 允许上传的后缀列表（Spring Boot 集合绑定格式） | 否 | `md,markdown,pdf,docx,txt` | `pdf,md` |
+
+上传大小和后缀以 `DocumentFileProperties` 为唯一事实来源，不写 MySQL 或 Redis。修改部署变量后需要重启或重新发布实例；管理端 `GET /api/v1/admin/document-file-config` 仅用于查看当前实例绑定值。
 
 ### 4.11 LLM（LLM_*）
 
