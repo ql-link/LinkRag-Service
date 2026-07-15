@@ -17,6 +17,10 @@
 - Entity：`DocumentOriginalFile`、`DocumentParseFile`、`DocumentParsedLog`
 - MQ：`DocumentParseTaskMQ`
 
+## 上传配置来源
+
+文件大小上限和允许后缀直接来自 `DocumentFileProperties`（`tolink.document-file.max-size-bytes`、`tolink.document-file.allowed-suffixes`），不读 MySQL 或 Redis。`GET /api/v1/admin/document-file-config` 只读展示当前实例绑定值，动态修改 PATCH 已删除；部署配置变化需重启实例生效。
+
 ## 上传异步化
 
 上传接口（`POST /api/v1/datasets/{datasetId}/files`）同步阶段只做鉴权、数据集归属、格式/大小/文件名校验、同名处理、物化临时文件、落 `uploading` 记录并**立即返回 `uploadStatus=UPLOADING`**；OSS 上传（原文件写入 RAW 私有桶 `tolink-rag-raw`，Java 写 / Python 只读，桶名落 `document_original_file.bucket_name` 并随解析任务 MQ 的 `source_bucket` 下发）、终态回写（`success`/`failed`）、`parseImmediately=true` 时的解析投递都移到 `documentUploadExecutor` 专用线程池，在事务提交后（afterCommit）异步执行。前端按 `uploadStatus` 轮询 list/detail 获取终态（**跨端依赖：前端需配合改为轮询**）。

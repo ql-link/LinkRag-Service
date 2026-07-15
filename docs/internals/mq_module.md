@@ -47,8 +47,8 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 
 ## CDC 桥接生产端（缓存补偿）
 
-- `tolink.cache.evict` 的生产端：`CdcBridgeKafkaReceiver`（监听 Canal 原始 topic `tolink.canal.binlog`）→ `CdcBridgeService`（统一映射展开）→ 复用 `MQSend` 投递 `CacheCompensationMQ`，不直接删缓存（保持 `tolink.cache.evict` 为唯一补偿入口）。
-- 统一映射声明在 `CdcCacheEvictMapping`：表 → [(缓存目标, route_id 取法)]，取法分直取（读本行字段）与解析（`llm_provider_model` 的 provider_id 经厂商索引缓存换 provider_type，查不到降级跳过），展开循环零分支。
+- `tolink.cache.evict` 的生产端骨架：`CdcBridgeKafkaReceiver`（监听 Canal 原始 topic `tolink.canal.binlog`）→ `CdcBridgeService`（映射展开）→ `MQSend` 投递 `CacheCompensationMQ`。
+- 当前 `CdcCacheEvictMapping` 为空，现有业务表不会产生补偿消息；`CacheEvictTarget` 也没有业务 target。发布新版本前需排空旧消息。
 - 专用容器工厂 `cdcBridgeKafkaListenerContainerFactory`（`CdcBridgeKafkaConfig`）：坏消息（IllegalArgumentException/DeserializationException）判不可重试立即 recover；其余退避重试（最多 3 次）耗尽 recover；recover = 告警 + `CdcBridgeMetrics` 指标 + 跳过，不引入 DLQ。
 - 装配：消费者 `CdcBridgeKafkaReceiver` 与容器工厂 `CdcBridgeKafkaConfig` **共用同一 `@ConditionalOnExpression` 条件**（抽为常量 `CdcBridgeKafkaConfig.CDC_BRIDGE_CONDITION`）——vender=kafka 且 `tolink.cache-consistency.cdc.enabled=true`（默认 false）二者皆满足才装载。两者口径一致，杜绝 vender=kafka 但 CDC 关闭时仍创建空转容器工厂的“半开”状态；CDC 未部署环境零报错。开关在 `application.yml` 已显式声明 `cdc.enabled: false`。
 - 隐式假设：桥接按 `table` 名分流、**不校验 `database`**，依赖 Canal 实例只订阅业务库目标表（见 brief 3.1）。多库部署若出现同名表需在 Canal 侧隔离订阅范围。

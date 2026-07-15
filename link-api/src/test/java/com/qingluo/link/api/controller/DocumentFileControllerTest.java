@@ -6,8 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
-import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
-import com.qingluo.link.service.cache.DocumentFileConfigCacheService;
+import com.qingluo.link.service.config.DocumentFileProperties;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,8 +79,8 @@ class DocumentFileControllerTest {
     @SpyBean
     private com.qingluo.link.components.oss.service.IOssService ossService;
 
-    @MockBean
-    private DocumentFileConfigCacheService documentFileConfigCacheService;
+    @Autowired
+    private DocumentFileProperties documentFileProperties;
 
     private String token;
     private Long userId;
@@ -89,8 +88,8 @@ class DocumentFileControllerTest {
 
     @BeforeEach
     void setUp() {
-        reset(documentFileConfigCacheService);
-        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.empty());
+        documentFileProperties.setMaxSizeBytes(20L * 1024 * 1024);
+        documentFileProperties.setAllowedSuffixes(new java.util.LinkedHashSet<>(List.of("md", "markdown", "pdf", "docx", "txt")));
         jdbcTemplate.update("DELETE FROM document_parse_pipeline");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
@@ -295,9 +294,9 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectDocumentFileUpload_When_RedisConfigOverridesMaxSize() throws Exception {
-        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.of(
-            new DocumentFileConfigDTO(5L, List.of("txt"), 99995L, null)));
+    void Should_RejectDocumentFileUpload_When_PropertiesLimitMaxSize() throws Exception {
+        documentFileProperties.setMaxSizeBytes(5L);
+        documentFileProperties.setAllowedSuffixes(new java.util.LinkedHashSet<>(List.of("txt")));
         MockMultipartFile file = new MockMultipartFile(
             "file", "too-large.txt", MediaType.TEXT_PLAIN_VALUE, "123456".getBytes(StandardCharsets.UTF_8));
 
@@ -309,9 +308,9 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_RejectDocumentFileUpload_When_RedisConfigOverridesAllowedSuffixes() throws Exception {
-        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.of(
-            new DocumentFileConfigDTO(1024L, List.of("pdf"), 99995L, null)));
+    void Should_RejectDocumentFileUpload_When_PropertiesLimitAllowedSuffixes() throws Exception {
+        documentFileProperties.setMaxSizeBytes(1024L);
+        documentFileProperties.setAllowedSuffixes(new java.util.LinkedHashSet<>(List.of("pdf")));
         MockMultipartFile file = new MockMultipartFile(
             "file", "note.txt", MediaType.TEXT_PLAIN_VALUE, "ok".getBytes(StandardCharsets.UTF_8));
 

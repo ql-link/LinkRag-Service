@@ -19,7 +19,6 @@ import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.UserLoginEventRecorder;
-import com.qingluo.link.service.cache.UserCacheService;
 import com.qingluo.link.service.oss.UploadResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,9 +48,6 @@ class AuthServiceImplTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
-
-    @Mock
-    private UserCacheService userCacheService;
 
     @Mock
     private OssApplicationService ossApplicationService;
@@ -103,7 +99,6 @@ class AuthServiceImplTest {
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).updateById(captor.capture());
         assertThat(captor.getValue().getLastLoginAt()).isNotNull();
-        verify(userCacheService).put(eq(1L), any(UserProfileDTO.class));
     }
 
     @Test
@@ -130,7 +125,6 @@ class AuthServiceImplTest {
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).insert(captor.capture());
         assertThat(captor.getValue().getLastLoginAt()).isNotNull();
-        verify(userCacheService).put(eq(captor.getValue().getId()), any(UserProfileDTO.class));
     }
 
     @Test
@@ -175,26 +169,22 @@ class AuthServiceImplTest {
     // ---- getProfile ----
 
     @Test
-    @DisplayName("Should_ReturnFromCache_When_CacheHit")
-    void Should_ReturnFromCache_When_CacheHit() {
-        UserProfileDTO cached = buildDto(1L, "alice", UserRole.USER);
-        given(userCacheService.getOrLoad(eq(1L), any())).willReturn(cached);
+    @DisplayName("Should_QueryDatabase_When_GetProfile")
+    void Should_QueryDatabase_When_GetProfile() {
+        SysUser user = buildUser(1L, "alice", UserRole.USER);
+        given(sysUserMapper.selectById(1L)).willReturn(user);
 
         UserProfileDTO result = authService.getProfile(1L);
 
         assertThat(result.getUsername()).isEqualTo("alice");
-        verifyNoInteractions(sysUserMapper);
+        verify(sysUserMapper).selectById(1L);
     }
 
     @Test
-    @DisplayName("Should_QueryDbAndWriteCache_When_CacheMiss")
-    void Should_QueryDbAndWriteCache_When_CacheMiss() {
+    @DisplayName("Should_ReturnCurrentDatabaseRole_When_GetProfile")
+    void Should_ReturnCurrentDatabaseRole_When_GetProfile() {
         SysUser user = buildUser(2L, "bob", UserRole.ADMIN);
         given(sysUserMapper.selectById(2L)).willReturn(user);
-        given(userCacheService.getOrLoad(eq(2L), any())).willAnswer(invocation -> {
-            Object loaded = invocation.getArgument(1, java.util.function.Supplier.class).get();
-            return loaded;
-        });
 
         UserProfileDTO result = authService.getProfile(2L);
 
@@ -218,7 +208,6 @@ class AuthServiceImplTest {
         authService.updateProfile(1L, request);
 
         verify(sysUserMapper).updateById(any(SysUser.class));
-        verify(userCacheService).evict(1L);
     }
 
     @Test
@@ -238,7 +227,6 @@ class AuthServiceImplTest {
             .hasMessage("邮箱已被使用");
 
         verify(sysUserMapper, never()).updateById(any(SysUser.class));
-        verify(userCacheService, never()).evict(anyLong());
     }
 
     @Test
@@ -258,19 +246,9 @@ class AuthServiceImplTest {
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).updateById(captor.capture());
         assertThat(captor.getValue().getAvatarUrl()).isEqualTo("https://minio.example/tolink-public/avatar/1/abc.png");
-        verify(userCacheService).evict(1L);
     }
 
     // ---- helpers ----
-
-    private UserProfileDTO buildDto(Long id, String username, UserRole role) {
-        UserProfileDTO dto = new UserProfileDTO();
-        dto.setId(id);
-        dto.setUsername(username);
-        dto.setRole(role.name());
-        dto.setStatus(1);
-        return dto;
-    }
 
     private SysUser buildUser(Long id, String username, UserRole role) {
         SysUser user = new SysUser();

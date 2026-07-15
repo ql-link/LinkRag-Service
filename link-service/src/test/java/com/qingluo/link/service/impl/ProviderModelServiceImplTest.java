@@ -1,7 +1,5 @@
 package com.qingluo.link.service.impl;
 
-import com.qingluo.link.components.redis.service.CacheConsistencyService;
-import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.ProviderModelMapper;
@@ -47,8 +45,6 @@ class ProviderModelServiceImplTest {
     private LLMCapabilityService llmCapabilityService;
     @Mock
     private LLMProtocolService llmProtocolService;
-    @Mock
-    private CacheConsistencyService cacheConsistencyService;
 
     @InjectMocks
     private ProviderModelServiceImpl service;
@@ -98,7 +94,6 @@ class ProviderModelServiceImplTest {
         assertThat(result.getDisplayName()).isEqualTo("GTE Rerank");
         assertThat(result.getProtocol()).isEqualTo("dashscope");
         assertThat(result.getApiBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/api/v1");
-        verify(cacheConsistencyService).evict(eq(CacheEvictTarget.SYSTEM_PROVIDER), any());
     }
 
     @Test
@@ -156,7 +151,6 @@ class ProviderModelServiceImplTest {
     @DisplayName("删除模型能力目录项")
     void deleteModelCapability() {
         given(providerModelMapper.selectById(9L)).willReturn(pm(9L, "gpt-4o", "CHAT"));
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "openai"));
 
         service.deleteModelCapability(9L);
 
@@ -164,11 +158,10 @@ class ProviderModelServiceImplTest {
     }
 
     @Test
-    @DisplayName("更新模型能力目录项：校验协议并刷新厂商缓存")
+    @DisplayName("更新模型能力目录项：校验协议并写回数据库")
     void updateModelCapability_updatesFactsAndEvictsCache() {
         ProviderModel existing = pm(9L, "gpt-4o", "CHAT");
         given(providerModelMapper.selectById(9L)).willReturn(existing);
-        given(systemProviderMapper.selectById(5L)).willReturn(provider(5L, "openai"));
 
         UpdateProviderModelRequest request = new UpdateProviderModelRequest();
         request.setModelName("gpt-4o-mini");
@@ -185,7 +178,6 @@ class ProviderModelServiceImplTest {
         assertThat(result.getCapability()).isEqualTo("VISION");
         assertThat(result.getIsActive()).isFalse();
         verify(providerModelMapper).updateById(existing);
-        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test

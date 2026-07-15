@@ -16,7 +16,6 @@ import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
 import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.UserLoginEventRecorder;
-import com.qingluo.link.service.cache.UserCacheService;
 import com.qingluo.link.service.oss.UploadResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,7 +38,6 @@ public class AuthServiceImpl implements AuthService {
 
     private final SysUserMapper sysUserMapper;
     private final PasswordEncoder passwordEncoder;
-    private final UserCacheService userCacheService;
     private final OssApplicationService ossApplicationService;
     private final UserLoginEventRecorder userLoginEventRecorder;
 
@@ -67,7 +65,6 @@ public class AuthServiceImpl implements AuthService {
         StpUtil.login(user.getId());
         user.setLastLoginAt(LocalDateTime.now());
         sysUserMapper.updateById(user);
-        userCacheService.put(user.getId(), toDTO(user));
         userLoginEventRecorder.record(user.getId(), UserLoginEventRecorder.SOURCE_LOGIN);
 
         AuditLog.event("LOGIN_SUCCESS", "userId={}, account={}", user.getId(), account);
@@ -103,7 +100,6 @@ public class AuthServiceImpl implements AuthService {
 
         sysUserMapper.insert(user);
         StpUtil.login(user.getId());
-        userCacheService.put(user.getId(), toDTO(user));
         userLoginEventRecorder.record(user.getId(), UserLoginEventRecorder.SOURCE_REGISTER);
 
         AuditLog.event("REGISTER", "userId={}, username={}", user.getId(), username);
@@ -121,21 +117,19 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
-     * 获取当前用户资料，优先走缓存。
+     * 获取当前用户资料。
      */
     @Override
     public UserProfileDTO getProfile(Long userId) {
-        return userCacheService.getOrLoad(userId, () -> {
-            SysUser user = sysUserMapper.selectById(userId);
-            if (user == null) {
-                throw AuthException.userNotFound();
-            }
-            return toDTO(user);
-        });
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            throw AuthException.userNotFound();
+        }
+        return toDTO(user);
     }
 
     /**
-     * 更新用户资料并清理缓存。
+     * 更新用户资料。
      */
     @Override
     public void updateProfile(Long userId, UpdateProfileRequest request) {
@@ -165,7 +159,6 @@ public class AuthServiceImpl implements AuthService {
         }
 
         sysUserMapper.updateById(user);
-        userCacheService.evict(userId);
     }
 
     /**
@@ -182,7 +175,6 @@ public class AuthServiceImpl implements AuthService {
         UploadResult uploadResult = ossApplicationService.uploadAndDescribe("avatar", file, buildAvatarObjectKey(userId, file));
         user.setAvatarUrl(uploadResult.previewUrl());
         sysUserMapper.updateById(user);
-        userCacheService.evict(userId);
         return toDTO(user);
     }
 

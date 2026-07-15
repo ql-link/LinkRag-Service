@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -69,6 +70,12 @@ public class GlobalExceptionHandler {
         log.warn("请求体不可读（含未知字段/类型错误）: {}", e.getMessage());
         return ResponseEntity.badRequest()
             .body(Result.error(400, "请求参数不合法"));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Result<Object>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+            .body(Result.error(405, "请求方法不支持"));
     }
 
     @ExceptionHandler(Exception.class)

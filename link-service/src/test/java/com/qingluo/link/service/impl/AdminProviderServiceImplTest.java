@@ -2,8 +2,6 @@ package com.qingluo.link.service.impl;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.qingluo.link.components.redis.service.CacheConsistencyService;
-import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.ProviderModelMapper;
@@ -41,8 +39,6 @@ class AdminProviderServiceImplTest {
     @Mock
     private ProviderModelMapper providerModelMapper;
 
-    @Mock
-    private CacheConsistencyService cacheConsistencyService;
     @Mock
     private LLMProtocolService llmProtocolService;
 
@@ -89,7 +85,6 @@ class AdminProviderServiceImplTest {
         assertThat(captor.getValue().getIconUrl())
                 .isEqualTo("https://minio.example/tolink-public/providerIcon/openai.png");
         assertThat(captor.getValue().getIconObjectKey()).isEqualTo("providerIcon/openai.png");
-        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -109,7 +104,6 @@ class AdminProviderServiceImplTest {
                         assertThat(ex.getCode()).isEqualTo(ErrorCode.PROVIDER_HAS_NO_ACTIVE_MODEL.getCode()));
 
         verify(systemProviderMapper, never()).insert(any(SystemProvider.class));
-        verify(cacheConsistencyService, never()).evict(any(), any());
     }
 
     @Test
@@ -145,7 +139,6 @@ class AdminProviderServiceImplTest {
         assertThat(captor.getValue().getIconUrl())
                 .isEqualTo("https://minio.example/tolink-public/providerIcon/openai-new.png");
         assertThat(captor.getValue().getIconObjectKey()).isEqualTo("providerIcon/openai-new.png");
-        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -163,7 +156,6 @@ class AdminProviderServiceImplTest {
                         assertThat(ex.getCode()).isEqualTo(ErrorCode.PROVIDER_HAS_NO_ACTIVE_MODEL.getCode()));
 
         verify(systemProviderMapper, never()).updateById(any(SystemProvider.class));
-        verify(cacheConsistencyService, never()).evict(any(), any());
     }
 
     @Test
@@ -189,7 +181,6 @@ class AdminProviderServiceImplTest {
         adminProviderService.deleteProvider(1L);
 
         verify(systemProviderMapper).deleteById(1L);
-        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -212,7 +203,6 @@ class AdminProviderServiceImplTest {
         adminProviderService.toggleActive(1L, false);
 
         verify(systemProviderMapper).updateById(any(SystemProvider.class));
-        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -227,7 +217,6 @@ class AdminProviderServiceImplTest {
         ArgumentCaptor<SystemProvider> captor = ArgumentCaptor.forClass(SystemProvider.class);
         verify(systemProviderMapper).updateById(captor.capture());
         assertThat(captor.getValue().getIsActive()).isTrue();
-        verify(cacheConsistencyService).evict(CacheEvictTarget.SYSTEM_PROVIDER, "openai");
     }
 
     @Test
@@ -242,7 +231,6 @@ class AdminProviderServiceImplTest {
                         assertThat(ex.getCode()).isEqualTo(ErrorCode.PROVIDER_HAS_NO_ACTIVE_MODEL.getCode()));
 
         verify(systemProviderMapper, never()).updateById(any(SystemProvider.class));
-        verify(cacheConsistencyService, never()).evict(any(), any());
     }
 
     // ---- helpers ----

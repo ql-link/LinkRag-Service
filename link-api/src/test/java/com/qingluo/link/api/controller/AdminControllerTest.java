@@ -7,7 +7,6 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
-import com.qingluo.link.service.cache.DocumentFileConfigCacheService;
 import java.util.Optional;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,9 +83,6 @@ class AdminControllerTest {
 
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
-
-    @MockBean
-    private DocumentFileConfigCacheService documentFileConfigCacheService;
 
     /**
      * PasswordEncoder - BCrypt 密码加密
@@ -176,12 +172,6 @@ class AdminControllerTest {
         adminToken = StpUtil.getTokenValue();
         StpUtil.login(READONLY_USER_ID);
         userToken = StpUtil.getTokenValue();
-    }
-
-    @BeforeEach
-    void resetDocumentFileConfigCache() {
-        reset(documentFileConfigCacheService);
-        given(documentFileConfigCacheService.getConfig()).willReturn(Optional.empty());
     }
 
     /**
@@ -308,8 +298,8 @@ class AdminControllerTest {
 
     @Test
     @Order(6)
-    @DisplayName("管理员修改文档文件配置 - PATCH /api/v1/admin/document-file-config")
-    void Should_UpdateDocumentFileConfig_When_AdminPatchesConfig() throws Exception {
+    @DisplayName("文档文件配置 PATCH 已删除")
+    void Should_ReturnMethodNotAllowed_When_AdminPatchesConfig() throws Exception {
         String requestJson = """
             {
               "maxSizeBytes": 1024,
@@ -321,15 +311,7 @@ class AdminControllerTest {
                 .header("satoken", adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(200));
-
-        org.mockito.ArgumentCaptor<DocumentFileConfigDTO> captor =
-            org.mockito.ArgumentCaptor.forClass(DocumentFileConfigDTO.class);
-        verify(documentFileConfigCacheService).putConfig(captor.capture());
-        assertThat(captor.getValue().getMaxSizeBytes()).isEqualTo(1024L);
-        assertThat(captor.getValue().getAllowedSuffixes()).containsExactly("pdf", "txt");
-        assertThat(captor.getValue().getUpdatedBy()).isEqualTo(ADMIN_USER_ID);
+            .andExpect(status().isMethodNotAllowed());
     }
 
     @Test

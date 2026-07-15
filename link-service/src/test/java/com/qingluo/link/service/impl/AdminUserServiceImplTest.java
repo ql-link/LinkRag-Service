@@ -10,7 +10,6 @@ import com.qingluo.link.model.dto.request.UpdateUserStatusRequest;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
-import com.qingluo.link.service.cache.UserCacheService;
 import com.qingluo.link.service.impl.admin.AdminUserServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,8 +32,6 @@ class AdminUserServiceImplTest {
     @Mock
     private SysUserMapper sysUserMapper;
 
-    @Mock
-    private UserCacheService userCacheService;
 
     @InjectMocks
     private AdminUserServiceImpl adminUserService;
@@ -70,7 +67,6 @@ class AdminUserServiceImplTest {
         adminUserService.updateUserStatus(1L, request);
 
         verify(sysUserMapper).updateById(any(SysUser.class));
-        verify(userCacheService).evict(1L);
     }
 
     @Test
@@ -98,7 +94,6 @@ class AdminUserServiceImplTest {
         adminUserService.updateUserRole(1L, request);
 
         verify(sysUserMapper).updateById(any(SysUser.class));
-        verify(userCacheService).evict(1L);
     }
 
     @Test

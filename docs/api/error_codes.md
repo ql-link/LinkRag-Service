@@ -13,6 +13,10 @@
 - Controller 不直接拼装异常响应，交给全局异常处理。
 - 对外错误语义变化需同步 `docs/api/api_contracts.md`。
 
+## HTTP 协议错误
+
+- 请求方法与已注册路由不匹配时，`GlobalExceptionHandler` 将 `HttpRequestMethodNotSupportedException` 映射为 HTTP 405，响应体为 `Result.error(405, "请求方法不支持")`。例如已删除的 `PATCH /api/v1/admin/document-file-config` 会返回该结果，不再落入通用 500。
+
 ## LLM 配置错误码（10001-10999）
 
 - `INVALID_MODEL_CAPABILITY(10011/400)`：模型能力标识无效（合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`），用于用户侧厂商/配置接口的能力参数校验。

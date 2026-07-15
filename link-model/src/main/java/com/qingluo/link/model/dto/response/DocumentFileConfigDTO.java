@@ -19,9 +19,9 @@ public class DocumentFileConfigDTO {
     @Schema(description = "允许上传的文件后缀白名单")
     private List<String> allowedSuffixes;
 
-    @Schema(description = "最后修改人ID", example = "10000")
+    @Schema(description = "兼容字段；配置由部署环境提供，当前固定返回空")
     private Long updatedBy;
 
-    @Schema(description = "最后修改时间")
+    @Schema(description = "兼容字段；配置由部署环境提供，当前固定返回空")
     private LocalDateTime updatedAt;
 }

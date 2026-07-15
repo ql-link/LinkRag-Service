@@ -19,7 +19,6 @@ import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
-import com.qingluo.link.service.cache.UserCacheService;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -67,9 +66,6 @@ class BlogControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @MockBean
-    private UserCacheService userCacheService;
-
     private String adminToken;
     private String userToken;
 
@@ -81,11 +77,6 @@ class BlogControllerTest {
 
         insertUser(ADMIN_ID, "blogadmin", "ADMIN");
         insertUser(USER_ID, "bloguser", "USER");
-        given(userCacheService.getOrLoad(anyLong(), any())).willAnswer(invocation -> {
-            Supplier<UserProfileDTO> supplier = invocation.getArgument(1);
-            return supplier.get();
-        });
-
         StpUtil.login(ADMIN_ID);
         adminToken = StpUtil.getTokenValue();
         StpUtil.login(USER_ID);
