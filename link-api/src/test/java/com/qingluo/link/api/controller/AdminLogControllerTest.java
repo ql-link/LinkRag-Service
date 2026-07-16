@@ -16,7 +16,6 @@ import com.qingluo.link.model.dto.response.LogLabelsDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.service.AdminLogQueryService;
-import com.qingluo.link.service.cache.UserCacheService;
 import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,24 +49,16 @@ class AdminLogControllerTest {
     @MockBean
     private AdminLogQueryService adminLogQueryService;
 
-    @MockBean
-    private UserCacheService userCacheService;
-
     private String adminToken;
     private String userToken;
 
     @BeforeEach
     void setUp() {
-        Mockito.reset(adminLogQueryService, userCacheService);
+        Mockito.reset(adminLogQueryService);
         sysUserMapper.deleteById(ADMIN_ID);
         sysUserMapper.deleteById(USER_ID);
         insertUser(ADMIN_ID, "logadmin", "ADMIN");
         insertUser(USER_ID, "loguser", "USER");
-        given(userCacheService.getOrLoad(anyLong(), any())).willAnswer(invocation -> {
-            Supplier<UserProfileDTO> supplier = invocation.getArgument(1);
-            return supplier.get();
-        });
-
         StpUtil.login(ADMIN_ID);
         adminToken = StpUtil.getTokenValue();
         StpUtil.login(USER_ID);

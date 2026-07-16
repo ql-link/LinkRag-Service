@@ -78,6 +78,9 @@ public class SystemPresetServiceImpl implements SystemPresetService {
         if (preset == null) {
             throw new NotFoundException(ErrorCode.USER_CONFIG_NOT_FOUND, "系统预设不存在");
         }
+        if (Boolean.TRUE.equals(preset.getIsDefault())) {
+            throw new BusinessException(400, "当前系统默认预设不能直接删除，请先指定替代默认预设", 400);
+        }
         systemPresetMapper.deleteById(id);
     }
 

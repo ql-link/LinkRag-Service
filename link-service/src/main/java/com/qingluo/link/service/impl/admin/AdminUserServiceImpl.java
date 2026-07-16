@@ -13,7 +13,6 @@ import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AdminUserService;
-import com.qingluo.link.service.cache.UserCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,7 +27,6 @@ import java.util.stream.Collectors;
 public class AdminUserServiceImpl implements AdminUserService {
 
     private final SysUserMapper sysUserMapper;
-    private final UserCacheService userCacheService;
 
     @Override
     /**
@@ -48,7 +46,7 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Override
     /**
-     * 更新用户状态并失效用户缓存。
+     * 更新用户状态。
      */
     public void updateUserStatus(Long userId, UpdateUserStatusRequest request) {
         SysUser user = sysUserMapper.selectById(userId);
@@ -58,14 +56,13 @@ public class AdminUserServiceImpl implements AdminUserService {
         Integer oldStatus = user.getStatus();
         user.setStatus(request.getStatus());
         sysUserMapper.updateById(user);
-        userCacheService.evict(userId);
         AuditLog.event("USER_STATUS_CHANGE", "operatorId={}, targetUserId={}, {}->{}",
                 AuthContext.getCurrentUserId(), userId, oldStatus, request.getStatus());
     }
 
     @Override
     /**
-     * 更新用户角色并失效用户缓存。
+     * 更新用户角色。
      */
     public void updateUserRole(Long userId, UpdateUserRoleRequest request) {
         SysUser user = sysUserMapper.selectById(userId);
@@ -76,7 +73,6 @@ public class AdminUserServiceImpl implements AdminUserService {
         String oldRole = user.getRole();
         user.setRole(request.getRole());
         sysUserMapper.updateById(user);
-        userCacheService.evict(userId);
         AuditLog.event("USER_ROLE_CHANGE", "operatorId={}, targetUserId={}, {}->{}",
                 AuthContext.getCurrentUserId(), userId, oldRole, request.getRole());
     }

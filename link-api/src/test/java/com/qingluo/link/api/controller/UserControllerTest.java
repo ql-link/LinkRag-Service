@@ -16,7 +16,6 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
-import com.qingluo.link.service.cache.UserCacheService;
 
 import java.util.function.Supplier;
 
@@ -88,9 +87,6 @@ class UserControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @MockBean
-    private UserCacheService userCacheService;
-
     /**
      * 测试用户 ID
      */
@@ -158,7 +154,6 @@ class UserControllerTest {
 
     @BeforeEach
     void setupUserCacheMock() {
-        given(userCacheService.getOrLoad(anyLong(), any())).willAnswer(this::loadFromSupplier);
     }
 
     private Object loadFromSupplier(InvocationOnMock invocation) {

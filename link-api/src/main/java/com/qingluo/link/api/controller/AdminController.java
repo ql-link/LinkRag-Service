@@ -1,7 +1,6 @@
 package com.qingluo.link.api.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
-import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
@@ -10,7 +9,6 @@ import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.PublishModelSyncCandidateRequest;
 import com.qingluo.link.model.dto.request.SyncProviderModelsRequest;
-import com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest;
 import com.qingluo.link.model.dto.request.UpdateModelSyncCandidateReviewRequest;
 import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
@@ -142,16 +140,9 @@ public class AdminController {
     }
 
     @GetMapping("/document-file-config")
-    @Operation(summary = "查询文档文件上传配置", description = "查询当前生效的文档文件上传大小限制和格式白名单")
+    @Operation(summary = "查询文档文件上传配置", description = "只读查询当前实例通过部署配置绑定的文件大小限制和格式白名单；修改配置后需重启实例生效")
     public Result<DocumentFileConfigDTO> getDocumentFileConfig() {
         return Result.success(adminDocumentFileConfigService.getCurrentConfig());
-    }
-
-    @PatchMapping("/document-file-config")
-    @Operation(summary = "修改文档文件上传配置", description = "修改当前生效的文档文件上传大小限制和格式白名单")
-    public Result<Void> updateDocumentFileConfig(@RequestBody @Validated UpdateDocumentFileConfigRequest request) {
-        adminDocumentFileConfigService.updateConfig(AuthContext.getLoginUserIdOrThrow(), request);
-        return Result.success(null);
     }
 
     /**

@@ -86,7 +86,7 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；默认厂商与模型�
 - 重试链双向：`document_parsed_log.retry_of_task_id`（本轮→上一轮）与 `document_parse_pipeline.superseded_by_task_id`（旧→新），均由 Python 写、Java 只读；`document_parse_pipeline` 不含 `retry_count` / `last_retry_at`。
 - Java 不再消费 `tolink.rag.parse_result`；解析终态以库侧 `document_parse_pipeline.pipeline_status`（大写）为准。
 - `kb_document_chunk` 由 Python RAG 端写入和维护，`chunk_id` 为业务唯一键，对应 `chat_message.references` 中保存的 chunk id。Java 仅通过批量详情接口按当前用户读取 `lifecycle_status='ACTIVE'` 且正文非空的记录，并用 `doc_id` 关联 `document_original_file.id` 回填文件名；历史现查不含召回分数，`score` 返回 `null`。
-- Document file upload config is resolved from Redis key `document:file-upload:config`, with `tolink.document-file.*` as the default fallback.
+- Document file upload config is resolved only from `tolink.document-file.*` configuration binding; it is not persisted in MySQL or Redis.
 - `blog_post.slug + deleted_seq` 唯一：`slug` 由后端生成去掉连字符的 32 位小写 UUID；活跃文章 `deleted_seq=0`，软删时写自身 ID。
 - `blog_post.content_object_key` 指向 PUBLIC OSS 的 `blog/{postId}/content/{uuid}.md` object key；Markdown 正文不存 MySQL。
 - `blog_asset.object_key` / `public_url` 指向公开封面或正文图片对象；`asset_type` 支持 `COVER` 和 `CONTENT_IMAGE`。正文图片可由编辑器上传，也可由 Markdown 导入/保存流程自动写入 PUBLIC OSS，并记录 `blog_asset`。
@@ -106,11 +106,6 @@ MySQL 建表脚本事实来源：`scripts/db/init.sql`；默认厂商与模型�
 - `blog_post`：软删并写 `deleted_seq=id`，不删除 Markdown PUBLIC OSS 对象，也不批量删除图片对象。
 - `blog_asset`：删除资源行使用软删；若资源是当前封面则清空 `blog_post.cover_asset_id`；正文图片仍被当前 Markdown 引用时拒绝删除；允许删除时同步删除 PUBLIC OSS 对象。
 
-## 命名迁移（knowledge → document，B 组）
+## 文档上传配置
 
-文档文件上传配置域的运行时键由 `knowledge*` 统一迁移为 `document*`。对存量环境的处理：
-
-- **MySQL 表**：历史表 `knowledge_file_config` / `document_file_config` 已废弃并移除；存量环境可执行 `DROP TABLE IF EXISTS document_file_config;` 清理。
-- **Redis key**：`knowledge:file-upload:config` → `document:file-upload:config`。旧 key 在迁移后成为孤儿，`DocumentFileConfigInitializer` 启动时仅以应用默认值补齐新 key（自愈），旧 key 可手动删除。
-- **配置前缀 / 环境变量**：`tolink.knowledge-file.*` → `tolink.document-file.*`；环境变量 `KNOWLEDGE_FILE_*` → `DOCUMENT_FILE_*`，部署环境需同步更新（见 `.env.example`、`docs/ops/configuration.md`）。
-- **Admin API**：`/api/v1/admin/knowledge-file-config` → `/api/v1/admin/document-file-config`（无兼容别名，调用方需切换）。
+历史表 `knowledge_file_config` / `document_file_config` 已废弃，文档上传配置不存入 MySQL 或 Redis。当前唯一来源为 `tolink.document-file.*` 的 Spring 配置绑定；管理端仅保留只读 `GET /api/v1/admin/document-file-config`。存量 Redis key `knowledge:file-upload:config` 与 `document:file-upload:config` 可使用发布清理脚本删除。

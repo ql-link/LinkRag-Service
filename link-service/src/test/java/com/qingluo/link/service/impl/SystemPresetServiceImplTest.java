@@ -266,6 +266,32 @@ class SystemPresetServiceImplTest {
     }
 
     @Test
+    @DisplayName("删除非默认预设：直接删除数据库记录")
+    void deletePreset_deletesNonDefaultPreset() {
+        SystemPreset existing = preset(1L, 5L, "linkrag-chat", "CHAT",
+                "linkrag", "openai", "https://old", "ENC_OLD");
+        given(systemPresetMapper.selectById(1L)).willReturn(existing);
+
+        service.deletePreset(1L);
+
+        verify(systemPresetMapper).deleteById(1L);
+    }
+
+    @Test
+    @DisplayName("删除当前默认预设：拒绝删除并保留兜底")
+    void deletePreset_rejectsDefaultPreset() {
+        SystemPreset existing = preset(1L, 5L, "linkrag-chat", "CHAT",
+                "linkrag", "openai", "https://old", "ENC_OLD");
+        existing.setIsDefault(true);
+        given(systemPresetMapper.selectById(1L)).willReturn(existing);
+
+        assertThatThrownBy(() -> service.deletePreset(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前系统默认预设不能直接删除，请先指定替代默认预设");
+        verify(systemPresetMapper, never()).deleteById(1L);
+    }
+
+    @Test
     @DisplayName("显式设置系统默认预设：清理同能力其他默认并更新目标")
     void setDefaultPreset_setsDefault() {
         SystemPreset existing = preset(1L, 5L, "linkrag-chat", "CHAT",

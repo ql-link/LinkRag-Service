@@ -8,13 +8,7 @@ import java.util.Arrays;
  * <p>用于抽象“删哪一类缓存”，避免业务代码和补偿消费者直接散落硬编码 Redis key 前缀。</p>
  */
 public enum CacheEvictTarget {
-
-    USER("user"),
-    USER_INFO("user_info"),
-    USER_ROLE("user_role"),
-    LLM_CONFIG("llm_config"),
-    USER_DEFAULT_LLM_CONFIG("user_default_llm_config"),
-    SYSTEM_PROVIDER("system_provider");
+    ;
 
     private final String code;
 

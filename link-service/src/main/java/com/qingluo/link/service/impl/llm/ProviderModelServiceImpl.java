@@ -2,8 +2,6 @@ package com.qingluo.link.service.impl.llm;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.qingluo.link.components.redis.service.CacheConsistencyService;
-import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.exception.NotFoundException;
 import com.qingluo.link.mapper.ProviderModelMapper;
@@ -38,7 +36,6 @@ public class ProviderModelServiceImpl implements ProviderModelService {
     private final SystemProviderMapper systemProviderMapper;
     private final LLMCapabilityService llmCapabilityService;
     private final LLMProtocolService llmProtocolService;
-    private final CacheConsistencyService cacheConsistencyService;
 
     @Override
     public List<ProviderModel> listActiveModels(Long providerId, String capability) {
@@ -122,7 +119,7 @@ public class ProviderModelServiceImpl implements ProviderModelService {
      */
     public ProviderModel addModelCapability(Long providerId, String modelName, String displayName, String capability,
                                             String protocol, String apiBaseUrl) {
-        SystemProvider provider = requireProvider(providerId);
+        requireProvider(providerId);
         String normalizedCapability = normalizeCapability(capability);
         // 事实字段校验前置：协议须在受支持集合内、入口不可空，校验失败不落库
         llmProtocolService.validateProtocol(protocol);
@@ -142,7 +139,6 @@ public class ProviderModelServiceImpl implements ProviderModelService {
             existing.setApiBaseUrl(apiBaseUrl);
             existing.setIsActive(true);
             providerModelMapper.updateById(existing);
-            evictProviderCache(provider);
             return existing;
         }
 
@@ -155,16 +151,14 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         model.setApiBaseUrl(apiBaseUrl);
         model.setIsActive(true);
         providerModelMapper.insert(model);
-        evictProviderCache(provider);
         return model;
     }
 
     @Override
     @Transactional
     public void deleteModelCapability(Long id) {
-        ProviderModel model = requireModel(id);
+        requireModel(id);
         providerModelMapper.deleteById(id);
-        evictProviderCache(systemProviderMapper.selectById(model.getProviderId()));
     }
 
     @Override
@@ -195,7 +189,6 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         }
 
         providerModelMapper.updateById(model);
-        evictProviderCache(systemProviderMapper.selectById(model.getProviderId()));
         return model;
     }
 
@@ -205,7 +198,6 @@ public class ProviderModelServiceImpl implements ProviderModelService {
         ProviderModel model = requireModel(id);
         model.setIsActive(isActive);
         providerModelMapper.updateById(model);
-        evictProviderCache(systemProviderMapper.selectById(model.getProviderId()));
     }
 
     private SystemProvider requireProvider(Long providerId) {
@@ -222,12 +214,6 @@ public class ProviderModelServiceImpl implements ProviderModelService {
             throw new NotFoundException(ErrorCode.MODEL_NOT_SUPPORTED, "模型目录项不存在");
         }
         return model;
-    }
-
-    private void evictProviderCache(SystemProvider provider) {
-        if (provider != null) {
-            cacheConsistencyService.evict(CacheEvictTarget.SYSTEM_PROVIDER, provider.getProviderType());
-        }
     }
 
     /**
