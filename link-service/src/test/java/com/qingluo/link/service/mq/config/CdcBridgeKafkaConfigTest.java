@@ -1,6 +1,7 @@
 package com.qingluo.link.service.mq.config;
 
 import com.qingluo.link.service.support.CdcBridgeMetrics;
+import com.qingluo.link.service.cache.replay.CacheReplayFailureRecorder;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,21 +27,23 @@ class CdcBridgeKafkaConfigTest {
 
     @Mock
     private CdcBridgeMetrics metrics;
+    @Mock
+    private CacheReplayFailureRecorder recorder;
 
     @Test
     @DisplayName("坏消息异常归类为 bad_payload（不可重试）")
     void classify_badPayload() {
         assertThat(config.classify(new IllegalArgumentException("bad")))
-                .isEqualTo("bad_payload");
+                .isEqualTo("BAD_PAYLOAD");
         assertThat(config.classify(new DeserializationException("x", new byte[0], false, new RuntimeException())))
-                .isEqualTo("bad_payload");
+                .isEqualTo("BAD_PAYLOAD");
     }
 
     @Test
     @DisplayName("其他异常归类为 infra_exhausted（退避耗尽）")
     void classify_infraExhausted() {
         assertThat(config.classify(new RuntimeException("io error")))
-                .isEqualTo("infra_exhausted");
+                .isEqualTo("SEND_EXHAUSTED");
     }
 
     @Test
@@ -48,15 +51,17 @@ class CdcBridgeKafkaConfigTest {
     void recover_recordsMetricAndNeverThrows() {
         ConsumerRecord<String, String> record =
                 new ConsumerRecord<>("tolink.canal.binlog", 0, 0L, "k", "bad-payload");
+        IllegalArgumentException failure = new IllegalArgumentException("bad json");
 
-        assertThatCode(() -> config.recover(record, new IllegalArgumentException("bad json"), metrics))
+        assertThatCode(() -> config.recover(record, failure, metrics, recorder))
                 .doesNotThrowAnyException();
+        verify(recorder).record("CDC_BRIDGE", record, "BAD_PAYLOAD", failure);
         verify(metrics).recordRecover("bad_payload");
     }
 
     @Test
     @DisplayName("错误处理器可正常构建")
     void errorHandlerCreated() {
-        assertThat(config.cdcBridgeErrorHandler(metrics)).isNotNull();
+        assertThat(config.cdcBridgeErrorHandler(metrics, recorder)).isNotNull();
     }
 }

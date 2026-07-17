@@ -4,6 +4,7 @@ import com.qingluo.link.components.mq.MQMsgReceiver;
 import com.qingluo.link.observability.trace.TraceContext;
 import com.qingluo.link.service.mq.config.CdcBridgeKafkaConfig;
 import com.qingluo.link.service.mq.kafka.KafkaTraceHeaders;
+import com.qingluo.link.service.cache.replay.CacheReplayEventService;
 import lombok.RequiredArgsConstructor;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -23,10 +24,12 @@ import org.springframework.stereotype.Component;
 public class CdcBridgeKafkaReceiver implements MQMsgReceiver {
 
     private final CdcBridgeService cdcBridgeService;
+    private final CacheReplayEventService replayEventService;
 
     @Override
     public void receive(String msg) {
-        receiveWithTrace(msg, null);
+        receiveWithTrace(msg, null, new CdcSourceIdentity(
+            "direct", 0, Integer.toUnsignedLong(msg == null ? 0 : msg.hashCode())));
     }
 
     @KafkaListener(
@@ -34,13 +37,19 @@ public class CdcBridgeKafkaReceiver implements MQMsgReceiver {
             groupId = "${tolink.cache-consistency.cdc.group-id:tolink-cdc-bridge}",
             containerFactory = "cdcBridgeKafkaListenerContainerFactory")
     public void receive(ConsumerRecord<String, String> record) {
-        receiveWithTrace(record.value(), KafkaTraceHeaders.traceId(record.headers()));
+        if (replayEventService.isTerminal(
+            CacheReplayEventService.STAGE_CDC_BRIDGE,
+            record.topic(), record.partition(), record.offset())) {
+            return;
+        }
+        receiveWithTrace(record.value(), KafkaTraceHeaders.traceId(record.headers()),
+            new CdcSourceIdentity(record.topic(), record.partition(), record.offset()));
     }
 
-    private void receiveWithTrace(String msg, String inboundTraceId) {
+    private void receiveWithTrace(String msg, String inboundTraceId, CdcSourceIdentity source) {
         TraceContext.start(inboundTraceId);
         try {
-            cdcBridgeService.handle(msg);
+            cdcBridgeService.handle(msg, source);
         } finally {
             TraceContext.clear();
         }

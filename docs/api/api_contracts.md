@@ -21,7 +21,11 @@
 | GET | `/api/v1/admin/users/dashboard` | 用户统计看板，`days` 仅支持 7/30/90，默认 30 |
 | PATCH | `/api/v1/admin/users/{id}/status` | 启用/禁用用户 |
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
-| GET | `/api/v1/admin/document-file-config` | 只读查询当前实例通过 `tolink.document-file.*` 绑定的上传配置；`updatedBy` / `updatedAt` 返回 `null` |
+| GET | `/api/v1/admin/document-file-config` | 查询当前有效上传配置；优先 Redis 管理员覆盖，缺失时返回部署默认值 |
+| PUT | `/api/v1/admin/document-file-config` | 完整替换全局上传大小和后缀限制；写入 Redis、无 TTL，跨实例即时生效 |
+| GET | `/api/v1/admin/cache-replay-events` | 分页查询 CDC/缓存补偿失败事实，支持 `status=PENDING/REPLAYED/IGNORED` |
+| POST | `/api/v1/admin/cache-replay-events/{id}/replay` | 按原始 payload 和源消息身份重放一条待处理失败事实 |
+| POST | `/api/v1/admin/cache-replay-events/{id}/ignore` | 将已人工补偿的待处理失败事实标记为忽略 |
 | GET | `/api/v1/admin/feedback` | 管理员反馈列表，支持 `page`、`pageSize`、`status`、`type` |
 | GET | `/api/v1/admin/feedback/{id}` | 管理员反馈详情 |
 | PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |
@@ -32,7 +36,7 @@
 | GET | `/api/v1/admin/providers` | 管理端厂商列表（分页，按优先级倒序，返回 `iconUrl` / `iconObjectKey`） |
 | POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol` / `iconUrl` / `iconObjectKey`；直接创建为启用状态要求已有上架模型，否则返回 `10019`） |
 | POST | `/api/v1/admin/providers/icon` | 上传厂商图标到公开 OSS，返回图标 URL 与 object key |
-| PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，支持更新/清空 `iconUrl` / `iconObjectKey`，变更后双删缓存；更新为启用状态要求已有上架模型，否则返回 `10019` |
+| PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，支持更新/清空 `iconUrl` / `iconObjectKey`；更新为启用状态要求已有上架模型，否则返回 `10019` |
 | DELETE | `/api/v1/admin/providers/{id}` | 删除系统厂商 |
 | PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数）；启用要求已有上架模型，否则返回 `10019` |
 | GET | `/api/v1/admin/provider-models` | 管理端模型能力目录分页（可按 `providerId` / `capability` / `isActive` 过滤，含下架项） |
@@ -53,6 +57,19 @@
 | DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
+
+`PUT /api/v1/admin/document-file-config` 请求体为：
+
+```json
+{
+  "maxSizeBytes": 10485760,
+  "allowedSuffixes": ["pdf", "md"]
+}
+```
+
+请求是完整替换，不支持部分更新；历史 `PATCH` 继续返回 405。`maxSizeBytes` 必须大于 0 且不超过部署硬上限 `tolink.document-file.hard-max-size-bytes`，后缀必须属于部署 `allowed-suffixes` 声明的全集。成功响应包含 `maxSizeBytes`、规范化后的 `allowedSuffixes`、`updatedBy`、`updatedAt`。Redis 写失败返回 `50003/503`，不得让单实例内存状态提前生效。
+
+缓存重放接口仅允许 ADMIN。失败记录按源 `topic + partition + offset + stage` 幂等保存；只有 `PENDING` 可重放或忽略，记录不存在返回 `50004/404`，状态不允许或重放未生成目标返回 `50005/409`。重放/忽略后，原 Kafka 消息再次到达时可识别终态并提交。
 
 `GET /api/v1/admin/users/dashboard` 仅允许 ADMIN 访问。统计包含 USER 和 ADMIN，按 `Asia/Shanghai` 自然日计算；活跃用户为周期内至少有一次成功登录事件的去重用户，注册自动登录计入，失败登录不计入。响应包含 `rangeDays`、`totalUsers`、`breakdown{user,admin,enabled,disabled}`、`newUsers{current,previous,growthRate}`、`activeUsers{current,previous,growthRate}`、`trend[{date,newUsers,activeUsers}]`。上一等长周期为零时增长率为 `null`；无数据日期补零。`days` 非 7/30/90 返回 `20008/400`。
 
@@ -133,7 +150,7 @@
 > - `POST /api/v1/admin/providers`：`CreateProviderRequest` 新增 `defaultProtocol`（厂商默认协议模板）。
 > - `GET /api/v1/llm/configs/default`：响应由 `UserLLMConfigDTO` 改为 `EffectiveLLMConfigDTO`，新增 `source`、`configId` 与 `displayName`，用于 Python 按来源表读取最终配置。
 > - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；支持手动填写 `protocol` / `apiBaseUrl`，也支持按 `sourceProviderModelId` 或兼容字段 `(providerId, modelName, capability)` 从正式目录快捷复制 `protocol` / `api_base_url` / `display_name`。无论来源如何，预设都归属 LinkRag 系统厂商。当 `isDefault=true` 时自动解除同能力其他 LinkRag 系统默认。
-> - 外部模型目录刷新（LINK-50）：`POST /api/v1/admin/providers/{providerId}/model-sync` 只把 `models.dev` 等外部源数据写入 `llm_provider_model_sync_job` / `llm_provider_model_sync_candidate`，不直接影响用户侧模型列表；管理员审核后调用 `POST /api/v1/admin/model-sync-candidates/{id}/publish` 才会复用正式目录服务写入 `llm_provider_model` 并清理相关缓存。候选响应包含外部源模型发布日期 `releaseDate`；候选发布可覆盖推断出的 `capability` / `protocol` / `apiBaseUrl`，避免外部源误判直接进入运行目录。候选响应中的 `capability` 是兼容别名，等同真实推断字段 `inferredCapability`。重复刷新同一厂商时，后端按 `(providerId, syncSource, modelName, inferredCapability)` 更新既有候选，不再追加重复行。
+> - 外部模型目录刷新（LINK-50）：`POST /api/v1/admin/providers/{providerId}/model-sync` 只把 `models.dev` 等外部源数据写入 `llm_provider_model_sync_job` / `llm_provider_model_sync_candidate`，不直接影响用户侧模型列表；管理员审核后调用 `POST /api/v1/admin/model-sync-candidates/{id}/publish` 才会复用正式目录服务写入 `llm_provider_model`。本期不恢复 LLM 相关 Redis 缓存。候选响应包含外部源模型发布日期 `releaseDate`；候选发布可覆盖推断出的 `capability` / `protocol` / `apiBaseUrl`，避免外部源误判直接进入运行目录。候选响应中的 `capability` 是兼容别名，等同真实推断字段 `inferredCapability`。重复刷新同一厂商时，后端按 `(providerId, syncSource, modelName, inferredCapability)` 更新既有候选，不再追加重复行。
 
 ### LLM 协议与入口契约
 
@@ -244,7 +261,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | PUT | `/api/v1/admin/blog/posts/{postId}/content` | 保存编辑器当前完整 Markdown 正文；支持自动保存 |
 | POST | `/api/v1/admin/blog/posts/{postId}/publish` | 发布文章 |
 | POST | `/api/v1/admin/blog/posts/{postId}/unpublish` | 下架文章 |
-| DELETE | `/api/v1/admin/blog/posts/{postId}` | 软删文章，不删除 OSS 对象 |
+| DELETE | `/api/v1/admin/blog/posts/{postId}` | 软删文章；事务提交后 best-effort 清理当前正文和资源对象 |
 | GET | `/api/v1/admin/blog/posts/{postId}/assets` | 查询文章未删除图片资源，支持 `assetType` 筛选 |
 | POST | `/api/v1/admin/blog/posts/{postId}/assets` | 上传 `COVER` 封面图片或 `CONTENT_IMAGE` 正文图片；正文图片返回 `markdownText` |
 | DELETE | `/api/v1/admin/blog/posts/{postId}/assets/{assetId}` | 删除资源；正文图片仍被当前 Markdown 引用时拒绝 |
@@ -252,6 +269,14 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | GET | `/api/v1/blog/posts/{slug}` | 公开文章详情，含 Markdown 正文 |
 
 创建草稿时后端生成去掉连字符的 32 位小写 UUID 作为 `slug`，前端不提交也不更新 `slug`。不提供 `/api/v1/admin/blog/posts/{postId}/content/download` 下载路由。正文使用 PUBLIC OSS UUID object key，替换正文时先上传新对象，再切换 `blog_post.content_object_key`。Markdown 正文中的图片引用由后端自动处理：可成功下载的 `http` / `https` 图片会下载后写入 PUBLIC OSS 并记录为 `blog_asset.CONTENT_IMAGE`，`data:image/*;base64` 图片会解码后写入 PUBLIC OSS 并记录资源，随后 Markdown 中的图片地址替换为公开 URL；已属于当前文章 `blog_asset` 的图片允许继续使用完整公开 URL 或 `/{PUBLIC bucket}/{objectKey}` 形式（如 `/tolink-public/blog/{postId}/images/{uuid}.png`），不会被重复抓取或按相对路径拒绝；网络图片下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存；其它本地相对路径图片会返回 400。
+
+公开列表只缓存固定前 100 条轻量发布索引；超过覆盖范围的页直接查询 MySQL，不按任意 `page/pageSize` 组合创建 Redis key。公开详情的 Markdown 正文不进入 Redis，响应使用 HTTP 条件缓存：
+
+- 首次成功响应：`ETag: W/"..."`、`Cache-Control: public, no-cache`，不发送 `Last-Modified`。
+- 客户端携带匹配的 `If-None-Match` 时，后端在读取 OSS 正文前返回 304 和空响应体。
+- ETag 由当前公开元数据和正文 object key 等公开表示字段生成；同秒修改标题、摘要、封面或切换到新 UUID 正文 key 都会变化。
+- 不存在、下架、软删或正文读取失败返回非 304，并设置 `Cache-Control: no-store`。
+- 前端无需使用 `localStorage`；浏览器按标准 `ETag` 重新验证即可。
 
 统一响应模型为 `Result<T>`，分页模型为 `PageResult<T>`。
 

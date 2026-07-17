@@ -13,6 +13,7 @@ import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
 import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetParseConfigService;
 import com.qingluo.link.service.DatasetService;
+import com.qingluo.link.service.cache.DatasetParseConfigCache;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,13 +42,16 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final DatasetService datasetService;
     private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
+    private final DatasetParseConfigCache datasetParseConfigCache;
 
     @Override
     public DatasetParseConfigResponse getConfig(Long userId, Long datasetId) {
         // 归属校验：越权/不存在抛 BusinessException(404)，复用数据集服务避免重复查询。
         datasetService.detail(userId, datasetId);
-        DatasetParseConfig entity = selectByOwner(userId, datasetId);
-        return entity != null ? assembleResponse(entity) : emptyResponse();
+        return datasetParseConfigCache.get(datasetId, () -> {
+            DatasetParseConfig entity = selectByOwner(userId, datasetId);
+            return entity != null ? assembleResponse(entity) : emptyResponse();
+        });
     }
 
     @Override
@@ -57,7 +61,9 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         datasetService.detail(userId, datasetId);
         DatasetParseConfig existing = selectByOwner(userId, datasetId);
         if (existing != null) {
-            return overwriteRow(userId, existing, request);
+            DatasetParseConfigResponse response = overwriteRow(userId, existing, request);
+            datasetParseConfigCache.evict(datasetId);
+            return response;
         }
 
         DatasetParseConfig created = new DatasetParseConfig();
@@ -68,11 +74,15 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         applyConfigs(created, request);
         try {
             datasetParseConfigMapper.insert(created);
-            return assembleResponse(created);
+            DatasetParseConfigResponse response = assembleResponse(created);
+            datasetParseConfigCache.evict(datasetId);
+            return response;
         } catch (DataIntegrityViolationException e) {
             // 并发下唯一键 uk_user_dataset 撞行：转为更新已存在的行。
             DatasetParseConfig concurrent = selectByOwner(userId, datasetId);
-            return overwriteRow(userId, concurrent, request);
+            DatasetParseConfigResponse response = overwriteRow(userId, concurrent, request);
+            datasetParseConfigCache.evict(datasetId);
+            return response;
         }
     }
 

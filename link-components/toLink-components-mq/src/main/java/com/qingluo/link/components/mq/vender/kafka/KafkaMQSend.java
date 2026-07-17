@@ -6,10 +6,13 @@ import com.qingluo.link.observability.trace.TraceHeaders;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.util.Assert;
+import org.springframework.util.concurrent.ListenableFuture;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Kafka implementation hidden behind the business-facing MQSend contract.
@@ -24,11 +27,21 @@ public class KafkaMQSend implements MQSend {
 
     @Override
     public void send(AbstractMQ abstractMQ) {
-        validate(abstractMQ);
-        ProducerRecord<String, String> record =
-                new ProducerRecord<>(abstractMQ.getMQName(), abstractMQ.getMessage());
-        addHeaders(record, TraceHeaders.withCurrentTrace(abstractMQ.getHeaders()));
-        kafkaTemplate.send(record);
+        kafkaTemplate.send(recordOf(abstractMQ));
+    }
+
+    @Override
+    public void sendConfirmed(AbstractMQ abstractMQ) {
+        ListenableFuture<SendResult<String, String>> future = kafkaTemplate.send(recordOf(abstractMQ));
+        try {
+            future.get();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Kafka confirmed send was interrupted", ex);
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            throw new IllegalStateException("Kafka confirmed send failed", cause);
+        }
     }
 
     @Override
@@ -42,6 +55,14 @@ public class KafkaMQSend implements MQSend {
         Assert.hasText(abstractMQ.getMQName(), "Kafka topic must not be blank");
         Assert.notNull(abstractMQ.getMQType(), "MQ type must not be null");
         Assert.notNull(abstractMQ.getMessage(), "MQ message must not be null");
+    }
+
+    private ProducerRecord<String, String> recordOf(AbstractMQ abstractMQ) {
+        validate(abstractMQ);
+        ProducerRecord<String, String> record =
+                new ProducerRecord<>(abstractMQ.getMQName(), abstractMQ.getMessage());
+        addHeaders(record, TraceHeaders.withCurrentTrace(abstractMQ.getHeaders()));
+        return record;
     }
 
     private void addHeaders(ProducerRecord<String, String> record, Map<String, String> headers) {

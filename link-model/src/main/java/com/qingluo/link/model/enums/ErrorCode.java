@@ -53,7 +53,10 @@ public enum ErrorCode {
 
     // 系统错误 (50001-59999)
     UNKNOWN_ERROR(50001, "系统内部错误", 500),
-    CACHE_DELETE_FAILED(50002, "缓存删除失败", 500);
+    CACHE_DELETE_FAILED(50002, "缓存删除失败", 500),
+    DOCUMENT_FILE_CONFIG_UPDATE_FAILED(50003, "文档文件上传配置更新失败", 503),
+    CACHE_REPLAY_EVENT_NOT_FOUND(50004, "缓存重放记录不存在", 404),
+    CACHE_REPLAY_EVENT_INVALID_STATE(50005, "缓存重放记录状态不允许当前操作", 409);
 
     private final int code;
     private final String message;

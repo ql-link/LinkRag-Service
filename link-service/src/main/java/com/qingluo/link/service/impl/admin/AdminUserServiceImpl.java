@@ -13,6 +13,7 @@ import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AdminUserService;
+import com.qingluo.link.service.cache.UserProfileCache;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 public class AdminUserServiceImpl implements AdminUserService {
 
     private final SysUserMapper sysUserMapper;
+    private final UserProfileCache userProfileCache;
 
     @Override
     /**
@@ -56,6 +58,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         Integer oldStatus = user.getStatus();
         user.setStatus(request.getStatus());
         sysUserMapper.updateById(user);
+        userProfileCache.evict(userId);
         AuditLog.event("USER_STATUS_CHANGE", "operatorId={}, targetUserId={}, {}->{}",
                 AuthContext.getCurrentUserId(), userId, oldStatus, request.getStatus());
     }
@@ -73,6 +76,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         String oldRole = user.getRole();
         user.setRole(request.getRole());
         sysUserMapper.updateById(user);
+        userProfileCache.evict(userId);
         AuditLog.event("USER_ROLE_CHANGE", "operatorId={}, targetUserId={}, {}->{}",
                 AuthContext.getCurrentUserId(), userId, oldRole, request.getRole());
     }

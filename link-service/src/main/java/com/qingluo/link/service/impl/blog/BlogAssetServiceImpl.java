@@ -14,13 +14,12 @@ import com.qingluo.link.model.dto.response.BlogAssetDTO;
 import com.qingluo.link.model.enums.BlogAssetType;
 import com.qingluo.link.service.BlogAssetService;
 import com.qingluo.link.service.BlogContentStorageService;
+import com.qingluo.link.service.cache.PublishedBlogIndexCache;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -30,12 +29,12 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class BlogAssetServiceImpl implements BlogAssetService {
 
-    private static final Logger log = LoggerFactory.getLogger(BlogAssetServiceImpl.class);
-
     private final BlogPostMapper blogPostMapper;
     private final BlogAssetMapper blogAssetMapper;
     private final BlogContentStorageService contentStorage;
     private final IOssService ossService;
+    private final PublishedBlogIndexCache publishedBlogIndexCache;
+    private final BlogObjectCleanupScheduler cleanupScheduler;
 
     @Override
     public List<BlogAssetDTO> list(Long postId, String assetType) {
@@ -80,6 +79,7 @@ public class BlogAssetServiceImpl implements BlogAssetService {
             blogPostMapper.updateById(update);
             deleteOldCover(oldCoverAssetId, postId);
         }
+        publishedBlogIndexCache.evict();
 
         AuditLog.event("BLOG_ASSET_UPLOAD", "operatorId={}, postId={}, assetId={}, assetType={}",
             operatorId, postId, asset.getId(), type.name());
@@ -111,9 +111,8 @@ public class BlogAssetServiceImpl implements BlogAssetService {
                 .eq(BlogPost::getId, postId)
                 .set(BlogPost::getCoverAssetId, null));
         }
-        if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, asset.getObjectKey())) {
-            throw new BusinessException(50002, "博客资源对象删除失败", 500);
-        }
+        cleanupScheduler.afterCommitDelete(postId, asset.getObjectKey());
+        publishedBlogIndexCache.evict();
 
         AuditLog.event("BLOG_ASSET_DELETE", "operatorId={}, postId={}, assetId={}",
             operatorId, postId, assetId);
@@ -166,10 +165,7 @@ public class BlogAssetServiceImpl implements BlogAssetService {
             return;
         }
         blogAssetMapper.deleteById(oldCoverAssetId);
-        if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, old.getObjectKey())) {
-            log.warn("Failed to delete old cover object, postId={}, assetId={}, key={}",
-                postId, oldCoverAssetId, old.getObjectKey());
-        }
+        cleanupScheduler.afterCommitDelete(postId, old.getObjectKey());
     }
 
     private BusinessException badRequest(String message) {

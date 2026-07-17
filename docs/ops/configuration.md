@@ -30,7 +30,7 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 
 | 文件 | 包含 | 不包含 |
 |------|------|--------|
-| `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 限制、allowed-suffixes、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
+| `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 硬上限、文档上传默认值、业务缓存 TTL/容量、CDC 门禁、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
 | `application-local.yml` | H2 内存数据库及 `classpath:schema.sql` 初始化、localhost Redis（无密码）、Kafka listener 禁用、MQ=none、OSS=local、固定测试密钥 | 真实服务器 IP、真实密码 |
 | `application-dev.yml` / `application-prod.yml` | 所有连接通过 `${ENV_VAR}` 引用；连接池/线程池/日志通过 `${ENV_VAR:default}` 控制 | 真实密码、真实 IP、废弃别名 |
 
@@ -151,9 +151,14 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `DOCUMENT_FILE_INTERNAL_BASE_URL` | 内部服务访问地址 | 否 | `http://tolink-service:8080` | `http://localhost:8080` |
 | `DOCUMENT_FILE_SERVICE_TOKEN` | 内部服务 Token | 否 | 空 | `your-service-token-here` |
 | `TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES` | 单文件上传大小上限（字节） | 否 | `20971520` | `10485760` |
+| `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES` | 管理员动态配置允许的硬上限（字节） | 否 | `104857600` | `104857600` |
 | `TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES` | 允许上传的后缀列表（Spring Boot 集合绑定格式） | 否 | `md,markdown,pdf,docx,txt` | `pdf,md` |
+| `DOCUMENT_FILE_HARD_MAX_SIZE` | Spring multipart 单文件硬上限 | 否 | `100MB` | `100MB` |
+| `DOCUMENT_FILE_HARD_MAX_REQUEST_SIZE` | Spring multipart 请求硬上限 | 否 | `101MB` | `101MB` |
 
-上传大小和后缀以 `DocumentFileProperties` 为唯一事实来源，不写 MySQL 或 Redis。修改部署变量后需要重启或重新发布实例；管理端 `GET /api/v1/admin/document-file-config` 仅用于查看当前实例绑定值。
+`DocumentFileProperties` 提供部署默认值和管理员可修改范围；管理员通过 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入 Redis `runtime:document-file:upload-config`，不设置 TTL。Redis key 缺失时使用部署默认值，故修改默认环境变量仍需重启所有实例。`DOCUMENT_FILE_HARD_MAX_SIZE`、网关 body 上限和反向代理上限必须不低于 `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES`。
+
+多实例默认值由无 TTL key `runtime:document-file:default-fingerprint` 校验。受控修改部署默认值时，应先完成所有实例配置收敛，再删除该 fingerprint key，让新版本实例重新建立指纹；滚动过程中指纹不一致会令动态 PUT 返回 503，避免不同实例接受不同后缀/大小边界。不要删除 `runtime:document-file:upload-config`，除非明确要撤销管理员覆盖并回到部署默认值。
 
 ### 4.11 LLM（LLM_*）
 
@@ -232,7 +237,12 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `tolink.cache-consistency.null-cache-ttl-seconds` | 空值缓存 TTL（秒） | `60` | 读保护使用 |
 | `tolink.cache-consistency.ttl-jitter-seconds` | TTL 抖动上限（秒） | `300` | 读保护使用 |
 | `tolink.cache-consistency.load-wait-ms` | 并发回源等待时间（毫秒） | `50` | 读保护使用 |
+| `tolink.cache-consistency.load-lock-ttl-ms` | 跨实例回源锁 TTL（毫秒） | `5000` | 只协调回源，不承载业务数据 |
+| `tolink.cache-consistency.fence-ttl-seconds` | 写入 fence TTL（秒） | `2592000` | 默认 30 天；失效时续期 |
 | `tolink.cache-consistency.cdc.enabled` | 是否启用 CDC 桥接生产端 | `false` | 默认全环境关闭；线上接入 Canal 后置 `true` 开启 |
+| `tolink.cache-consistency.cdc.mappings-enabled` | 是否启用声明式表映射 | `false` | 消费者和路由验证后再开启 |
+| `tolink.cache-consistency.cdc.consumer-targets-ready` | 当前补偿消费者是否已识别全部新 target | `false` | 滚动发布门禁 |
+| `tolink.cache-consistency.cdc.database` | 允许处理的 Canal database | `${DB_NAME:tolink_rag_db}` | 其它数据库事件忽略 |
 | `tolink.cache-consistency.cdc.source-topic` | Canal 原始变更 topic | 无 | `cdc.enabled=true` 时必填，如 `tolink.canal.binlog` |
 | `tolink.cache-consistency.cdc.group-id` | CDC 桥接消费者消费组 | `tolink-cdc-bridge` | — |
 
@@ -243,7 +253,20 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
   - 无事务写路径：数据库写成功后立即执行
 - 只要数据库写已经成功，第一次删缓存失败都不会再改变请求结果，而是记录日志并依赖 `tolink.cache.evict` 补偿链路最终收敛。
 - CDC / MQ 驱动的第二次补偿删除仍保持强失败语义：删除失败时抛异常，由消费重试机制继续收敛。
-- CDC 桥接生产端（`tolink.cache-consistency.cdc.*`）默认 false 全环境关闭，主配置 `application.yml` 已显式声明 `cdc.enabled: false`；线上接入 Canal 后置 `true` 并配 `source-topic`。该开关同时控制桥接消费者与专用容器工厂的装配（共用同一条件），改这一个布尔即可整体开关 CDC。Canal 起始位点（首次从当前位点、不回放历史）属 Canal 容器侧运维配置，不在 Java 配置内。
+- CDC bridge 与补偿消费者的永久失败/重试耗尽会写入 `cache_replay_event`，原 Kafka 记录保持未确认；管理端重放或忽略后才允许原记录提交。
+- CDC 桥接生产端（`tolink.cache-consistency.cdc.*`）默认全环境关闭。上线应按“消费者识别新 target → bridge/mapping → 业务缓存”的顺序逐步开启。Canal 起始位点（首次从当前位点、不回放历史）属 Canal 容器侧运维配置，不在 Java 配置内。
+
+### 4.15.1 业务缓存（tolink.business-cache.*）
+
+| 配置项 | 用途 | 默认值 |
+|------|------|--------|
+| `tolink.business-cache.enabled` | 数据库镜像业务缓存总开关 | `true`；但还受 CDC readiness 门禁 |
+| `tolink.business-cache.dataset-parse-config-ttl` | 数据集解析配置基础 TTL | `7d` |
+| `tolink.business-cache.user-profile-ttl` | 用户资料基础 TTL | `1d` |
+| `tolink.business-cache.blog-published-index-ttl` | 公开博客发布索引基础 TTL | `1d` |
+| `tolink.business-cache.blog-published-index-capacity` | 固定发布索引最大条数 | `100` |
+
+`application.yml` 当前把 `tolink.cache-consistency.enabled=false`、CDC/mapping/consumer readiness 全部设为 false，因此即使 `business-cache.enabled=true`，数据库镜像缓存仍不会启用。完成 Kafka/Canal 和补偿消费者部署后再逐项打开。上传运行时配置不受该业务缓存总开关控制。
 
 ## 5. 本地开发快速启动
 
@@ -370,7 +393,7 @@ services:
 
 ## 博客上传与权限配置
 
-- 博客正文和图片不设置业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用默认 multipart 限制为 20MB，需要支持更大文件时由部署环境调大。
+- 博客正文和图片不设置独立业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用 multipart 硬上限默认 100MB/101MB。
 - 博客封面图片、编辑器上传的正文图片以及 Markdown 正文自动抓取的正文图片使用公开桶 `tolink-public`（`OssSavePlaceEnum.PUBLIC` 枚举），部署时必须对该桶配置匿名读策略（`mc anonymous set download tolink-public`）或公开反向代理。原 `tolink-blog` 专用桶已合并，存量对象不迁移、旧桶待服务稳定后删除。
 - Markdown 自动抓取远端正文图片时，单张图片业务上限为 10MB；仅允许 `http` / `https`、jpg/jpeg/png/gif/webp，拒绝 svg，并拦截 localhost、回环、私有网段、链路本地等地址。下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存。
 - `.md` 内本地相对路径图片不会随单文件上传进入后端，需要改成 `http` / `https`、`data:image/*;base64`，或在编辑器中粘贴/上传正文图片。

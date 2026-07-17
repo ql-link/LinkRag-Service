@@ -2,6 +2,8 @@ package com.qingluo.link.service.cache;
 
 import com.qingluo.link.components.redis.config.CacheConsistencyProperties;
 import com.qingluo.link.components.redis.service.CacheReadProtectionService;
+import com.qingluo.link.components.redis.service.CacheAtomicOperations;
+import com.qingluo.link.components.redis.service.CacheMetrics;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +44,10 @@ class CacheReadProtectionServiceBatchTest {
     private ValueOperations<String, Object> valueOps;
     @Mock
     private CacheConsistencyProperties properties;
+    @Mock
+    private CacheAtomicOperations atomicOperations;
+    @Mock
+    private CacheMetrics cacheMetrics;
 
     @InjectMocks
     private CacheReadProtectionService service;

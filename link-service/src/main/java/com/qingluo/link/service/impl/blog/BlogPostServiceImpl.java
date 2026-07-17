@@ -1,5 +1,6 @@
 package com.qingluo.link.service.impl.blog;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
@@ -24,11 +25,18 @@ import com.qingluo.link.model.enums.BlogAssetType;
 import com.qingluo.link.model.enums.BlogPostStatus;
 import com.qingluo.link.service.BlogContentStorageService;
 import com.qingluo.link.service.BlogPostService;
+import com.qingluo.link.service.blog.BlogPublicDetailSnapshot;
+import com.qingluo.link.service.cache.BusinessCacheProperties;
+import com.qingluo.link.service.cache.PublishedBlogIndexCache;
+import com.qingluo.link.service.cache.PublishedBlogIndexSnapshot;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -55,6 +63,10 @@ public class BlogPostServiceImpl implements BlogPostService {
     private final BlogAssetMapper blogAssetMapper;
     private final BlogContentStorageService contentStorage;
     private final IOssService ossService;
+    private final PublishedBlogIndexCache publishedBlogIndexCache;
+    private final BusinessCacheProperties businessCacheProperties;
+    private final BlogObjectCleanupScheduler cleanupScheduler;
+    private final ObjectMapper objectMapper;
 
     @Override
     public PageResult<BlogPostAdminListDTO> listAdmin(int page, int pageSize, String status) {
@@ -99,6 +111,7 @@ public class BlogPostServiceImpl implements BlogPostService {
         }
         AuditLog.event("BLOG_POST_CREATE", "operatorId={}, postId={}, slug={}",
             operatorId, post.getId(), post.getSlug());
+        publishedBlogIndexCache.evict();
         return toAdminDetailDTO(post, false);
     }
 
@@ -128,6 +141,7 @@ public class BlogPostServiceImpl implements BlogPostService {
         }
 
         blogPostMapper.updateById(update);
+        publishedBlogIndexCache.evict();
         AuditLog.event("BLOG_POST_UPDATE", "operatorId={}, postId={}", operatorId, current.getId());
         return detailAdmin(postId);
     }
@@ -144,7 +158,8 @@ public class BlogPostServiceImpl implements BlogPostService {
         update.setId(postId);
         update.setContentObjectKey(processed.objectKey());
         blogPostMapper.updateById(update);
-        deleteOldContentObject(oldContentKey, postId);
+        cleanupScheduler.afterCommitDelete(postId, oldContentKey);
+        publishedBlogIndexCache.evict();
         AuditLog.event("BLOG_POST_CONTENT_IMPORT", "operatorId={}, postId={}, objectKey={}",
             operatorId, postId, processed.objectKey());
         BlogPostAdminDetailDTO detail = detailAdmin(postId);
@@ -164,7 +179,8 @@ public class BlogPostServiceImpl implements BlogPostService {
         update.setId(postId);
         update.setContentObjectKey(processed.objectKey());
         blogPostMapper.updateById(update);
-        deleteOldContentObject(oldContentKey, postId);
+        cleanupScheduler.afterCommitDelete(postId, oldContentKey);
+        publishedBlogIndexCache.evict();
         AuditLog.event("BLOG_POST_CONTENT_SAVE", "operatorId={}, postId={}, objectKey={}",
             operatorId, postId, processed.objectKey());
         BlogPostAdminDetailDTO detail = detailAdmin(postId);
@@ -190,6 +206,7 @@ public class BlogPostServiceImpl implements BlogPostService {
             update.setPublishedAt(LocalDateTime.now());
         }
         blogPostMapper.updateById(update);
+        publishedBlogIndexCache.evict();
         AuditLog.event("BLOG_POST_PUBLISH", "operatorId={}, postId={}", operatorId, postId);
         return detailAdmin(postId);
     }
@@ -202,6 +219,7 @@ public class BlogPostServiceImpl implements BlogPostService {
         update.setId(postId);
         update.setStatus(BlogPostStatus.DRAFT.name());
         blogPostMapper.updateById(update);
+        publishedBlogIndexCache.evict();
         AuditLog.event("BLOG_POST_UNPUBLISH", "operatorId={}, postId={}", operatorId, postId);
         return detailAdmin(postId);
     }
@@ -223,14 +241,42 @@ public class BlogPostServiceImpl implements BlogPostService {
             .set(BlogPost::getIsDeleted, true)
             .set(BlogPost::getDeletedSeq, post.getId()));
         // DB 一致后，best-effort 物理清理 OSS 上的正文与资源对象（失败仅告警，不阻断删除）
-        deleteOldContentObject(post.getContentObjectKey(), postId);
-        deleteAssetObjects(postId, assets);
+        Set<String> objectKeys = assets.stream()
+            .map(BlogAsset::getObjectKey)
+            .filter(StringUtils::hasText)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (StringUtils.hasText(post.getContentObjectKey())) {
+            objectKeys.add(post.getContentObjectKey());
+        }
+        cleanupScheduler.afterCommitDelete(postId, objectKeys);
+        publishedBlogIndexCache.evict();
         AuditLog.event("BLOG_POST_DELETE", "operatorId={}, postId={}, slug={}",
             operatorId, postId, post.getSlug());
     }
 
     @Override
     public PageResult<BlogPostPublicListDTO> listPublished(int page, int pageSize) {
+        int start = Math.max(0, (page - 1) * pageSize);
+        int end = start + pageSize;
+        int capacity = businessCacheProperties.getBlogPublishedIndexCapacity();
+        if (page > 0 && pageSize > 0 && start < capacity && end <= capacity) {
+            PublishedBlogIndexSnapshot snapshot = publishedBlogIndexCache.get(this::loadPublishedIndex);
+            int sliceEnd = Math.min(end, snapshot.getItems().size());
+            List<BlogPostPublicListDTO> items = start >= sliceEnd
+                ? List.of()
+                : snapshot.getItems().subList(start, sliceEnd);
+            return new PageResult<>(List.copyOf(items), snapshot.getTotal(), page, pageSize);
+        }
+        return queryPublishedPage(page, pageSize);
+    }
+
+    private PublishedBlogIndexSnapshot loadPublishedIndex() {
+        int capacity = businessCacheProperties.getBlogPublishedIndexCapacity();
+        PageResult<BlogPostPublicListDTO> page = queryPublishedPage(1, capacity);
+        return new PublishedBlogIndexSnapshot(page.getItems(), page.getTotal(), capacity);
+    }
+
+    private PageResult<BlogPostPublicListDTO> queryPublishedPage(int page, int pageSize) {
         PageHelper.startPage(page, pageSize);
         List<BlogPost> posts = blogPostMapper.selectList(new LambdaQueryWrapper<BlogPost>()
             .eq(BlogPost::getStatus, BlogPostStatus.PUBLISHED.name())
@@ -243,7 +289,7 @@ public class BlogPostServiceImpl implements BlogPostService {
     }
 
     @Override
-    public BlogPostPublicDetailDTO publicDetail(String slug) {
+    public BlogPublicDetailSnapshot resolvePublicDetail(String slug) {
         String normalizedSlug = validateSlug(slug);
         BlogPost post = blogPostMapper.selectOne(new LambdaQueryWrapper<BlogPost>()
             .eq(BlogPost::getSlug, normalizedSlug)
@@ -251,21 +297,59 @@ public class BlogPostServiceImpl implements BlogPostService {
         if (post == null) {
             throw new BusinessException(404, "博客文章不存在", 404);
         }
-        BlogPostPublicDetailDTO dto = new BlogPostPublicDetailDTO();
-        dto.setId(post.getId());
-        dto.setTitle(post.getTitle());
-        dto.setSlug(post.getSlug());
-        dto.setSummary(post.getSummary());
-        dto.setCoverAssetId(post.getCoverAssetId());
-        dto.setPublishedAt(post.getPublishedAt());
-        dto.setContentMarkdown(contentStorage.readMarkdown(post.getContentObjectKey()));
+        String coverPublicUrl = null;
         if (post.getCoverAssetId() != null) {
             BlogAsset cover = blogAssetMapper.selectById(post.getCoverAssetId());
             if (cover != null) {
-                dto.setCoverPublicUrl(cover.getPublicUrl());
+                coverPublicUrl = cover.getPublicUrl();
             }
         }
+        return new BlogPublicDetailSnapshot(
+            post.getId(),
+            post.getTitle(),
+            post.getSlug(),
+            post.getSummary(),
+            post.getContentObjectKey(),
+            post.getCoverAssetId(),
+            coverPublicUrl,
+            post.getStatus(),
+            post.getPublishedAt(),
+            buildEtag(post, coverPublicUrl));
+    }
+
+    @Override
+    public BlogPostPublicDetailDTO publicDetail(BlogPublicDetailSnapshot snapshot) {
+        BlogPostPublicDetailDTO dto = new BlogPostPublicDetailDTO();
+        dto.setId(snapshot.id());
+        dto.setTitle(snapshot.title());
+        dto.setSlug(snapshot.slug());
+        dto.setSummary(snapshot.summary());
+        dto.setCoverAssetId(snapshot.coverAssetId());
+        dto.setCoverPublicUrl(snapshot.coverPublicUrl());
+        dto.setPublishedAt(snapshot.publishedAt());
+        dto.setContentMarkdown(contentStorage.readMarkdown(snapshot.contentObjectKey()));
         return dto;
+    }
+
+    private String buildEtag(BlogPost post, String coverPublicUrl) {
+        try {
+            Map<String, Object> canonical = new LinkedHashMap<>();
+            canonical.put("format", "blog-public-detail-1");
+            canonical.put("id", post.getId());
+            canonical.put("title", post.getTitle());
+            canonical.put("slug", post.getSlug());
+            canonical.put("summary", post.getSummary());
+            canonical.put("contentObjectKey", post.getContentObjectKey());
+            canonical.put("coverAssetId", post.getCoverAssetId());
+            canonical.put("coverPublicUrl", coverPublicUrl);
+            canonical.put("status", post.getStatus());
+            canonical.put("publishedAt", post.getPublishedAt());
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(objectMapper.writeValueAsBytes(canonical));
+            return "W/\"" + java.util.HexFormat.of().formatHex(digest) + "\"";
+        } catch (Exception ex) {
+            throw new IllegalStateException("Cannot build blog ETag", ex);
+        }
     }
 
     private BlogPost getActivePost(Long postId) {
@@ -420,35 +504,6 @@ public class BlogPostServiceImpl implements BlogPostService {
         }
         String trimmed = value.trim();
         return StringUtils.hasText(trimmed) ? trimmed : null;
-    }
-
-    private void deleteOldContentObject(String oldKey, Long postId) {
-        if (!StringUtils.hasText(oldKey)) {
-            return;
-        }
-        if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, oldKey)) {
-            log.warn("Failed to delete old markdown object, postId={}, key={}", postId, oldKey);
-        }
-    }
-
-    private void deleteAssetObjects(Long postId, List<BlogAsset> assets) {
-        if (assets == null || assets.isEmpty()) {
-            return;
-        }
-        Set<String> objectKeys = assets.stream()
-            .map(BlogAsset::getObjectKey)
-            .filter(StringUtils::hasText)
-            .collect(Collectors.toSet());
-        for (String objectKey : objectKeys) {
-            try {
-                if (!ossService.deleteFile(OssSavePlaceEnum.PUBLIC, objectKey)) {
-                    log.warn("Failed to delete blog asset object, postId={}, key={}", postId, objectKey);
-                }
-            } catch (Exception e) {
-                log.warn("Failed to delete blog asset object, postId={}, key={}, reason={}",
-                    postId, objectKey, e.getMessage());
-            }
-        }
     }
 
     private BusinessException badRequest(String message) {
