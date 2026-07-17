@@ -4,7 +4,6 @@ import com.qingluo.link.components.mq.MQMsgReceiver;
 import com.qingluo.link.components.mq.constant.MQVenderChoose;
 import com.qingluo.link.observability.trace.TraceContext;
 import com.qingluo.link.service.mq.CacheCompensationMQ;
-import com.qingluo.link.service.cache.replay.CacheReplayEventService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -27,7 +26,6 @@ import org.springframework.stereotype.Component;
 public class CacheCompensationKafkaReceiver implements MQMsgReceiver {
 
     private final CacheCompensationMQ.MQReceiver receiver;
-    private final CacheReplayEventService replayEventService;
 
     @Override
     public void receive(String msg) {
@@ -40,11 +38,6 @@ public class CacheCompensationKafkaReceiver implements MQMsgReceiver {
             containerFactory = "cacheCompensationKafkaListenerContainerFactory"
     )
     public void receive(ConsumerRecord<String, String> record) {
-        if (replayEventService.isTerminal(
-            CacheReplayEventService.STAGE_CACHE_COMPENSATION,
-            record.topic(), record.partition(), record.offset())) {
-            return;
-        }
         receiveWithTrace(record.value(), KafkaTraceHeaders.traceId(record.headers()));
     }
 

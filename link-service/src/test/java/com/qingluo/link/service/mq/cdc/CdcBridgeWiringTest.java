@@ -2,8 +2,6 @@ package com.qingluo.link.service.mq.cdc;
 
 import com.qingluo.link.service.mq.config.CdcBridgeKafkaConfig;
 import com.qingluo.link.service.support.CdcBridgeMetrics;
-import com.qingluo.link.service.cache.replay.CacheReplayEventService;
-import com.qingluo.link.service.cache.replay.CacheReplayFailureRecorder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -13,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.KafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.MessageListenerContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -99,11 +98,6 @@ class CdcBridgeWiringTest {
             return Mockito.mock(CdcBridgeService.class);
         }
 
-        @Bean
-        CacheReplayEventService cacheReplayEventService() {
-            return Mockito.mock(CacheReplayEventService.class);
-        }
-
         // 提供与 @KafkaListener 指定同名的容器工厂（mock），使 endpoint 注册不真正连接 broker
         @Bean("cdcBridgeKafkaListenerContainerFactory")
         @SuppressWarnings({"rawtypes", "unchecked"})
@@ -131,8 +125,9 @@ class CdcBridgeWiringTest {
         }
 
         @Bean
-        CacheReplayFailureRecorder cacheReplayFailureRecorder() {
-            return Mockito.mock(CacheReplayFailureRecorder.class);
+        @SuppressWarnings("unchecked")
+        KafkaTemplate<String, String> kafkaTemplate() {
+            return Mockito.mock(KafkaTemplate.class);
         }
     }
 }

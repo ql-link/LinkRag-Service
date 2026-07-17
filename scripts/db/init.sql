@@ -443,26 +443,6 @@ CREATE TABLE IF NOT EXISTS dataset_parse_config (
     INDEX idx_dataset_parse_config_dataset (dataset_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT '数据集解析/检索参数配置表';
 
--- 17. Java 缓存补偿失败事实表
-CREATE TABLE IF NOT EXISTS cache_replay_event (
-    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '失败事实主键',
-    event_key           VARCHAR(384) NOT NULL COMMENT 'stage:topic:partition:offset',
-    stage               VARCHAR(32) NOT NULL COMMENT 'CDC_BRIDGE/CACHE_COMPENSATION',
-    source_topic        VARCHAR(255) NOT NULL COMMENT '原 Kafka topic',
-    partition_no        INT NOT NULL COMMENT '原 Kafka 分区',
-    source_offset       BIGINT NOT NULL COMMENT '原 Kafka offset',
-    raw_payload         MEDIUMTEXT COMMENT '原始消息',
-    failure_reason      VARCHAR(64) NOT NULL COMMENT '失败分类',
-    error_message       VARCHAR(1024) DEFAULT NULL COMMENT '截断后的错误信息',
-    status              VARCHAR(16) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/REPLAYED/IGNORED',
-    fail_count          INT NOT NULL DEFAULT 1 COMMENT '累计失败次数',
-    first_failed_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_failed_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    replayed_at         DATETIME DEFAULT NULL,
-    UNIQUE KEY uk_cache_replay_event_key (event_key),
-    INDEX idx_cache_replay_status_failed (status, last_failed_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=10000 COMMENT 'CDC 与缓存补偿可重放失败事实';
-
 -- 设置所有表的自增起始值为 10000 (MySQL 8.0 推荐显式指定方式)
 ALTER TABLE sys_user AUTO_INCREMENT = 10000;
 ALTER TABLE llm_system_provider AUTO_INCREMENT = 10000;
@@ -482,7 +462,6 @@ ALTER TABLE blog_post AUTO_INCREMENT = 10000;
 ALTER TABLE blog_asset AUTO_INCREMENT = 10000;
 ALTER TABLE user_feedback AUTO_INCREMENT = 10000;
 ALTER TABLE dataset_parse_config AUTO_INCREMENT = 10000;
-ALTER TABLE cache_replay_event AUTO_INCREMENT = 10000;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 初始数据（LLM 厂商 + 模型目录）

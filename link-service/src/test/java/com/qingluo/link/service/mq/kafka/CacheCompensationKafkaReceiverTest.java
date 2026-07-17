@@ -1,7 +1,6 @@
 package com.qingluo.link.service.mq.kafka;
 
 import com.qingluo.link.service.mq.CacheCompensationMQ;
-import com.qingluo.link.service.cache.replay.CacheReplayEventService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,9 +17,6 @@ class CacheCompensationKafkaReceiverTest {
 
     @Mock
     private CacheCompensationMQ.MQReceiver receiver;
-    @Mock
-    private CacheReplayEventService replayEventService;
-
     @InjectMocks
     private CacheCompensationKafkaReceiver kafkaReceiver;
 

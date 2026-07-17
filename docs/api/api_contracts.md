@@ -23,9 +23,6 @@
 | PATCH | `/api/v1/admin/users/{id}/role` | 修改用户角色 |
 | GET | `/api/v1/admin/document-file-config` | 查询当前有效上传配置；优先 Redis 管理员覆盖，缺失时返回部署默认值 |
 | PUT | `/api/v1/admin/document-file-config` | 完整替换全局上传大小和后缀限制；写入 Redis、无 TTL，跨实例即时生效 |
-| GET | `/api/v1/admin/cache-replay-events` | 分页查询 CDC/缓存补偿失败事实，支持 `status=PENDING/REPLAYED/IGNORED` |
-| POST | `/api/v1/admin/cache-replay-events/{id}/replay` | 按原始 payload 和源消息身份重放一条待处理失败事实 |
-| POST | `/api/v1/admin/cache-replay-events/{id}/ignore` | 将已人工补偿的待处理失败事实标记为忽略 |
 | GET | `/api/v1/admin/feedback` | 管理员反馈列表，支持 `page`、`pageSize`、`status`、`type` |
 | GET | `/api/v1/admin/feedback/{id}` | 管理员反馈详情 |
 | PATCH | `/api/v1/admin/feedback/{id}/status` | 更新反馈状态：`PENDING` / `PROCESSING` / `RESOLVED` / `CLOSED` |
@@ -68,8 +65,6 @@
 ```
 
 请求是完整替换，不支持部分更新；历史 `PATCH` 继续返回 405。`maxSizeBytes` 必须大于 0 且不超过部署硬上限 `tolink.document-file.hard-max-size-bytes`，后缀必须属于部署 `allowed-suffixes` 声明的全集。成功响应包含 `maxSizeBytes`、规范化后的 `allowedSuffixes`、`updatedBy`、`updatedAt`。Redis 写失败返回 `50003/503`，不得让单实例内存状态提前生效。
-
-缓存重放接口仅允许 ADMIN。失败记录按源 `topic + partition + offset + stage` 幂等保存；只有 `PENDING` 可重放或忽略，记录不存在返回 `50004/404`，状态不允许或重放未生成目标返回 `50005/409`。重放/忽略后，原 Kafka 消息再次到达时可识别终态并提交。
 
 `GET /api/v1/admin/users/dashboard` 仅允许 ADMIN 访问。统计包含 USER 和 ADMIN，按 `Asia/Shanghai` 自然日计算；活跃用户为周期内至少有一次成功登录事件的去重用户，注册自动登录计入，失败登录不计入。响应包含 `rangeDays`、`totalUsers`、`breakdown{user,admin,enabled,disabled}`、`newUsers{current,previous,growthRate}`、`activeUsers{current,previous,growthRate}`、`trend[{date,newUsers,activeUsers}]`。上一等长周期为零时增长率为 `null`；无数据日期补零。`days` 非 7/30/90 返回 `20008/400`。
 

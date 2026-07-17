@@ -1,7 +1,5 @@
 package com.qingluo.link.service.mq.config;
 
-import com.qingluo.link.service.cache.replay.CacheReplayEventService;
-import com.qingluo.link.service.cache.replay.CacheReplayFailureRecorder;
 import com.qingluo.link.service.mq.cdc.CdcEventException;
 import com.qingluo.link.service.support.CdcBridgeMetrics;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +9,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.SeekToCurrentErrorHandler;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 import org.springframework.kafka.support.serializer.DeserializationException;
@@ -30,36 +30,36 @@ public class CdcBridgeKafkaConfig {
     public ConcurrentKafkaListenerContainerFactory<String, String> cdcBridgeKafkaListenerContainerFactory(
         ConsumerFactory<Object, Object> consumerFactory,
         CdcBridgeMetrics metrics,
-        CacheReplayFailureRecorder recorder) {
+        KafkaTemplate<String, String> kafkaTemplate) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
             new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
-        factory.setErrorHandler(cdcBridgeErrorHandler(metrics, recorder));
+        factory.setErrorHandler(cdcBridgeErrorHandler(
+            metrics, CacheDeadLetterSupport.create(kafkaTemplate)));
         return factory;
     }
 
     SeekToCurrentErrorHandler cdcBridgeErrorHandler(
-        CdcBridgeMetrics metrics, CacheReplayFailureRecorder recorder) {
+        CdcBridgeMetrics metrics, ConsumerRecordRecoverer deadLetterRecoverer) {
         ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(MAX_RETRIES);
         backOff.setInitialInterval(1_000L);
         backOff.setMultiplier(2.0);
         backOff.setMaxInterval(10_000L);
 
         SeekToCurrentErrorHandler handler = new SeekToCurrentErrorHandler(
-            (record, exception) -> recover(record, exception, metrics, recorder), backOff);
+            (record, exception) -> recover(record, exception, metrics, deadLetterRecoverer), backOff);
         handler.addNotRetryableExceptions(
             IllegalArgumentException.class,
             DeserializationException.class);
-        handler.setAckAfterHandle(false);
         return handler;
     }
 
     void recover(ConsumerRecord<?, ?> record, Exception exception,
-                 CdcBridgeMetrics metrics, CacheReplayFailureRecorder recorder) {
+                 CdcBridgeMetrics metrics, ConsumerRecordRecoverer deadLetterRecoverer) {
         String reason = classify(exception);
-        recorder.record(CacheReplayEventService.STAGE_CDC_BRIDGE, record, reason, exception);
         metrics.recordRecover(reason.toLowerCase());
-        log.warn("Persisted cdc_bridge failure, reason={}, topic={}, partition={}, offset={}",
+        deadLetterRecoverer.accept(record, exception);
+        log.warn("Published cdc_bridge failure to DLT, reason={}, topic={}, partition={}, offset={}",
             reason, record.topic(), record.partition(), record.offset());
     }
 

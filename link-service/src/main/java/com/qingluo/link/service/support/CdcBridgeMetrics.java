@@ -26,7 +26,7 @@ public class CdcBridgeMetrics {
     }
 
     /**
-     * 记录一次错误处理器 recover（失败事实已持久化，源消息保持未确认）。
+     * 记录一次错误处理器 dead-letter recover 尝试。
      *
      * @param reason 分类原因，如 bad_payload / send_exhausted
      */

@@ -49,7 +49,7 @@ CDC bridge 只允许从当前 binlog 行、old image 或声明式全局范围解
 | `blog_post` | 全局发布索引 |
 | `blog_asset` | 全局发布索引 |
 
-已映射表的空行数组、缺失 route、未知 DML、发送耗尽，以及补偿端的坏载荷、未知 target、删除耗尽都会写入 `cache_replay_event`。原 Kafka 记录保持未确认；管理员通过 `/api/v1/admin/cache-replay-events` 重放或显式忽略后，原记录再次到达才允许跳过并提交。
+已映射表的空行数组、缺失 route、未知 DML、发送耗尽，以及补偿端的坏载荷、未知 target、删除耗尽都会在各自重试策略结束后发布到 `<原 topic>.DLT`。DLT 写入使用 broker 确认；写入失败继续抛错。DLT 保留原 topic、partition、offset 和异常 headers，运维修复后把原 payload 重新发布到源 topic。
 
 `event_id` 由源 topic、partition、offset、row index、target、route 组成，重复投递保持稳定；同一事件内重复目标先去重。
 
@@ -66,7 +66,7 @@ CDC bridge 只允许从当前 binlog 行、old image 或声明式全局范围解
 
 建议滚动发布顺序：
 
-1. 先部署识别新 target、具备重试和重放能力的补偿消费者。
+1. 先创建两个 DLT，并部署识别新 target、具备重试和 DLT 投递能力的补偿消费者。
 2. 再启用 CDC bridge 与表映射。
 3. 最后打开数据库镜像缓存总开关。
 

@@ -16,6 +16,8 @@ MQ 实现事实来源：
 | `UsageReportMQ` | `tolink.rag.usage_report` | Python -> Java | 统一 Token 用量上报（**全部模型调用**：解析/召回侧 + 对话 generate） |
 | `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 数据库镜像缓存补偿失效；支持数据集配置、用户资料和公开博客发布索引 |
 | Canal flatMessage（原始变更） | `tolink.canal.binlog` | Canal -> Java（CDC 桥接消费） | 行变更原始事件，桥接翻译为 `CacheCompensationMQ` |
+| Canal flatMessage DLT | `<CDC source topic>.DLT` | Java -> 运维 | CDC bridge 永久失败或重试耗尽后的原始记录 |
+| 缓存补偿 DLT | `tolink.cache.evict.DLT` | Java -> 运维 | 补偿消费永久失败或重试耗尽后的原始记录 |
 
 ## 契约要求
 
@@ -39,9 +41,10 @@ MQ 实现事实来源：
   - `blog_post` / `blog_asset`：全局 route `global` → `published_blog_index`
 - `CacheCompensationMQ` 是扁平 JSON：`event_id`、`cache_target`、`route_id`、`source_table`、`operation_type`、`trace_id`、`occurred_at`。合法 target 为 `dataset_parse_config` / `user_profile` / `published_blog_index`。
 - `event_id` 由源 `topic:partition:offset:rowIndex:target:routeId` 派生，Kafka 重投时保持稳定；同一源事件内相同 target/route 先去重。
-- bridge 对已映射坏事件（空行数组、route 缺失、未知操作）不发送补偿消息。投递 `tolink.cache.evict` 时使用 Kafka broker 确认发送，异步 producer 失败会向源 CDC consumer 抛回；发送错误退避重试，永久错误或重试耗尽后写入 `cache_replay_event`，并设置错误处理器 `ackAfterHandle=false`，源消息不被成功确认。
-- 补偿消费者同样使用专用容器工厂：坏载荷、未知 target 或删除重试耗尽都写入 `cache_replay_event`；未知 target 额外增加 `tolink.cache.compensation.unknown_target` 指标。补偿删除只做幂等缓存失效，不写业务数据。
-- 管理员重放或忽略失败记录后，原 Kafka 记录再次到达时由 `stage + topic + partition + offset` 识别终态，允许跳过并提交。
+- bridge 对已映射坏事件（空行数组、route 缺失、未知操作）不发送补偿消息。投递 `tolink.cache.evict` 时使用 Kafka broker 确认发送，异步 producer 失败会向源 CDC consumer 抛回；发送错误退避重试，永久错误或重试耗尽后把原记录发布到 `<原 topic>.DLT`。
+- 补偿消费者同样使用专用容器工厂：坏载荷、未知 target 或删除重试耗尽都发布到 `<原 topic>.DLT`；未知 target 额外增加 `tolink.cache.compensation.unknown_target` 指标。补偿删除只做幂等缓存失效，不写业务数据。
+- DLT 发送必须取得 broker 成功结果；DLT 发送失败会继续向容器抛错，不允许源记录在没有可靠落点时结束失败处理。DLT 使用 Kafka 自选分区，原 topic、partition、offset 和异常信息由 Spring Kafka 标准 dead-letter headers 保留。
+- 当前两个死信 topic 分别为 `tolink.canal.binlog.DLT`（实际名称跟随配置的 CDC source topic）与 `tolink.cache.evict.DLT`。运维确认原因并修复后，把原 payload 重新发布到对应源 topic；缓存删除和稳定 `event_id` 保证重放幂等。
 - 装配开关：bridge 要求 `tolink.mq.vender=kafka` 且 `tolink.cache-consistency.cdc.enabled=true`；业务缓存还要求 `mappings-enabled`、`consumer-targets-ready` 和 source/database 配置全部就绪。
 
 ## 解析消息字段

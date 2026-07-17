@@ -253,7 +253,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
   - 无事务写路径：数据库写成功后立即执行
 - 只要数据库写已经成功，第一次删缓存失败都不会再改变请求结果，而是记录日志并依赖 `tolink.cache.evict` 补偿链路最终收敛。
 - CDC / MQ 驱动的第二次补偿删除仍保持强失败语义：删除失败时抛异常，由消费重试机制继续收敛。
-- CDC bridge 与补偿消费者的永久失败/重试耗尽会写入 `cache_replay_event`，原 Kafka 记录保持未确认；管理端重放或忽略后才允许原记录提交。
+- CDC bridge 与补偿消费者的永久失败/重试耗尽会发布到 `<原 topic>.DLT`。上线前必须创建 `${tolink.cache-consistency.cdc.source-topic}.DLT` 和 `tolink.cache.evict.DLT`；DLT 发送使用 broker 确认，失败时源消费继续报错。运维修复原因后把 DLT 原 payload 重发到对应源 topic。
 - CDC 桥接生产端（`tolink.cache-consistency.cdc.*`）默认全环境关闭。上线应按“消费者识别新 target → bridge/mapping → 业务缓存”的顺序逐步开启。Canal 起始位点（首次从当前位点、不回放历史）属 Canal 容器侧运维配置，不在 Java 配置内。
 
 ### 4.15.1 业务缓存（tolink.business-cache.*）

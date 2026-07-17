@@ -29,6 +29,7 @@
 - **上传限制配置**：部署 `tolink.document-file.*` 提供默认值和硬上限；管理员可通过 Java 管理端 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入无 TTL Redis key。新上传在落库前读取当前有效值，Redis 故障时按实例最后有效快照/部署默认值降级。Python 解析端无需读取该 Redis key，仍只处理 Java 已接受并投递的文件。
 - **多实例默认一致性**：所有 Java 实例必须使用相同的默认大小、硬上限和后缀全集；`runtime:document-file:default-fingerprint` 用于 readiness 检查。动态覆盖生效后不需要重启实例。
 - **缓存补偿是 Java 内部链路**：Canal → Java CDC bridge → `tolink.cache.evict` → Java 缓存删除，不要求 Python 消费。当前只覆盖数据集解析配置、用户资料和公开博客发布索引；文档解析结果、模型配置和用量不缓存。
+- 启用缓存补偿前先创建 `<CDC source topic>.DLT` 与 `tolink.cache.evict.DLT`；CDC/补偿永久失败或重试耗尽会由 Java broker 确认写入对应 DLT，DLT 写失败时源消费继续报错。
 - **隐性删除 + 删除通知**：删除数据集/文件为软删保留原文件——Java 端不物理删 OSS 对象、不删解析表（`document_parse_file` / `document_parsed_log`）；这些衍生产物与 Python 侧 OSS 产物（清洗文件/向量）由 Python 负责删除。Java 在删除事务提交后（afterCommit）经 `tolink.rag.document_delete` **真实投递删除通知**（删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别；尽力发、失败仅告警吞掉、无 DLQ；回滚不发）。**Python 侧需消费该通知并按范围删衍生产物（重复消息幂等、删不存在产物 no-op），本仓库未实现**。⚠️ **发布需两端协调**：该队列为点对点，Python 消费端就绪前 Java producer 不应单独上生产（否则消息无消费者会在 broker 积压）。
 
 ## 解析数据契约
