@@ -20,6 +20,7 @@ import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
 import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetService;
+import com.qingluo.link.service.cache.DatasetParseConfigCache;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,9 @@ class DatasetParseConfigServiceImplTest {
     @Mock
     private DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
+    @Mock
+    private DatasetParseConfigCache datasetParseConfigCache;
+
     @InjectMocks
     private DatasetParseConfigServiceImpl service;
 
@@ -58,6 +62,10 @@ class DatasetParseConfigServiceImplTest {
 
     @BeforeEach
     void setupBindingValidator() {
+        lenient().when(datasetParseConfigCache.get(anyLong(), any())).thenAnswer(invocation -> {
+            java.util.function.Supplier<DatasetParseConfigResponse> loader = invocation.getArgument(1);
+            return loader.get();
+        });
         lenient().when(embeddingConfigValidator.validateAndResolveBindingPair(anyLong(), any(), any(), any(), any()))
             .thenReturn(new DatasetEmbeddingConfigValidator.ResolvedBindingPair(
                 new DatasetEmbeddingConfigValidator.ResolvedBinding(11L, DatasetEmbeddingConfigValidator.SOURCE_USER),

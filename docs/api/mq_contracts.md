@@ -14,8 +14,10 @@ MQ 实现事实来源：
 | `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | Java -> Python | 删除通知（通知 Python 删衍生产物） |
 | `ChatTurnMQ` | `tolink.rag.chat_turn` | Python -> Java | 对话轮次落库（一轮问答内容，**不含 token**，不写用量账本） |
 | `UsageReportMQ` | `tolink.rag.usage_report` | Python -> Java | 统一 Token 用量上报（**全部模型调用**：解析/召回侧 + 对话 generate） |
-| `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 保留的缓存补偿基础契约；当前无业务 target/表映射 |
+| `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 数据库镜像缓存补偿失效；支持数据集配置、用户资料和公开博客发布索引 |
 | Canal flatMessage（原始变更） | `tolink.canal.binlog` | Canal -> Java（CDC 桥接消费） | 行变更原始事件，桥接翻译为 `CacheCompensationMQ` |
+| Canal flatMessage DLT | `<CDC source topic>.DLT` | Java -> 运维 | CDC bridge 永久失败或重试耗尽后的原始记录 |
+| 缓存补偿 DLT | `tolink.cache.evict.DLT` | Java -> 运维 | 补偿消费永久失败或重试耗尽后的原始记录 |
 
 ## 契约要求
 
@@ -31,10 +33,19 @@ MQ 实现事实来源：
 ## 缓存补偿生产端（CDC 桥接）
 
 - `tolink.cache.evict` 的生产端骨架是 CDC 桥接消费者（`CdcBridgeKafkaReceiver` / `CdcBridgeService`）：消费 Canal 原始变更 topic `tolink.canal.binlog`（flatMessage、单 topic 多表），按映射展开为 `CacheCompensationMQ` 投递。
-- Canal flatMessage 关键字段：`table`、`type`(INSERT/UPDATE/DELETE)、`es`、`isDdl`、`data`（变更行数组，列名→值均为 String，DELETE 为 before image）。
-- 当前 `CdcCacheEvictMapping` 规则为空，`sys_user`、`llm_user_config`、`llm_system_provider`、`llm_provider_model` 的变化不会发送缓存补偿消息。发布新版本前需停止旧生产端并排空遗留 `tolink.cache.evict` 消息。
-- 失败分类（专用容器工厂 `cdcBridgeKafkaListenerContainerFactory`）：坏消息（IllegalArgumentException/DeserializationException）立即跳过 + 告警 + 指标；暂时错误退避重试（最多 3 次）耗尽后跳过；不引入 DLQ。
-- 装配开关：`tolink.cache-consistency.cdc.enabled`（默认 false）且 vender=kafka 二者皆满足才装载；消费者与专用容器工厂共用同一条件，不会出现 vender=kafka 但开关关闭时容器工厂仍被创建的“半开”状态。本地/测试零报错。
+- Canal flatMessage 关键字段：`database`、`table`、`type`(INSERT/UPDATE/DELETE)、`es`、`isDdl`、`data`（当前行数组）、`old`（UPDATE 前值；列名→值均为 String）。
+- bridge 只处理配置的 `tolink.cache-consistency.cdc.database`，且只允许从当前行、old image 或声明式全局常量生成 route；禁止查询 Redis 辅助索引或回查数据库。
+- 当前表映射：
+  - `dataset_parse_config`：当前/旧 `dataset_id` → `dataset_parse_config`
+  - `sys_user`：`id` → `user_profile`；UPDATE 仅变化 `last_login_at` / `last_login_time` / `updated_at` 时忽略
+  - `blog_post` / `blog_asset`：全局 route `global` → `published_blog_index`
+- `CacheCompensationMQ` 是扁平 JSON：`event_id`、`cache_target`、`route_id`、`source_table`、`operation_type`、`trace_id`、`occurred_at`。合法 target 为 `dataset_parse_config` / `user_profile` / `published_blog_index`。
+- `event_id` 由源 `topic:partition:offset:rowIndex:target:routeId` 派生，Kafka 重投时保持稳定；同一源事件内相同 target/route 先去重。
+- bridge 对已映射坏事件（空行数组、route 缺失、未知操作）不发送补偿消息。投递 `tolink.cache.evict` 时使用 Kafka broker 确认发送，异步 producer 失败会向源 CDC consumer 抛回；发送错误退避重试，永久错误或重试耗尽后把原记录发布到 `<原 topic>.DLT`。
+- 补偿消费者同样使用专用容器工厂：坏载荷、未知 target 或删除重试耗尽都发布到 `<原 topic>.DLT`；未知 target 额外增加 `tolink.cache.compensation.unknown_target` 指标。补偿删除只做幂等缓存失效，不写业务数据。
+- DLT 发送必须取得 broker 成功结果；DLT 发送失败会继续向容器抛错，不允许源记录在没有可靠落点时结束失败处理。DLT 使用 Kafka 自选分区，原 topic、partition、offset 和异常信息由 Spring Kafka 标准 dead-letter headers 保留。
+- 当前两个死信 topic 分别为 `tolink.canal.binlog.DLT`（实际名称跟随配置的 CDC source topic）与 `tolink.cache.evict.DLT`。运维确认原因并修复后，把原 payload 重新发布到对应源 topic；缓存删除和稳定 `event_id` 保证重放幂等。
+- 装配开关：bridge 要求 `tolink.mq.vender=kafka` 且 `tolink.cache-consistency.cdc.enabled=true`；业务缓存还要求 `mappings-enabled`、`consumer-targets-ready` 和 source/database 配置全部就绪。
 
 ## 解析消息字段
 

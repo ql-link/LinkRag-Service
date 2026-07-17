@@ -26,6 +26,9 @@ public class CacheConsistencyProperties {
     private long nullCacheTtlSeconds = 60L;
     private long ttlJitterSeconds = 300L;
     private long loadWaitMs = 50L;
+    private long loadLockTtlMs = 5_000L;
+    private long fenceTtlSeconds = 2_592_000L;
+    private Cdc cdc = new Cdc();
 
     public boolean isEnabled() {
         return enabled;
@@ -81,5 +84,87 @@ public class CacheConsistencyProperties {
 
     public void setLoadWaitMs(long loadWaitMs) {
         this.loadWaitMs = loadWaitMs;
+    }
+
+    public long getLoadLockTtlMs() {
+        return loadLockTtlMs;
+    }
+
+    public void setLoadLockTtlMs(long loadLockTtlMs) {
+        this.loadLockTtlMs = loadLockTtlMs;
+    }
+
+    public long getFenceTtlSeconds() {
+        return fenceTtlSeconds;
+    }
+
+    public void setFenceTtlSeconds(long fenceTtlSeconds) {
+        this.fenceTtlSeconds = fenceTtlSeconds;
+    }
+
+    public Cdc getCdc() {
+        return cdc;
+    }
+
+    public void setCdc(Cdc cdc) {
+        this.cdc = cdc;
+    }
+
+    public static class Cdc {
+
+        private boolean enabled;
+        private boolean mappingsEnabled;
+        private boolean consumerTargetsReady;
+        private String database = "tolink_rag_db";
+        private String sourceTopic;
+        private String groupId = "tolink-cdc-bridge";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isMappingsEnabled() {
+            return mappingsEnabled;
+        }
+
+        public void setMappingsEnabled(boolean mappingsEnabled) {
+            this.mappingsEnabled = mappingsEnabled;
+        }
+
+        public boolean isConsumerTargetsReady() {
+            return consumerTargetsReady;
+        }
+
+        public void setConsumerTargetsReady(boolean consumerTargetsReady) {
+            this.consumerTargetsReady = consumerTargetsReady;
+        }
+
+        public String getDatabase() {
+            return database;
+        }
+
+        public void setDatabase(String database) {
+            this.database = database;
+        }
+
+        public String getSourceTopic() {
+            return sourceTopic;
+        }
+
+        public void setSourceTopic(String sourceTopic) {
+            this.sourceTopic = sourceTopic;
+        }
+
+        public String getGroupId() {
+            return groupId;
+        }
+
+        public void setGroupId(String groupId) {
+            this.groupId = groupId;
+        }
     }
 }

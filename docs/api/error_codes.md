@@ -35,6 +35,12 @@
 
 - `INVALID_USER_STATISTICS_RANGE(20008/400)`：管理端用户统计看板的 `days` 仅支持 `7`、`30`、`90`，缺省为 `30`。
 
+## 上传配置与缓存错误码
+
+- `DOCUMENT_FILE_CONFIG_INVALID(10010/400)`：管理员提交的上传大小非法、超过部署硬上限、后缀列表为空，或包含部署允许全集之外的后缀。
+- `CACHE_DELETE_FAILED(50002/500)`：CDC/MQ 补偿删除在重试预算内仍失败。业务写入提交后的首次删除失败不会把这个错误返回给原写请求。
+- `DOCUMENT_FILE_CONFIG_UPDATE_FAILED(50003/503)`：管理员上传配置写 Redis 失败；本实例不会提前更新最后有效快照。
+
 ## 召回错误码（recall）
 
 > **变更（LINK-122）**：旧召回网关链路（Java 中转代理 `/api/v1/recall/stream`）已废弃移除，其专用错误码

@@ -24,6 +24,7 @@ import com.qingluo.link.model.dto.response.DatasetDTO;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.DatasetService;
+import com.qingluo.link.service.cache.DatasetParseConfigCache;
 import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,7 @@ public class DatasetServiceImpl implements DatasetService {
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentDeleteNotifier deleteNotifier;
     private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
+    private final DatasetParseConfigCache datasetParseConfigCache;
 
     @Override
     @Transactional
@@ -77,6 +79,7 @@ public class DatasetServiceImpl implements DatasetService {
         insertDefaultParseConfig(userId, dataset.getId(),
             bindings.sparse().configId(), bindings.sparse().source(),
             bindings.dense().configId(), bindings.dense().source());
+        datasetParseConfigCache.evict(dataset.getId());
         return toDTO(dataset);
     }
 

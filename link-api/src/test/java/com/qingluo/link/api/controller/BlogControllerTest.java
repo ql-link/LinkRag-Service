@@ -8,9 +8,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -120,10 +122,21 @@ class BlogControllerTest {
             .andExpect(jsonPath("$.data.items[0].slug").value(slug))
             .andExpect(jsonPath("$.data.items[0].contentMarkdown").doesNotExist());
 
-        mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
+        MvcResult firstDetail = mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
             .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "public, no-cache"))
+            .andExpect(header().string("ETag", org.hamcrest.Matchers.startsWith("W/")))
             .andExpect(jsonPath("$.data.slug").value(slug))
-            .andExpect(jsonPath("$.data.contentMarkdown").value(org.hamcrest.Matchers.matchesPattern(rewrittenMarkdownPattern)));
+            .andExpect(jsonPath("$.data.contentMarkdown").value(org.hamcrest.Matchers.matchesPattern(rewrittenMarkdownPattern)))
+            .andReturn();
+
+        String etag = firstDetail.getResponse().getHeader("ETag");
+        mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug)
+                .header("If-None-Match", etag))
+            .andExpect(status().isNotModified())
+            .andExpect(header().string("Cache-Control", "public, no-cache"))
+            .andExpect(header().string("ETag", etag))
+            .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray()).isEmpty());
     }
 
     @Test
@@ -260,7 +273,8 @@ class BlogControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status").value("DRAFT"));
         mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isNotFound())
+            .andExpect(header().string("Cache-Control", "no-store"));
 
         mockMvc.perform(post("/api/v1/admin/blog/posts/{postId}/publish", postId)
                 .header("satoken", adminToken))
@@ -279,7 +293,36 @@ class BlogControllerTest {
 
         mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
             .andExpect(status().isInternalServerError())
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void Should_ChangeEtag_When_PublicMetadataChangesWithinSameSecond() throws Exception {
+        Long postId = createPost("etag-change");
+        String slug = slugOf(postId);
+        uploadMarkdown(postId, "# ETag\n正文");
+        mockMvc.perform(post("/api/v1/admin/blog/posts/{postId}/publish", postId)
+                .header("satoken", adminToken))
+            .andExpect(status().isOk());
+
+        String first = mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getHeader("ETag");
+
+        mockMvc.perform(patch("/api/v1/admin/blog/posts/{postId}", postId)
+                .header("satoken", adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"title":"同秒更新后的标题","summary":"新摘要"}
+                    """))
+            .andExpect(status().isOk());
+
+        String second = mockMvc.perform(get("/api/v1/blog/posts/{slug}", slug)
+                .header("If-None-Match", first))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getHeader("ETag");
+        assertThat(second).isNotEqualTo(first);
     }
 
     @Test

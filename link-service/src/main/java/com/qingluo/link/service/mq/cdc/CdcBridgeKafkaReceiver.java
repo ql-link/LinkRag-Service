@@ -15,7 +15,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>条件装配复用 {@link CdcBridgeKafkaConfig#CDC_BRIDGE_CONDITION}：vender=kafka 且 cdc.enabled=true
  * 才装载——CDC 未部署的本地/测试环境零报错启动。与容器工厂 {@link CdcBridgeKafkaConfig} 共用同一条件，
- * 确保 CDC 开关一处生效、口径一致。失败分类（退避重试 / 不可重试跳过）见 {@link CdcBridgeKafkaConfig}。</p>
+ * 确保 CDC 开关一处生效、口径一致。失败分类、退避重试和 DLT 投递见
+ * {@link CdcBridgeKafkaConfig}。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -26,7 +27,8 @@ public class CdcBridgeKafkaReceiver implements MQMsgReceiver {
 
     @Override
     public void receive(String msg) {
-        receiveWithTrace(msg, null);
+        receiveWithTrace(msg, null, new CdcSourceIdentity(
+            "direct", 0, Integer.toUnsignedLong(msg == null ? 0 : msg.hashCode())));
     }
 
     @KafkaListener(
@@ -34,13 +36,14 @@ public class CdcBridgeKafkaReceiver implements MQMsgReceiver {
             groupId = "${tolink.cache-consistency.cdc.group-id:tolink-cdc-bridge}",
             containerFactory = "cdcBridgeKafkaListenerContainerFactory")
     public void receive(ConsumerRecord<String, String> record) {
-        receiveWithTrace(record.value(), KafkaTraceHeaders.traceId(record.headers()));
+        receiveWithTrace(record.value(), KafkaTraceHeaders.traceId(record.headers()),
+            new CdcSourceIdentity(record.topic(), record.partition(), record.offset()));
     }
 
-    private void receiveWithTrace(String msg, String inboundTraceId) {
+    private void receiveWithTrace(String msg, String inboundTraceId, CdcSourceIdentity source) {
         TraceContext.start(inboundTraceId);
         try {
-            cdcBridgeService.handle(msg);
+            cdcBridgeService.handle(msg, source);
         } finally {
             TraceContext.clear();
         }

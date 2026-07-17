@@ -3,29 +3,26 @@ package com.qingluo.link.components.redis.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.qingluo.link.components.redis.config.CacheConsistencyProperties;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.stereotype.Service;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Service;
 
 /**
  * 统一缓存读保护服务。
- *
- * <p>集中处理缓存穿透、缓存击穿和缓存雪崩的基础防护，避免各业务缓存 owner
- * service 重复实现空值缓存、单 key 回源合并和 TTL 抖动。</p>
  */
 @Slf4j
 @Service
@@ -35,71 +32,78 @@ public class CacheReadProtectionService {
     static final String NULL_MARKER = "__NULL__";
 
     private static final ObjectMapper OBJECT_MAPPER =
-            new ObjectMapper().registerModule(new JavaTimeModule());
+        new ObjectMapper().registerModule(new JavaTimeModule());
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final CacheConsistencyProperties properties;
+    private final CacheAtomicOperations atomicOperations;
+    private final CacheMetrics metrics;
     private final ConcurrentHashMap<String, ReentrantLock> keyLocks = new ConcurrentHashMap<>();
 
-    /**
-     * 统一读缓存入口。
-     *
-     * <p>优先读缓存；未命中时通过单 key 锁合并并发回源；查库为空时写入空值占位；
-     * 回填真实值时增加 TTL 抖动。</p>
-     */
     public <T> T getOrLoad(String cacheKey, Class<T> clazz, long ttl, TimeUnit ttlUnit, Supplier<T> loader) {
-        T cached = readValue(cacheKey, clazz);
-        if (cached != null || isNullMarkerPresent(cacheKey)) {
-            return cached;
+        return getOrLoad(CacheRoute.of(cacheKey), clazz, ttl, ttlUnit, loader);
+    }
+
+    /**
+     * 数据库镜像缓存读取：本地合并并发、跨实例加载锁、fence 条件回填，Redis 故障时回源。
+     */
+    public <T> T getOrLoad(CacheRoute route, Class<T> clazz, long ttl,
+                           TimeUnit ttlUnit, Supplier<T> loader) {
+        CacheLookup<T> first = readQuietly(route.dataKey(), clazz);
+        if (first.hit()) {
+            return first.value();
         }
 
-        ReentrantLock lock = keyLocks.computeIfAbsent(cacheKey, ignored -> new ReentrantLock());
-        if (lock.tryLock()) {
-            try {
-                T doubleChecked = readValue(cacheKey, clazz);
-                if (doubleChecked != null || isNullMarkerPresent(cacheKey)) {
-                    return doubleChecked;
+        ReentrantLock localLock = keyLocks.computeIfAbsent(route.dataKey(), ignored -> new ReentrantLock());
+        localLock.lock();
+        try {
+            if (!first.error()) {
+                CacheLookup<T> doubleChecked = readQuietly(route.dataKey(), clazz);
+                if (doubleChecked.hit()) {
+                    return doubleChecked.value();
                 }
-                T loaded = loader.get();
-                writeLoadedValue(cacheKey, loaded, ttl, ttlUnit);
-                return loaded;
+            }
+
+            String token = UUID.randomUUID().toString();
+            boolean distributedLocked = false;
+            try {
+                distributedLocked = atomicOperations.tryLock(route, token);
+            } catch (RuntimeException ex) {
+                log.warn("Cache load coordination failed key={}, fallback to loader: {}",
+                    route.dataKey(), ex.getMessage());
+            }
+            try {
+                if (!distributedLocked && !first.error()) {
+                    sleepSilently(properties.getLoadWaitMs());
+                    CacheLookup<T> retried = readQuietly(route.dataKey(), clazz);
+                    if (retried.hit()) {
+                        return retried.value();
+                    }
+                }
+                return loadAndBackfill(route, ttl, ttlUnit, loader);
             } finally {
-                lock.unlock();
+                if (distributedLocked) {
+                    try {
+                        atomicOperations.releaseLock(route, token);
+                    } catch (RuntimeException ex) {
+                        log.warn("Release cache load lock failed key={}: {}", route.lockKey(), ex.getMessage());
+                    }
+                }
+            }
+        } finally {
+            localLock.unlock();
+            if (!localLock.hasQueuedThreads()) {
+                keyLocks.remove(route.dataKey(), localLock);
             }
         }
-
-        sleepSilently(properties.getLoadWaitMs());
-        T retried = readValue(cacheKey, clazz);
-        if (retried != null || isNullMarkerPresent(cacheKey)) {
-            return retried;
-        }
-
-        T loaded = loader.get();
-        writeLoadedValue(cacheKey, loaded, ttl, ttlUnit);
-        return loaded;
     }
 
-    /**
-     * 只读缓存：命中返回反序列化值；未命中或空值占位（防穿透）返回 null。
-     *
-     * <p>不回源、不写缓存，供 CDC 补偿等只读旁路复用——避免只读场景误触发回源查库。</p>
-     */
     public <T> T getIfPresent(String cacheKey, Class<T> clazz) {
-        if (isNullMarkerPresent(cacheKey)) {
-            return null;
-        }
-        return readValue(cacheKey, clazz);
+        return readValue(cacheKey, clazz).value();
     }
 
     /**
-     * 批量读缓存：一次 MGET 读取多个 key，命中的直接返回，缺失的交给 batchLoader 批量回源并逐 key 回填。
-     *
-     * <p>穿透防护：回源后对仍无值的 key 写空值占位；雪崩防护：回填真实值带 TTL 抖动。
-     * 读故障（MGET 抛异常）向上抛出，由调用方决定降级；回填故障（写 Redis 抛）被吞掉，
-     * 不影响本次已加载值的返回。批量场景不做单 key 回源合并（击穿）。</p>
-     *
-     * @param batchLoader 入参为缺失的 cacheKey 列表，返回 cacheKey→value；未返回的 key 视为空（写空值占位）
-     * @return 命中或回源得到的 cacheKey→value（空值占位的 key 不出现在结果中）
+     * 保留已有批量读取能力；当前三个业务 owner 均使用单 key fence 读取。
      */
     public <T> Map<String, T> getOrLoadBatch(List<String> cacheKeys, Class<T> clazz,
                                              long ttl, TimeUnit ttlUnit,
@@ -118,7 +122,6 @@ public class CacheReadProtectionService {
             } else if (!Objects.equals(raw, NULL_MARKER)) {
                 result.put(key, toType(raw, clazz));
             }
-            // NULL_MARKER：空值占位命中，既不算缺失也不计入结果
         }
         if (missing.isEmpty()) {
             return result;
@@ -134,32 +137,65 @@ public class CacheReadProtectionService {
         return result;
     }
 
-    /**
-     * 回填单 key，写失败只记日志不外抛（回填故障不影响可用性，区别于读故障的上抛降级）。
-     */
+    private <T> CacheLookup<T> readQuietly(String cacheKey, Class<T> clazz) {
+        try {
+            CacheLookup<T> lookup = readValue(cacheKey, clazz);
+            metrics.read(lookup.hit() ? "hit" : "miss");
+            return lookup;
+        } catch (RuntimeException ex) {
+            metrics.read("error");
+            log.warn("Read cache failed key={}, fallback to loader: {}", cacheKey, ex.getMessage());
+            return CacheLookup.failed();
+        }
+    }
+
+    private <T> CacheLookup<T> readValue(String cacheKey, Class<T> clazz) {
+        Object value = redisTemplate.opsForValue().get(cacheKey);
+        if (value == null) {
+            return CacheLookup.miss();
+        }
+        if (Objects.equals(value, NULL_MARKER)) {
+            return CacheLookup.hit(null);
+        }
+        return CacheLookup.hit(toType(value, clazz));
+    }
+
+    private <T> T loadAndBackfill(CacheRoute route, long ttl, TimeUnit ttlUnit, Supplier<T> loader) {
+        long fence;
+        try {
+            fence = atomicOperations.readFence(route);
+        } catch (RuntimeException ex) {
+            T loaded = loader.get();
+            metrics.write("error");
+            log.warn("Read cache fence failed key={}, skip backfill: {}", route.fenceKey(), ex.getMessage());
+            return loaded;
+        }
+
+        T loaded = loader.get();
+        long ttlSeconds = loaded == null
+            ? properties.getNullCacheTtlSeconds()
+            : withJitter(ttlUnit.toSeconds(ttl));
+        Object cacheValue = loaded == null ? NULL_MARKER : loaded;
+        try {
+            boolean written = atomicOperations.writeIfFenceUnchanged(
+                route, fence, cacheValue, Duration.ofSeconds(Math.max(1L, ttlSeconds)));
+            metrics.write(written ? "success" : "fence_changed");
+        } catch (RuntimeException ex) {
+            metrics.write("error");
+            log.warn("Backfill cache failed key={}, ignored: {}", route.dataKey(), ex.getMessage());
+        }
+        return loaded;
+    }
+
     private void backfillQuietly(String cacheKey, Object value, long ttl, TimeUnit ttlUnit) {
         try {
             writeLoadedValue(cacheKey, value, ttl, ttlUnit);
         } catch (RuntimeException ex) {
             log.warn("Backfill cache key {} failed, ignored: {}: {}", cacheKey,
-                    ex.getClass().getSimpleName(), ex.getMessage());
+                ex.getClass().getSimpleName(), ex.getMessage());
         }
     }
 
-    /**
-     * 从 Redis 读取并转换成目标类型。
-     */
-    private <T> T readValue(String cacheKey, Class<T> clazz) {
-        Object value = redisTemplate.opsForValue().get(cacheKey);
-        if (value == null || Objects.equals(value, NULL_MARKER)) {
-            return null;
-        }
-        return toType(value, clazz);
-    }
-
-    /**
-     * 将 Redis 原始值转换成目标类型：已是目标类型直接转型，否则用 Jackson 转换（兼容反序列化为 Map 的情形）。
-     */
     private <T> T toType(Object value, Class<T> clazz) {
         if (clazz.isInstance(value)) {
             return clazz.cast(value);
@@ -167,34 +203,22 @@ public class CacheReadProtectionService {
         return OBJECT_MAPPER.convertValue(value, clazz);
     }
 
-    /**
-     * 判断当前 key 是否已经被空值占位。
-     */
-    private boolean isNullMarkerPresent(String cacheKey) {
-        Object value = redisTemplate.opsForValue().get(cacheKey);
-        return Objects.equals(value, NULL_MARKER);
-    }
-
-    /**
-     * 回填真实值或空值占位。
-     */
     private void writeLoadedValue(String cacheKey, Object loaded, long ttl, TimeUnit ttlUnit) {
         if (loaded == null) {
             redisTemplate.opsForValue().set(cacheKey, NULL_MARKER,
-                    properties.getNullCacheTtlSeconds(), TimeUnit.SECONDS);
+                properties.getNullCacheTtlSeconds(), TimeUnit.SECONDS);
             return;
         }
-        long ttlSeconds = ttlUnit.toSeconds(ttl);
-        long jitterSeconds = properties.getTtlJitterSeconds();
-        long finalTtl = jitterSeconds > 0
-                ? ttlSeconds + ThreadLocalRandom.current().nextLong(jitterSeconds + 1)
-                : ttlSeconds;
-        redisTemplate.opsForValue().set(cacheKey, loaded, Duration.ofSeconds(finalTtl));
+        redisTemplate.opsForValue().set(cacheKey, loaded, Duration.ofSeconds(withJitter(ttlUnit.toSeconds(ttl))));
     }
 
-    /**
-     * 未拿到回源执行权的线程短暂等待，再尝试重读缓存。
-     */
+    private long withJitter(long ttlSeconds) {
+        long jitterSeconds = properties.getTtlJitterSeconds();
+        return jitterSeconds > 0
+            ? ttlSeconds + ThreadLocalRandom.current().nextLong(jitterSeconds + 1)
+            : ttlSeconds;
+    }
+
     private void sleepSilently(long sleepMs) {
         if (sleepMs <= 0) {
             return;
@@ -203,6 +227,21 @@ public class CacheReadProtectionService {
             Thread.sleep(sleepMs);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private record CacheLookup<T>(boolean hit, T value, boolean error) {
+
+        private static <T> CacheLookup<T> hit(T value) {
+            return new CacheLookup<>(true, value, false);
+        }
+
+        private static <T> CacheLookup<T> miss() {
+            return new CacheLookup<>(false, null, false);
+        }
+
+        private static <T> CacheLookup<T> failed() {
+            return new CacheLookup<>(false, null, true);
         }
     }
 }

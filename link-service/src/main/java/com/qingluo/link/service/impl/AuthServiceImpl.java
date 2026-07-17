@@ -16,6 +16,7 @@ import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.AuthService;
 import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.UserLoginEventRecorder;
+import com.qingluo.link.service.cache.UserProfileCache;
 import com.qingluo.link.service.oss.UploadResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -40,6 +41,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final OssApplicationService ossApplicationService;
     private final UserLoginEventRecorder userLoginEventRecorder;
+    private final UserProfileCache userProfileCache;
 
     /**
      * 校验账号密码并创建登录态，成功后同步刷新最后登录时间。
@@ -99,6 +101,7 @@ public class AuthServiceImpl implements AuthService {
         user.setLastLoginAt(LocalDateTime.now());
 
         sysUserMapper.insert(user);
+        userProfileCache.evict(user.getId());
         StpUtil.login(user.getId());
         userLoginEventRecorder.record(user.getId(), UserLoginEventRecorder.SOURCE_REGISTER);
 
@@ -121,11 +124,14 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public UserProfileDTO getProfile(Long userId) {
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null) {
+        UserProfileDTO profile = userProfileCache.get(userId, () -> {
+            SysUser user = sysUserMapper.selectById(userId);
+            return user == null ? null : toDTO(user);
+        });
+        if (profile == null) {
             throw AuthException.userNotFound();
         }
-        return toDTO(user);
+        return profile;
     }
 
     /**
@@ -159,6 +165,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         sysUserMapper.updateById(user);
+        userProfileCache.evict(userId);
     }
 
     /**
@@ -175,6 +182,7 @@ public class AuthServiceImpl implements AuthService {
         UploadResult uploadResult = ossApplicationService.uploadAndDescribe("avatar", file, buildAvatarObjectKey(userId, file));
         user.setAvatarUrl(uploadResult.previewUrl());
         sysUserMapper.updateById(user);
+        userProfileCache.evict(userId);
         return toDTO(user);
     }
 

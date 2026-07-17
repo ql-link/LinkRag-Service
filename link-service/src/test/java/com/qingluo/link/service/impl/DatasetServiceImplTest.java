@@ -20,6 +20,7 @@ import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
 import com.qingluo.link.service.delete.DocumentDeleteNotifier;
+import com.qingluo.link.service.cache.DatasetParseConfigCache;
 import java.util.List;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -58,6 +59,8 @@ class DatasetServiceImplTest {
     @Mock
     private DatasetEmbeddingConfigValidator embeddingConfigValidator;
 
+    @Mock
+    private DatasetParseConfigCache datasetParseConfigCache;
     @InjectMocks
     private DatasetServiceImpl datasetService;
 

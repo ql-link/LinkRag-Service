@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.KafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.MessageListenerContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -121,6 +122,12 @@ class CdcBridgeWiringTest {
         @Bean
         CdcBridgeMetrics cdcBridgeMetrics() {
             return Mockito.mock(CdcBridgeMetrics.class);
+        }
+
+        @Bean
+        @SuppressWarnings("unchecked")
+        KafkaTemplate<String, String> kafkaTemplate() {
+            return Mockito.mock(KafkaTemplate.class);
         }
     }
 }

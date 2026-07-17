@@ -15,6 +15,7 @@ import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateUserRoleRequest;
 import com.qingluo.link.model.dto.request.UpdateUserStatusRequest;
+import com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest;
 import com.qingluo.link.model.dto.entity.ProviderModelSyncCandidate;
 import com.qingluo.link.model.dto.entity.ProviderModelSyncJob;
 import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
@@ -32,6 +33,7 @@ import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.ProviderModelSyncService;
 import com.qingluo.link.service.SystemPresetService;
 import com.qingluo.link.service.oss.UploadResult;
+import com.qingluo.link.core.util.AuthContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -140,9 +142,17 @@ public class AdminController {
     }
 
     @GetMapping("/document-file-config")
-    @Operation(summary = "查询文档文件上传配置", description = "只读查询当前实例通过部署配置绑定的文件大小限制和格式白名单；修改配置后需重启实例生效")
+    @Operation(summary = "查询文档文件上传配置", description = "查询当前全局有效的文件大小限制和格式白名单")
     public Result<DocumentFileConfigDTO> getDocumentFileConfig() {
         return Result.success(adminDocumentFileConfigService.getCurrentConfig());
+    }
+
+    @PutMapping("/document-file-config")
+    @Operation(summary = "更新文档文件上传配置", description = "完整覆盖全局运行时配置，写入 Redis 后立即对新上传生效")
+    public Result<DocumentFileConfigDTO> updateDocumentFileConfig(
+            @RequestBody UpdateDocumentFileConfigRequest request) {
+        return Result.success(adminDocumentFileConfigService.updateConfig(
+            AuthContext.getLoginUserIdOrThrow(), request));
     }
 
     /**

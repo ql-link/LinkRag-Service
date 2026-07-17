@@ -26,9 +26,9 @@ public class CdcBridgeMetrics {
     }
 
     /**
-     * 记录一次错误处理器 recover（提交跳过）。
+     * 记录一次错误处理器 dead-letter recover 尝试。
      *
-     * @param reason 分类原因，如 bad_payload / infra_exhausted
+     * @param reason 分类原因，如 bad_payload / send_exhausted
      */
     public void recordRecover(String reason) {
         MeterRegistry registry = meterRegistryProvider.getIfAvailable();
