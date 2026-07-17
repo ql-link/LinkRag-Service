@@ -17,8 +17,8 @@ import org.springframework.util.StringUtils;
  * 含对话 generate（{@code stage=chat}/{@code operation=generate}），与解析/召回侧统一走本通道，
  * 按 {@code stage}/{@code operation} 通用落库、无需特判。</p>
  *
- * <p>NULL 是合法态：{@code config_id}（系统配置调用如召回 query 编码）/ {@code latency_ms}
- * 缺省即落 NULL，不补默认值。{@code completion_tokens} 对向量类（embed/rerank）恒为 0 是预期值。
+ * <p>新版消息的 {@code config_id} 对 USER 与 SYSTEM 调用都必须为正整数；消息模型在进入本服务前校验。
+ * {@code latency_ms} 缺省可落 NULL。{@code completion_tokens} 对向量类（embed/rerank）恒为 0 是预期值。
  * {@code task_id} 当前表无独立列，仅作审计锚点不落库。{@code llm_usage_log} 瘦身后已无
  * {@code conversation_id}/{@code message_id}/{@code request_id}/{@code fallback_config_id} 列，generate
  * 行不再回溯到具体对话（LINK-191）。</p>
@@ -39,7 +39,7 @@ public class UsageReportPersistenceServiceImpl implements UsageReportPersistence
     public void persist(UsageReportMQ.MsgPayload payload) {
         UsageLog usage = new UsageLog();
         usage.setUserId(payload.getUserId());
-        usage.setConfigId(payload.getConfigId());            // 可空 → NULL（系统配置调用）
+        usage.setConfigId(payload.getConfigId());
         usage.setProviderType(payload.getProviderType());
         usage.setModelName(payload.getModelName());
         usage.setStage(payload.getStage());

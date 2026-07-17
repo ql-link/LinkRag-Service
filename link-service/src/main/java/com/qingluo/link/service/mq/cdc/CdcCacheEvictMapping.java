@@ -1,6 +1,7 @@
 package com.qingluo.link.service.mq.cdc;
 
 import com.qingluo.link.components.redis.service.CacheEvictTarget;
+import com.qingluo.link.service.cache.LLMRuntimeCacheReadiness;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,22 +42,37 @@ public class CdcCacheEvictMapping {
         }
     }
 
-    private final Map<String, List<MappingRule>> rules = Map.of(
-        "dataset_parse_config", List.of(new MappingRule(
-            CacheEvictTarget.DATASET_PARSE_CONFIG, this::datasetRoutes)),
-        "sys_user", List.of(new MappingRule(
-            CacheEvictTarget.USER_PROFILE, this::userRoutes)),
-        "blog_post", List.of(new MappingRule(
-            CacheEvictTarget.PUBLISHED_BLOG_INDEX, row -> RouteResolution.routes(List.of("global")))),
-        "blog_asset", List.of(new MappingRule(
-            CacheEvictTarget.PUBLISHED_BLOG_INDEX, row -> RouteResolution.routes(List.of("global"))))
-    );
+    private final LLMRuntimeCacheReadiness llmRuntimeCacheReadiness;
+    private final Map<String, List<MappingRule>> rules;
+
+    public CdcCacheEvictMapping(LLMRuntimeCacheReadiness llmRuntimeCacheReadiness) {
+        this.llmRuntimeCacheReadiness = llmRuntimeCacheReadiness;
+        this.rules = Map.of(
+            "dataset_parse_config", List.of(new MappingRule(
+                CacheEvictTarget.DATASET_PARSE_CONFIG, this::datasetRoutes)),
+            "sys_user", List.of(new MappingRule(
+                CacheEvictTarget.USER_PROFILE, this::userRoutes)),
+            "blog_post", List.of(new MappingRule(
+                CacheEvictTarget.PUBLISHED_BLOG_INDEX,
+                row -> RouteResolution.routes(List.of("global")))),
+            "blog_asset", List.of(new MappingRule(
+                CacheEvictTarget.PUBLISHED_BLOG_INDEX,
+                row -> RouteResolution.routes(List.of("global")))),
+            "llm_model_config", List.of(new MappingRule(
+                CacheEvictTarget.LLM_RUNTIME_CONFIG, this::llmRuntimeRoutes))
+        );
+    }
 
     public List<MappingRule> rulesOf(String table) {
         if (!StringUtils.hasText(table)) {
             return List.of();
         }
-        return rules.getOrDefault(table.toLowerCase(Locale.ROOT), List.of());
+        String normalizedTable = table.toLowerCase(Locale.ROOT);
+        if ("llm_model_config".equals(normalizedTable)
+            && !llmRuntimeCacheReadiness.isMappingEnabled()) {
+            return List.of();
+        }
+        return rules.getOrDefault(normalizedTable, List.of());
     }
 
     private RouteResolution datasetRoutes(ChangeRow row) {
@@ -74,6 +90,12 @@ public class CdcCacheEvictMapping {
             return RouteResolution.skip();
         }
         String id = firstText(row.current().get("id"), row.before().get("id"));
+        return RouteResolution.routes(StringUtils.hasText(id) ? List.of(id) : List.of());
+    }
+
+    private RouteResolution llmRuntimeRoutes(ChangeRow row) {
+        Map<String, String> image = "DELETE".equals(row.operation()) ? row.before() : row.current();
+        String id = image.get("id");
         return RouteResolution.routes(StringUtils.hasText(id) ? List.of(id) : List.of());
     }
 

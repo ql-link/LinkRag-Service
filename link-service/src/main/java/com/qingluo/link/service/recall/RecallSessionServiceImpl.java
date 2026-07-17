@@ -10,7 +10,7 @@ import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.RecallSessionRequest;
 import com.qingluo.link.model.dto.response.RecallSessionResponse;
 import com.qingluo.link.model.enums.ErrorCode;
-import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
+import com.qingluo.link.service.DatasetModelBindingValidator;
 import com.qingluo.link.service.RecallSessionService;
 import com.qingluo.link.service.config.RecallProperties;
 import java.time.Instant;
@@ -43,7 +43,7 @@ public class RecallSessionServiceImpl implements RecallSessionService {
     private final RecallScopeResolver scopeResolver;
     private final RecallSessionJwtSigner sessionJwtSigner;
     private final RecallProperties properties;
-    private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
+    private final DatasetModelBindingValidator modelBindingValidator;
 
     @Override
     public RecallSessionResponse issue(Long userId, RecallSessionRequest request) {
@@ -81,7 +81,8 @@ public class RecallSessionServiceImpl implements RecallSessionService {
         Map<Long, DatasetParseConfig> byDatasetId = configs.stream()
             .collect(Collectors.toMap(DatasetParseConfig::getDatasetId, Function.identity(), (left, right) -> left));
         for (Long datasetId : datasetIds) {
-            embeddingConfigValidator.validateStoredBindings(userId, byDatasetId.get(datasetId));
+            modelBindingValidator.validateStoredRequiredBindings(
+                userId, byDatasetId.get(datasetId), DatasetModelBindingValidator.Purpose.RECALL);
         }
     }
 

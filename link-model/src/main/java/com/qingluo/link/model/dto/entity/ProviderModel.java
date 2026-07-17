@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
  *
  * <p>「厂商→模型→能力」三层的中间层，取代原 llm_system_provider.supported_models JSON。
  * 一个模型支持多种能力时拆成多行（同 model_name 多条 capability）。用户配置厂商时，
- * 按本表展开该厂商全部 (模型,能力) 写入 llm_user_config。</p>
+ * 按本表展开该厂商全部 (模型,能力) 写入统一的 llm_model_config USER 快照。</p>
  */
 @Data
 @TableName("llm_provider_model")

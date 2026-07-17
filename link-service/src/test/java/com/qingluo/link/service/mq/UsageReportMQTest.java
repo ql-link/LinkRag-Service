@@ -41,18 +41,15 @@ class UsageReportMQTest {
     }
 
     @Test
-    void Should_LeaveOptionalFieldsNull_When_RecallSystemConfig() {
+    void Should_RejectMissingConfigId_When_RecallSystemConfig() {
         String raw = "{\"mq_type\":\"USAGE_REPORT\",\"mq_name\":\"tolink.rag.usage_report\",\"payload\":{"
                 + "\"user_id\":1001,\"provider_type\":\"openai\",\"model_name\":\"text-embedding-3-large\","
                 + "\"stage\":\"recall\",\"operation\":\"embed\",\"prompt_tokens\":36,\"completion_tokens\":0,"
                 + "\"total_tokens\":36,\"status\":\"success\"}}";
 
-        UsageReportMQ.MsgPayload payload = UsageReportMQ.parseMsg(raw);
-
-        // 系统配置调用：config_id 缺省 → NULL；latency_ms / task_id 同样缺省 → NULL
-        assertThat(payload.getConfigId()).isNull();
-        assertThat(payload.getLatencyMs()).isNull();
-        assertThat(payload.getTaskId()).isNull();
+        assertThatThrownBy(() -> UsageReportMQ.parseMsg(raw))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("positive global config id");
     }
 
     @Test
@@ -60,7 +57,8 @@ class UsageReportMQTest {
         // 瘦身后 conversation_id/request_id 已移出契约，旧上游若仍发也应被忽略（不抛错）。
         String raw = "{\"payload\":{\"user_id\":1001,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
                 + "\"stage\":\"chat\",\"operation\":\"generate\",\"prompt_tokens\":120,\"completion_tokens\":80,"
-                + "\"total_tokens\":200,\"conversation_id\":7788,\"request_id\":\"req-legacy-1\",\"status\":\"success\"}}";
+                + "\"total_tokens\":200,\"config_id\":7,\"conversation_id\":7788,"
+                + "\"request_id\":\"req-legacy-1\",\"status\":\"success\"}}";
 
         UsageReportMQ.MsgPayload payload = UsageReportMQ.parseMsg(raw);
 
@@ -85,7 +83,7 @@ class UsageReportMQTest {
     void Should_RejectInvalidStage() {
         String raw = "{\"payload\":{\"user_id\":1,\"provider_type\":\"openai\",\"model_name\":\"m\","
                 + "\"stage\":\"unknown\",\"operation\":\"embed\",\"prompt_tokens\":1,\"completion_tokens\":0,"
-                + "\"total_tokens\":1}}";
+                + "\"total_tokens\":1,\"config_id\":7}}";
 
         assertThatThrownBy(() -> UsageReportMQ.parseMsg(raw))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -96,7 +94,7 @@ class UsageReportMQTest {
     void Should_RejectInvalidOperation() {
         String raw = "{\"payload\":{\"user_id\":1,\"provider_type\":\"openai\",\"model_name\":\"m\","
                 + "\"stage\":\"recall\",\"operation\":\"sparse\",\"prompt_tokens\":1,\"completion_tokens\":0,"
-                + "\"total_tokens\":1}}";
+                + "\"total_tokens\":1,\"config_id\":7}}";
 
         assertThatThrownBy(() -> UsageReportMQ.parseMsg(raw))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -106,7 +104,7 @@ class UsageReportMQTest {
     @Test
     void Should_RejectMissingTokens() {
         String raw = "{\"payload\":{\"user_id\":1,\"provider_type\":\"openai\",\"model_name\":\"m\","
-                + "\"stage\":\"recall\",\"operation\":\"embed\"}}";
+                + "\"stage\":\"recall\",\"operation\":\"embed\",\"config_id\":7}}";
 
         assertThatThrownBy(() -> UsageReportMQ.parseMsg(raw))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -117,7 +115,7 @@ class UsageReportMQTest {
     void Should_RejectMissingUserId() {
         String raw = "{\"payload\":{\"provider_type\":\"openai\",\"model_name\":\"m\","
                 + "\"stage\":\"recall\",\"operation\":\"embed\",\"prompt_tokens\":1,\"completion_tokens\":0,"
-                + "\"total_tokens\":1}}";
+                + "\"total_tokens\":1,\"config_id\":7}}";
 
         assertThatThrownBy(() -> UsageReportMQ.parseMsg(raw))
                 .isInstanceOf(IllegalArgumentException.class)

@@ -34,7 +34,7 @@ class UsageReportKafkaReceiverTest {
         UsageReportKafkaReceiver receiver = new UsageReportKafkaReceiver(businessReceiver);
 
         receiver.receive(record("""
-                {"payload":{"user_id":2,"provider_type":"openai","model_name":"gpt-4o-mini","stage":"chat","operation":"generate","prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
+                {"payload":{"user_id":2,"provider_type":"openai","model_name":"gpt-4o-mini","stage":"chat","operation":"generate","prompt_tokens":1,"completion_tokens":2,"total_tokens":3,"config_id":101}}
                 """, "trace-from-python"));
 
         verify(businessReceiver).receive(any(UsageReportMQ.MsgPayload.class));

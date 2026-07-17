@@ -97,6 +97,8 @@ class ChatControllerTest {
      */
     private static final String TEST_PASSWORD = "password123";
     private static final String TEST_DATASET_NAME = "默认数据集";
+    private static final Long CHAT_CONFIG_ID = 999911L;
+    private static final Long EMBEDDING_CONFIG_ID = 999912L;
 
     /**
      * 登录后的访问令牌 (sa-token)
@@ -128,6 +130,8 @@ class ChatControllerTest {
     void setup() {
         jdbcTemplate.update("DELETE FROM chat_message");
         jdbcTemplate.update("DELETE FROM chat_conversation");
+        jdbcTemplate.update("DELETE FROM llm_capability_default WHERE owner_user_id = ?", TEST_USER_ID);
+        jdbcTemplate.update("DELETE FROM llm_model_config WHERE owner_user_id = ?", TEST_USER_ID);
         jdbcTemplate.update("DELETE FROM dataset");
         jdbcTemplate.update("DELETE FROM sys_user");
 
@@ -144,6 +148,8 @@ class ChatControllerTest {
 
         // 插入数据库（绕过 HTTP，直接操作 Mapper）
         sysUserMapper.insert(user);
+        insertConfig(CHAT_CONFIG_ID, "chat-model", "CHAT");
+        insertConfig(EMBEDDING_CONFIG_ID, "embedding-model", "EMBEDDING");
 
         // ===== 步骤 2: 编程式登录获取 token =====
         // 使用 sa-token 的编程式 API，模拟已登录状态
@@ -174,7 +180,8 @@ class ChatControllerTest {
     @DisplayName("创建对话 - POST /api/v1/chat/conversations")
     void Should_CreateConversation_When_DataValid() throws Exception {
         // 构建请求 JSON
-        String requestJson = "{\"title\":\"测试对话\",\"datasetId\":" + datasetId + "}";
+        String requestJson = "{\"title\":\"测试对话\",\"datasetId\":" + datasetId
+            + ",\"lastConfigId\":" + CHAT_CONFIG_ID + "}";
 
         // 发送创建对话请求
         MvcResult result = mockMvc.perform(post("/api/v1/chat/conversations")
@@ -188,6 +195,7 @@ class ChatControllerTest {
             // 验证返回的对话标题
             .andExpect(jsonPath("$.data.title").value("测试对话"))
             .andExpect(jsonPath("$.data.datasetId").value(datasetId))
+            .andExpect(jsonPath("$.data.lastConfigId").value(CHAT_CONFIG_ID))
             .andReturn();
 
         // ===== 提取 createdConversationId 供后续测试使用 =====
@@ -198,6 +206,19 @@ class ChatControllerTest {
         // 断言：确保 conversationId 不为空
         Assertions.assertNotNull(createdConversationId,
             "创建的对话 ID 不应该为空，用于后续测试");
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("创建对话拒绝能力不匹配的精确 configId")
+    void Should_RejectConversation_When_ConfigCapabilityMismatch() throws Exception {
+        mockMvc.perform(post("/api/v1/chat/conversations")
+                .header("satoken", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"错误模型\",\"datasetId\":" + datasetId
+                    + ",\"lastConfigId\":" + EMBEDDING_CONFIG_ID + "}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(10023));
     }
 
     /**
@@ -398,6 +419,16 @@ class ChatControllerTest {
         // 不携带 satoken header
         mockMvc.perform(get("/api/v1/chat/conversations"))
             .andExpect(status().isUnauthorized());
+    }
+
+    private void insertConfig(Long id, String modelName, String capability) {
+        jdbcTemplate.update("""
+            INSERT INTO llm_model_config (
+                id, scope, owner_user_id, provider_id, provider_type, model_name, display_name,
+                capability, protocol, api_base_url, api_key, is_active, snapshot_version
+            ) VALUES (?, 'USER', ?, 1, 'openai', ?, ?, ?, 'openai',
+                'https://example.com/v1', 'encrypted-key', true, 1)
+            """, id, TEST_USER_ID, modelName, modelName, capability);
     }
 
     private Long ensureDatasetExists() {

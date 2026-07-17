@@ -1,6 +1,6 @@
 # Redis 缓存与一致性
 
-Redis 通用能力由 `link-components/toLink-components-redis` 提供。本期只恢复边界明确的数据库镜像缓存，并把文档上传运行时配置作为独立控制面值保存到 Redis；两者的 TTL、失效和故障语义不同。
+Redis 通用能力由 `link-components/toLink-components-redis` 提供。Java 维护数据库镜像缓存的失效协议；Python 读取 LLM 运行配置时复用同一套 data/fence/lock 三键协议。文档上传运行时配置仍是独立控制面值，其 TTL、失效和故障语义不同。
 
 ## 缓存范围
 
@@ -9,14 +9,15 @@ Redis 通用能力由 `link-components/toLink-components-redis` 提供。本期�
 | 数据集解析配置 | `cache:dataset:parse-config:{datasetId}` | 7 天 | `DatasetParseConfigResponse` 安全投影 | `dataset_parse_config:{datasetId}` |
 | 用户资料 | `cache:user:profile:{userId}` | 1 天 | 当前用户资料 DTO；仅用于资料展示 | `user_profile:{userId}` |
 | 公开博客发布索引 | `cache:blog:published-index` | 1 天 | 前 100 条已发布文章轻量列表项和总数 | `published_blog_index:global` |
+| Python LLM 运行配置 | `cache:llm:runtime-config:{llm-runtime:<configId>}` | 24 小时 + 0～300 秒抖动 | 单条可执行配置密文快照，仅 Python 运行期读取；物理不存在负缓存 60 秒 | `llm_runtime_config:{configId}` |
 
 正常值在基础 TTL 上增加 `0..tolink.cache-consistency.ttl-jitter-seconds` 秒抖动；空值占位默认 60 秒。key 不包含 `v1` / `v2` 等人工版本段。
 
-公开博客 Markdown 正文、图片二进制、密码、授权结果、API Key 明文或密文、LLM 配置、模型选择结果、文档解析状态、用量、管理统计、会话消息和任意筛选分页均不进入本期 Redis 业务缓存。
+公开博客 Markdown 正文、图片二进制、密码、授权结果、模型选择结果、文档解析状态、用量、管理统计、会话消息和任意筛选分页均不进入 Java 业务缓存。LLM 运行配置只由 Python 以 `configId` 精确缓存；Java 不读取该值，只负责业务提交后首删与 CDC 补偿失效。
 
 ## 读取保护
 
-`CacheReadProtectionService` 对单 key 使用：
+Java 的 `CacheReadProtectionService` 与 Python 的 LLM runtime repository 都对单 key 使用同一原则：
 
 1. Redis 命中直接返回；空值使用短 TTL 占位。
 2. 未命中时先用 JVM 本地锁合并同实例并发，再尝试 `cache:lock:*` 分布式加载锁。
@@ -48,6 +49,7 @@ CDC bridge 只允许从当前 binlog 行、old image 或声明式全局范围解
 | `sys_user` | `id` → 用户资料；仅 `last_login_at` / `last_login_time` / `updated_at` 变化时忽略 |
 | `blog_post` | 全局发布索引 |
 | `blog_asset` | 全局发布索引 |
+| `llm_model_config` | INSERT/UPDATE 使用当前行 `id`，DELETE 使用 old image `id` → Python LLM 运行配置 |
 
 已映射表的空行数组、缺失 route、未知 DML、发送耗尽，以及补偿端的坏载荷、未知 target、删除耗尽都会在各自重试策略结束后发布到 `<原 topic>.DLT`。DLT 写入使用 broker 确认；写入失败继续抛错。DLT 保留原 topic、partition、offset 和异常 headers，运维修复后把原 payload 重新发布到源 topic。
 
@@ -71,6 +73,8 @@ CDC bridge 只允许从当前 binlog 行、old image 或声明式全局范围解
 3. 最后打开数据库镜像缓存总开关。
 
 这避免旧消费者遇到新 target 后静默提交。`BusinessCacheHealthIndicator` 会暴露 readiness 原因。
+
+LLM runtime 缓存使用独立门禁：`tolink.llm-runtime-cache.enabled`、`cdc-mapping-enabled`、`consumer-targets-ready` 必须同时为 `true`，且统一缓存一致性组件与 CDC bridge 已就绪。它不依赖 `tolink.business-cache.enabled`。门禁未 READY 时，Java 的事务后首删与 `llm_model_config` CDC 映射都不发出 `llm_runtime_config` target；`LlmRuntimeCacheHealthIndicator` 会单独暴露原因，便于先发布支持新 target 的消费者，再打开映射与 Python 读缓存。
 
 ## 文档上传运行时配置
 

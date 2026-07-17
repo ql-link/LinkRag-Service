@@ -10,9 +10,7 @@ import lombok.Data;
 /**
  * Markdown 增强配置（3 个开关），字段名与 Python {@code EnhancementConfig} 对齐。
  *
- * <p>增强模型不在数据集层配置：开启增强时由 Python 取发起用户的默认 CHAT/VISION 模型
- * （LINK-148 PR #190）。{@code ignoreUnknown} 容忍历史 JSON 残留的 {@code table_model}/
- * {@code vision_model} 键，落库时自动丢弃，无需数据迁移。
+ * <p>增强开关与模型绑定分离；模型全局ID保存在 {@code dataset_parse_config} 的专用列中。
  */
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

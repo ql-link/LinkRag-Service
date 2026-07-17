@@ -46,12 +46,13 @@
 | GET | `/api/v1/admin/model-sync-candidates` | 外部模型候选分页，支持 `providerId` / `jobId` / `reviewStatus` / `capability` 过滤 |
 | POST | `/api/v1/admin/model-sync-candidates/{id}/publish` | 将外部候选发布到正式 `llm_provider_model`，请求体可覆盖模型名/展示名/能力/协议/入口 |
 | PATCH | `/api/v1/admin/model-sync-candidates/{id}/review` | 更新外部候选审核状态（`PENDING` / `REJECTED`） |
-| GET | `/api/v1/admin/system-presets` | LinkRag 系统预设列表（平台 Key 脱敏，不按默认项过滤） |
-| POST | `/api/v1/admin/system-presets` | 新增 LinkRag 系统预设（支持手动填写或从正式模型目录快捷加入，平台 Key 加密入库） |
-| PATCH | `/api/v1/admin/system-presets/{id}` | 部分更新系统预设（支持手动更新运行事实或从正式模型目录重新快捷复制） |
-| PATCH | `/api/v1/admin/system-presets/{id}/active` | 启用/禁用系统预设（当前默认需先指定替代项） |
-| PATCH | `/api/v1/admin/system-presets/{id}/default` | 设为该能力的 LinkRag 系统兜底默认 |
-| DELETE | `/api/v1/admin/system-presets/{id}` | 删除系统预设 |
+| GET | `/api/v1/admin/llm/configs` | 查询全部 SYSTEM 可执行配置，可按能力和启用状态过滤 |
+| POST | `/api/v1/admin/llm/configs` | 原子创建 SYSTEM 配置，并可同时设为能力默认 |
+| PUT | `/api/v1/admin/llm/configs/{configId}` | 原子更新同一配置 ID；`setAsDefault=false` 保持当前默认关系 |
+| PATCH | `/api/v1/admin/llm/configs/{configId}/active` | 标准启停；Dataset 或 SYSTEM 默认引用受保护 |
+| POST | `/api/v1/admin/llm/configs/{configId}/emergency-disable` | 紧急停用；当前 SYSTEM 默认必须给出同能力替代 ID |
+| DELETE | `/api/v1/admin/llm/configs/{configId}` | 删除无 Dataset/default 引用的 SYSTEM 配置 |
+| PUT | `/api/v1/admin/llm/defaults/{capability}` | 切换 SYSTEM 能力默认，不改变旧配置状态或 Dataset 绑定 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
 
@@ -68,7 +69,7 @@
 
 `GET /api/v1/admin/users/dashboard` 仅允许 ADMIN 访问。统计包含 USER 和 ADMIN，按 `Asia/Shanghai` 自然日计算；活跃用户为周期内至少有一次成功登录事件的去重用户，注册自动登录计入，失败登录不计入。响应包含 `rangeDays`、`totalUsers`、`breakdown{user,admin,enabled,disabled}`、`newUsers{current,previous,growthRate}`、`activeUsers{current,previous,growthRate}`、`trend[{date,newUsers,activeUsers}]`。上一等长周期为零时增长率为 `null`；无数据日期补零。`days` 非 7/30/90 返回 `20008/400`。
 
-`POST /api/v1/admin/providers/icon` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `providerIcon` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS，object key 形如 `providerIcon/{uuid}.{suffix}`。上传成功后返回 `ProviderIconUploadDTO{ iconUrl, iconObjectKey }`；前端再将两者传给 `POST /api/v1/admin/providers` 或 `PATCH /api/v1/admin/providers/{id}`，分别写入 `llm_system_provider.icon_url` 与 `icon_object_key`。用户侧 `GET /api/v1/llm/providers` 返回可添加厂商的 `iconUrl`；`GET /api/v1/llm/configs` 的 LinkRag 只读配置项也返回 `iconUrl`，来源同为 `llm_system_provider`，用于替代前端硬编码厂商图标。
+`POST /api/v1/admin/providers/icon` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `providerIcon` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS，object key 形如 `providerIcon/{uuid}.{suffix}`。上传成功后返回 `ProviderIconUploadDTO{ iconUrl, iconObjectKey }`；前端再将两者传给 `POST /api/v1/admin/providers` 或 `PATCH /api/v1/admin/providers/{id}`，分别写入 `llm_system_provider.icon_url` 与 `icon_object_key`。用户侧厂商目录和统一配置列表中的厂商图标都来自 `llm_system_provider`，前端不按 SYSTEM/USER 或 LinkRag 身份硬编码图标。
 
 ### Admin Logs
 
@@ -105,14 +106,15 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/llm/providers` | 可用厂商与模型能力（来源 `llm_provider_model`） |
-| GET | `/api/v1/llm/configs` | 用户可用配置列表（用户自配 + LinkRag 只读配置） |
-| POST | `/api/v1/llm/configs/setup-provider` | 配置厂商：选厂商+填厂商级 Key，自动展开整厂商模型 |
-| PATCH | `/api/v1/llm/configs/toggle-model` | 模型/能力启停（`capability` 可选：有则单能力，无则按模型批量） |
-| PUT | `/api/v1/llm/configs/effective` | 按能力选生效模型 |
-| GET | `/api/v1/llm/configs/default` | 取某能力实际生效配置（用户自配优先，缺省回退 LinkRag 系统预设） |
-| PATCH | `/api/v1/llm/configs/{id}/default` | 设某能力用户自配生效 |
-| PATCH | `/api/v1/llm/configs/default/system` | 兼容接口：清空某能力用户自配默认，恢复 LinkRag 配置 |
-| DELETE | `/api/v1/llm/configs/{id}` | 删除用户自配配置 |
+| GET | `/api/v1/llm/configs` | 当前用户 USER 配置 + 每种能力当前 SYSTEM 默认；支持 `providerType/capability/isActive` 过滤 |
+| POST | `/api/v1/llm/configs/setup-provider` | 按正式目录 upsert USER 运行快照；自然键相同复用 `configId` |
+| PATCH | `/api/v1/llm/configs/{configId}/active` | 按全局 ID 标准启停 USER 配置 |
+| POST | `/api/v1/llm/configs/{configId}/emergency-disable` | 所有者确认后紧急停用，保留 Dataset 绑定 |
+| DELETE | `/api/v1/llm/configs/{configId}` | 按全局 ID 删除 USER 配置；Dataset 引用时拒绝 |
+| GET | `/api/v1/llm/defaults` | 查询全部能力的用户覆盖、SYSTEM 默认和有效 `configId` |
+| GET | `/api/v1/llm/defaults/{capability}` | 查询单能力默认关系；完全未配置时返回 409 |
+| PUT | `/api/v1/llm/defaults/{capability}` | `{configId}` 设置当前用户同能力 USER 默认 |
+| DELETE | `/api/v1/llm/defaults/{capability}` | 清除用户覆盖，恢复跟随 SYSTEM 默认 |
 | GET | `/api/v1/llm/usage/summary` | 用量汇总 |
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
@@ -129,23 +131,13 @@
 >
 > `by-model` 与 `trend` 为**全链路口径**（不按 stage 过滤，反映全部模型/总体趋势），与 `summary`/`daily`/`logs` 默认仅 `chat` 的口径不同——展示侧若需对齐，对 `summary` 传 `stage=all`。入参 `startDate`/`endDate` 同为 `yyyy-MM-dd`（含端）；均 `@SaCheckLogin` 且按登录用户隔离。
 >
-> `configs` 相关响应（`UserLLMConfigDTO`）的能力字段为单数 `capability`（合法取值 `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`，事实来源 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES`），曾误用复数 `capabilities`，前端需按 `capability` 取值。`source` 字段标识配置来源：`USER` 为 `llm_user_config` 用户自配，`SYSTEM` 为 LinkRag 系统兜底预设。`OCR` 已不再作为独立能力，文档识别类模型应并入 `VISION` 或由执行端按视觉链路处理。
+> `ExecutableLLMConfigDTO` 只以 `configId` 表示配置身份；`scope`（`SYSTEM` / `USER`）与 `editable` 仅用于展示和授权。响应不得再出现身份别名 `id`、`source`、`configSource` 或 `isSystemPreset`。默认选择使用独立的 `CapabilityDefaultDTO{capability,userDefaultConfigId,systemDefaultConfigId,effectiveConfigId}`，不混入配置 DTO。
 >
-> 用户侧 `GET /api/v1/llm/providers`（`ProviderController`）查询启用中的厂商与模型，供用户添加配置前选择，支持按 `capability` 过滤，返回 `ProviderModelDTO`（含 `iconUrl`）；与管理端 `GET /api/v1/admin/providers`（分页管理视图）区分用途。
-> `provider_type=linkrag` 是系统服务厂商：不出现在用户侧可添加厂商列表，用户也不能调用 `setup-provider` 配置它的 Key（返回 `SYSTEM_PROVIDER_READONLY(10016/400)`）；但会作为 `GET /configs` 的只读配置项返回，用户可以选择使用。用户侧 `GET /configs` 只合并 `provider_type=linkrag AND is_active=true AND is_default=true` 的系统兜底项；管理端 `GET /api/v1/admin/system-presets` 列出 LinkRag 系统预设表内全部预设，不按默认项过滤。LinkRag 图标仍存于 `llm_system_provider.icon_url`，`llm_system_preset` 不重复保存厂商图标；主种子脚本只创建 LinkRag 厂商行，不向 `llm_provider_model` 写入 LinkRag 模型，LinkRag 模型只在 `llm_system_preset` 中作为系统兜底默认维护。
+> 精确配置校验固定顺序为：物理存在 → `is_active` → USER owner/SYSTEM 共享 → capability。配置不存在、停用、越权和能力不匹配分别返回 `10020/404`、`10021/409`、`10022/403`、`10023/400`，不回落默认配置或环境变量。
 >
-> 管理端新增 LinkRag 兜底模型统一使用 `POST /api/v1/admin/system-presets`，最终落库恒为 `provider_type=linkrag`、`provider_id=LinkRag 厂商 ID`。接口支持两种方式：手动填写 `{ modelName, displayName?, capability, protocol, apiBaseUrl, apiKey, isDefault? }`；或快捷加入正式模型目录 `{ sourceProviderModelId, apiKey, isDefault? }`，后端从 `llm_provider_model` 复制模型名、展示名、能力、协议和完整入口。兼容旧入参 `{ providerId, modelName, capability, apiKey }`，其语义也是“从该源厂商模型目录复制到 LinkRag 预设”，不是把系统预设归属到源厂商。`apiKey` 是平台 Key，用户无需配置 Key。
+> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。`setAsDefault=true` 时配置与 SYSTEM 默认在一个事务内写入；默认写失败整单回滚。已存在配置不能原地改变 capability，避免默认关系和数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
 >
-> 两步配置：`POST /configs/setup-provider`（选厂商 + 填厂商级 Key，按 `llm_provider_model` 展开整厂商「模型×能力」为多条自配并返回列表，重复配置同厂商则更新其 Key）→ `PUT /configs/effective`（按能力选一个启用模型生效，单用户单能力唯一）。`providerType=linkrag` 时，`PUT /configs/effective` 清空该能力用户自配默认，使 LinkRag 只读配置生效。`PATCH /configs/toggle-model` 独立启停用户自配配置：请求体 `capability` 存在时只启停该 `providerType + modelName + capability` 自配行，不存在时兼容旧前端，按 `providerType + modelName` 批量启停该模型全部用户自配能力；若关闭的是当前能力用户默认配置，后端清除该默认标记，使实际生效配置回退 LinkRag 系统默认。LinkRag 不可编辑/删除/启停。`GET /configs/default` 返回 `EffectiveLLMConfigDTO`，字段 `source` 为 `USER` 或 `SYSTEM`，供执行端按来源表读取；前端配置页优先使用 `GET /configs` 的 `isDefault` 展示当前生效项。`GET /configs` 支持 `capability` / `isActive` 过滤，返回用户自配配置 + LinkRag 只读配置；`UserLLMConfigDTO.isEditable=false` 表示只读，不允许编辑、删除、启停或改 Key。错误码：系统服务厂商不可自配/启停 `10016`、能力级启停找不到用户自配配置 `10004`、选已关停模型生效 `10012`、模型不支持能力 `10008`、无效能力 `10011`、模型能力缺协议或入口 `10014`、协议非法 `10015`。旧 `POST /configs`、`PATCH /configs/{id}` 已移除（不兼容）。
-
-> **LLM 协议改造字段变更（破坏性 + 加法）**，详见下文「LLM 协议与入口契约」：
-> - `GET /api/v1/llm/providers`：`ModelCapabilityDTO` 新增 `displayName`（模型短展示名，真实调用仍用 `modelName`）；`capabilities` 由 `List<String>`（能力名）**升级为** `List<ModelCapabilityDetailDTO>`，每元素为 `{ capability, protocol, apiBaseUrl }`（**破坏性，前端需同批适配**）。`apiBaseUrl` 为**完整端点 URL**（见下「base 形态约定」）。例：`{"modelName":"Qwen/Qwen3.6-27B","displayName":"Qwen 3.6 27B","capabilities":[{"capability":"VISION","protocol":"openai","apiBaseUrl":"https://api.siliconflow.cn/v1/chat/completions"}]}`。
-> - `GET /api/v1/llm/configs` / `POST /api/v1/llm/configs/setup-provider`：响应 `UserLLMConfigDTO` 新增 `source`（`USER`/`SYSTEM`）、`displayName`、`protocol`（运行快照，复制自模型能力层）与 `isEditable`（LinkRag 为 `false`）；其中 `GET /configs` 的 LinkRag 只读项会额外返回来自系统厂商表的 `iconUrl`；`SetupProviderRequest` 请求体不变。
-> - `POST /api/v1/admin/providers/{providerId}/models`：`AddProviderModelRequest` 新增可选 `displayName`、必填 `protocol`（`NotBlank`，须为 5 协议枚举）、`apiBaseUrl`（`NotBlank`）；缺失或非法分别返回 `10014` / `10015`（400）。
-> - `POST /api/v1/admin/providers`：`CreateProviderRequest` 新增 `defaultProtocol`（厂商默认协议模板）。
-> - `GET /api/v1/llm/configs/default`：响应由 `UserLLMConfigDTO` 改为 `EffectiveLLMConfigDTO`，新增 `source`、`configId` 与 `displayName`，用于 Python 按来源表读取最终配置。
-> - `POST /api/v1/admin/system-presets`：新增可选 `isDefault`；支持手动填写 `protocol` / `apiBaseUrl`，也支持按 `sourceProviderModelId` 或兼容字段 `(providerId, modelName, capability)` 从正式目录快捷复制 `protocol` / `api_base_url` / `display_name`。无论来源如何，预设都归属 LinkRag 系统厂商。当 `isDefault=true` 时自动解除同能力其他 LinkRag 系统默认。
-> - 外部模型目录刷新（LINK-50）：`POST /api/v1/admin/providers/{providerId}/model-sync` 只把 `models.dev` 等外部源数据写入 `llm_provider_model_sync_job` / `llm_provider_model_sync_candidate`，不直接影响用户侧模型列表；管理员审核后调用 `POST /api/v1/admin/model-sync-candidates/{id}/publish` 才会复用正式目录服务写入 `llm_provider_model`。本期不恢复 LLM 相关 Redis 缓存。候选响应包含外部源模型发布日期 `releaseDate`；候选发布可覆盖推断出的 `capability` / `protocol` / `apiBaseUrl`，避免外部源误判直接进入运行目录。候选响应中的 `capability` 是兼容别名，等同真实推断字段 `inferredCapability`。重复刷新同一厂商时，后端按 `(providerId, syncSource, modelName, inferredCapability)` 更新既有候选，不再追加重复行。
+> 用户 `setup-provider` 按 `(scope,owner_user_id,provider_id,model_name,capability)` upsert，刷新凭据复用原 `configId`，保留已有启用和默认状态。标准删除/停用保护 Dataset 引用；紧急停用保留绑定，使后续精确执行明确返回配置已停用。
 
 ### LLM 协议与入口契约
 
@@ -153,7 +145,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 
 **`api_base_url` 形态约定（2026-06 与 Python PR #192 对齐，语义已反转，两端必须严格一致）**：
 
-- **模型能力层 / 用户配置层** `api_base_url` 存**完整端点 URL**，Python 直打、**不再拼接任何后缀**。例：`https://api.openai.com/v1/chat/completions`、`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`。
+- **模型能力层 / 统一可执行配置层** `api_base_url` 存**完整端点 URL**，Python 直打、**不再拼接任何后缀**。例：`https://api.openai.com/v1/chat/completions`、`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`。
 - **厂商层** `llm_system_provider.api_base_url` 仍存「协议基地址」，仅作管理端新增模型能力时的表单预填模板，**不参与运行、Python 不读**。
 - 端点后缀知识从 Python adapter 移入 **Java seed 生成器**（`scripts/import_ragflow_configs.py` 的 `PROTOCOL_CAPABILITY_SUFFIX`）：完整 URL = 基地址 + `(protocol, capability)` 后缀。新增/改端点只动 Java 数据，adapter 零改动。
 - **唯一例外 `google`**：Gemini 原生流式需把 `:generateContent` 换成 `:streamGenerateContent?alt=sse`（流式开关编码在 URL 里，无法用单条静态 URL 表达），故 `google` 仍下发 base 到 `/v1beta`，由 Python 按 google 规则补全路径与流式后缀，鉴权用 `x-goog-api-key`。（`dashscope` ASR 异步轮询同类问题，本期不做，暂存 base。）
@@ -221,9 +213,9 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
 
-> 创建数据集：`POST /api/v1/datasets` 请求体除 `name`/`description` 外，必须提供 `sparse_embedding_config_id` 与 `dense_embedding_config_id`，并可选提供 `sparse_embedding_config_source` / `dense_embedding_config_source`（`USER` 或 `SYSTEM`）。`source=USER` 时 ID 指向当前用户启用中的 `llm_user_config.id`；`source=SYSTEM` 时 ID 指向 active + default 的 LinkRag `llm_system_preset.id`。不传 source 时后端兼容旧前端：先按 `USER` 查，查不到再按 `SYSTEM` 查；为避免两表 ID 撞号，前端应随 `GET /api/v1/llm/configs` 返回的 `source` 一起提交。能力必须分别为 `SPARSE_EMBEDDING` / `EMBEDDING`；不存在、停用、越权或能力不匹配均返回 400。创建成功时 Java 同步写入 `dataset_parse_config` 默认行并固化这两个绑定，后续解析构建向量与召回都以该数据集绑定为准，不再按用户“当前默认模型”漂移。
+> 创建数据集：`POST /api/v1/datasets` 请求体除 `name`/`description` 外，必须提供 `sparse_embedding_config_id` 与 `dense_embedding_config_id`。两个字段均直接引用全局 `llm_model_config.id`，不再携带 `source` 或其它身份别名；能力必须分别为 `SPARSE_EMBEDDING` / `EMBEDDING`。Java 内部按“配置不存在 → 已停用 → 越权 → 能力不匹配”的固定顺序校验，Dataset 写接口统一包装为 `INVALID_DATASET_MODEL_BINDING(10028)`，并在 `data.field` 返回失败字段。创建成功时同步写入 `dataset_parse_config` 默认行并固化这两个绑定，后续解析构建向量与召回均以数据集绑定为准，不跟随用户默认选择漂移。
 
-> 解析/检索配置（`/parse-config`，LINK-219）：请求/响应为 `{sparse_embedding_config_id, sparse_embedding_config_source, dense_embedding_config_id, dense_embedding_config_source, chunking, enhancement, pdf, recall}`，字段名 snake_case，与 Python `dataset_config` Pydantic 模型对齐（JSON 配置 27 项：chunking 7 / enhancement 3 开关 / pdf 1 / recall 14；向量模型绑定 4 项为表列）。Java 只做存/改/回显，**PUT 为整行全量覆盖四类 JSON 配置**；两个模型绑定（source + id）已有值后不可修改，未传则保留原绑定，首次为无配置行创建时必须能解析出完整绑定。`recall` 兼容旧 JSON 缺失项时读取补齐默认：`recall_enabled_sources=["bm25","sparse","dense"]`、`rerank_top_n=8`、`recall_strict=false`。关键校验即时拦截 400：模型绑定必须可解析且能力匹配；`overlap_tokens` 0-64、`min_candidate_chunk_tokens` 128-256、`max_chunk_tokens` 256-2048、`hard_max_tokens` 512-8192，且 `max_chunk_tokens >= min_candidate_chunk_tokens`、`hard_max_tokens >= max_chunk_tokens`，`stage_two_algorithm` 仅支持 `noop`/`semantic_depth_window`（写入前 trim/lower）；`pdf_parser_backend` ∈ {`auto`,`mineru`,`opendataloader`,`naive`}；`recall_result_limit`、`bm25_top_k`、`sparse_top_k`、`dense_top_k`、`rerank_top_n` 必须为正整数，`sparse_score_threshold`、`dense_score_threshold`、`fusion_bm25_weight`、`fusion_sparse_weight`、`fusion_dense_weight` 必须为非负有限数，`recall_fusion_strategy` 仅支持 `rrf`/`weighted_score`（写入前 trim/lower），`recall_enabled_sources` 仅允许 `bm25`/`sparse`/`dense`（写入去空白、去空项、去重，允许空数组），`recall_strict` 为布尔。增强三个开关（`enable_table_enhancement`/`enable_image_enhancement`/`enable_heading_hierarchy`），历史残留的 `table_model`/`vision_model` 落库时丢弃；增强模型由 Python 取发起用户默认 CHAT/VISION（依赖 LINK-148 PR #190）。越权/不存在 404、未登录 401。
+> 解析/检索配置（`/parse-config`）：请求/响应为 `{sparse_embedding_config_id, dense_embedding_config_id, enhancement_chat_config_id, enhancement_vision_config_id, rerank_config_id, chunking, enhancement, pdf, recall}`，字段名 snake_case，与 Python `dataset_config` Pydantic 模型对齐。稀疏/稠密绑定创建后不可修改；CHAT、VISION、RERANK 绑定可以在保存时替换或清空。启用表格增强或标题层级时必须绑定 `CHAT`，启用图片增强时必须绑定 `VISION`，`recall.enable_rerank=true` 时必须绑定 `RERANK`；即使对应功能暂未启用，只要提交了可选 ID，Java 仍按其精确能力做预检。PUT 全量覆盖四类 JSON 配置，旧 JSON 缺失字段按模型默认值兼容读取。内部精确模型校验沿用 `10020` → `10021` → `10022` → `10023` 的固定优先级，Dataset 写接口统一返回 `10028` 与 `data.field`；Python 在实际 parse/recall 前发现当前功能必需绑定缺失时返回 `10029` 与完整 `missing_bindings`。其余分块、PDF、召回范围校验与 Python Pydantic 模型保持一致。
 
 ## OSS / Internal
 

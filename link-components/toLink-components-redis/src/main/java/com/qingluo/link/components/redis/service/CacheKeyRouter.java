@@ -19,6 +19,8 @@ public class CacheKeyRouter {
             case DATASET_PARSE_CONFIG -> CacheRoute.of("cache:dataset:parse-config:" + required(identifier));
             case USER_PROFILE -> CacheRoute.of("cache:user:profile:" + required(identifier));
             case PUBLISHED_BLOG_INDEX -> CacheRoute.of("cache:blog:published-index");
+            case LLM_RUNTIME_CONFIG -> CacheRoute.of(
+                "cache:llm:runtime-config:{llm-runtime:" + required(identifier) + "}");
         };
     }
 

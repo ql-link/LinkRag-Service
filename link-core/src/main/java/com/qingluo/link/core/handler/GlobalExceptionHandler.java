@@ -25,7 +25,9 @@ public class GlobalExceptionHandler {
             BusinessException e, HttpServletRequest request) {
         log.error("业务异常: {}", e.getMessage());
         return ResponseEntity.status(e.getHttpStatus())
-            .body(Result.error(e.getCode(), e.getMessage()));
+            .body(e.getDetails().isEmpty()
+                ? Result.error(e.getCode(), e.getMessage())
+                : Result.error(e.getCode(), e.getMessage(), e.getDetails()));
     }
 
     @ExceptionHandler(NotLoginException.class)
@@ -67,7 +69,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Result<Object>> handleNotReadable(HttpMessageNotReadableException e) {
-        log.warn("请求体不可读（含未知字段/类型错误）: {}", e.getMessage());
+        // 反序列化异常可能回显原始字段值；请求体包含 API Key 时不得把异常详情写入日志。
+        log.warn("请求体不可读（含未知字段或类型错误）");
         return ResponseEntity.badRequest()
             .body(Result.error(400, "请求参数不合法"));
     }

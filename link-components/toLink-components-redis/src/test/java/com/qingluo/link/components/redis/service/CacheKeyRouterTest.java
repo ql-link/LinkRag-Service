@@ -25,4 +25,18 @@ class CacheKeyRouterTest {
         assertThatThrownBy(() -> CacheEvictTarget.fromCode("user"))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void llmRuntimeRoute_usesSharedRedisClusterHashTagForAllThreeKeys() {
+        CacheRoute route = router.route(CacheEvictTarget.LLM_RUNTIME_CONFIG, "10001");
+
+        assertThat(CacheEvictTarget.fromCode("llm_runtime_config"))
+            .isEqualTo(CacheEvictTarget.LLM_RUNTIME_CONFIG);
+        assertThat(route.dataKey())
+            .isEqualTo("cache:llm:runtime-config:{llm-runtime:10001}");
+        assertThat(route.fenceKey())
+            .isEqualTo("cache:fence:llm:runtime-config:{llm-runtime:10001}");
+        assertThat(route.lockKey())
+            .isEqualTo("cache:lock:llm:runtime-config:{llm-runtime:10001}");
+    }
 }

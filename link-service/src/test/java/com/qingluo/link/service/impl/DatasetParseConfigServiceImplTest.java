@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
@@ -18,7 +19,7 @@ import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
-import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
+import com.qingluo.link.service.DatasetModelBindingValidator;
 import com.qingluo.link.service.DatasetService;
 import com.qingluo.link.service.cache.DatasetParseConfigCache;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -46,7 +47,7 @@ class DatasetParseConfigServiceImplTest {
     private DatasetService datasetService;
 
     @Mock
-    private DatasetEmbeddingConfigValidator embeddingConfigValidator;
+    private DatasetModelBindingValidator modelBindingValidator;
 
     @Mock
     private DatasetParseConfigCache datasetParseConfigCache;
@@ -66,11 +67,9 @@ class DatasetParseConfigServiceImplTest {
             java.util.function.Supplier<DatasetParseConfigResponse> loader = invocation.getArgument(1);
             return loader.get();
         });
-        lenient().when(embeddingConfigValidator.validateAndResolveBindingPair(anyLong(), any(), any(), any(), any()))
-            .thenReturn(new DatasetEmbeddingConfigValidator.ResolvedBindingPair(
-                new DatasetEmbeddingConfigValidator.ResolvedBinding(11L, DatasetEmbeddingConfigValidator.SOURCE_USER),
-                new DatasetEmbeddingConfigValidator.ResolvedBinding(12L, DatasetEmbeddingConfigValidator.SOURCE_USER)
-            ));
+        lenient().when(modelBindingValidator.validateForUpdate(
+                anyLong(), nullable(DatasetParseConfig.class), any(UpdateDatasetParseConfigRequest.class)))
+            .thenReturn(new DatasetModelBindingValidator.ValidatedBindings(12L, 11L, null, null, null));
     }
 
     @Test
@@ -337,10 +336,15 @@ class DatasetParseConfigServiceImplTest {
         UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
         req.setSparseEmbeddingConfigId(11L);
         req.setDenseEmbeddingConfigId(13L);
+        given(modelBindingValidator.validateForUpdate(anyLong(), any(), any()))
+            .willThrow(new BusinessException(
+                com.qingluo.link.model.enums.ErrorCode.INVALID_DATASET_MODEL_BINDING,
+                java.util.Map.of("field", "dense_embedding_config_id")));
 
         assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
-            .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("dense_embedding_config_id");
+            .isInstanceOfSatisfying(BusinessException.class,
+                exception -> assertThat(exception.getDetails())
+                    .containsEntry("field", "dense_embedding_config_id"));
 
         verify(datasetParseConfigMapper, never()).insert(any());
         verify(datasetParseConfigMapper, never()).updateById(any());
