@@ -12,12 +12,24 @@ class CacheKeyRouterTest {
     @Test
     void routesUseStableNamesWithoutArtificialVersionSegments() {
         assertThat(router.route(CacheEvictTarget.DATASET_PARSE_CONFIG, "10").dataKey())
-            .isEqualTo("cache:dataset:parse-config:10")
+            .isEqualTo("cache:dataset:parse-config:{dataset-config:10}")
             .doesNotContain("v1", "v2");
         assertThat(router.route(CacheEvictTarget.USER_PROFILE, "20").dataKey())
             .isEqualTo("cache:user:profile:20");
         assertThat(router.route(CacheEvictTarget.PUBLISHED_BLOG_INDEX, "global").dataKey())
             .isEqualTo("cache:blog:published-index");
+    }
+
+    @Test
+    void datasetParseConfigRoute_usesSharedRedisClusterHashTagForAllThreeKeys() {
+        CacheRoute route = router.route(CacheEvictTarget.DATASET_PARSE_CONFIG, "10");
+
+        assertThat(route.dataKey())
+            .isEqualTo("cache:dataset:parse-config:{dataset-config:10}");
+        assertThat(route.fenceKey())
+            .isEqualTo("cache:fence:dataset:parse-config:{dataset-config:10}");
+        assertThat(route.lockKey())
+            .isEqualTo("cache:lock:dataset:parse-config:{dataset-config:10}");
     }
 
     @Test

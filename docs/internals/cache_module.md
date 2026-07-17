@@ -1,17 +1,19 @@
 # Redis 缓存与一致性
 
-Redis 通用能力由 `link-components/toLink-components-redis` 提供。Java 维护数据库镜像缓存的失效协议；Python 读取 LLM 运行配置时复用同一套 data/fence/lock 三键协议。文档上传运行时配置仍是独立控制面值，其 TTL、失效和故障语义不同。
+Redis 通用能力由 `link-components/toLink-components-redis` 提供。Java 维护数据库镜像缓存的失效协议；Python 读取 LLM 运行配置和数据集原始配置时复用同一套 data/fence/lock 三键协议。文档上传运行时配置仍是独立控制面值，其 TTL、失效和故障语义不同。
 
 ## 缓存范围
 
 | Owner | 数据 key | 基础 TTL | 缓存内容 | 失效目标 |
 | --- | --- | --- | --- | --- |
-| 数据集解析配置 | `cache:dataset:parse-config:{datasetId}` | 7 天 | `DatasetParseConfigResponse` 安全投影 | `dataset_parse_config:{datasetId}` |
+| 数据集解析配置 | `cache:dataset:parse-config:{dataset-config:<datasetId>}` | 7 天 | Java/Python 共享的版本化原始行快照；不含任一端计算默认值 | `dataset_parse_config:{datasetId}` |
 | 用户资料 | `cache:user:profile:{userId}` | 1 天 | 当前用户资料 DTO；仅用于资料展示 | `user_profile:{userId}` |
 | 公开博客发布索引 | `cache:blog:published-index` | 1 天 | 前 100 条已发布文章轻量列表项和总数 | `published_blog_index:global` |
 | Python LLM 运行配置 | `cache:llm:runtime-config:{llm-runtime:<configId>}` | 24 小时 + 0～300 秒抖动 | 单条可执行配置密文快照，仅 Python 运行期读取；物理不存在负缓存 60 秒 | `llm_runtime_config:{configId}` |
 
-正常值在基础 TTL 上增加 `0..tolink.cache-consistency.ttl-jitter-seconds` 秒抖动；空值占位默认 60 秒。key 不包含 `v1` / `v2` 等人工版本段。
+正常值在基础 TTL 上增加 `0..tolink.cache-consistency.ttl-jitter-seconds` 秒抖动。数据集配置使用 `schemaVersion=1` 的 FOUND/NOT_FOUND JSON envelope，NOT_FOUND 默认保留 60 秒；其它 Java 业务缓存仍使用统一空值占位。key 不包含 `v1` / `v2` 等人工版本段。
+
+数据集配置 value 只投影 `dataset_parse_config` 的 `user_id`、`dataset_id`、五个模型绑定、四类原始 JSON 与 `is_active`。Java 命中后才组装 `DatasetParseConfigResponse` 并补前端展示默认；Python 命中后才叠加运行期 Settings 并解析模型，两类计算结果都不得写回共享缓存。FOUND 命中还要校验 envelope 版本、state/value 组合以及 value 中的 user/dataset 与当前请求、key 一致。
 
 公开博客 Markdown 正文、图片二进制、密码、授权结果、模型选择结果、文档解析状态、用量、管理统计、会话消息和任意筛选分页均不进入 Java 业务缓存。LLM 运行配置只由 Python 以 `configId` 精确缓存；Java 不读取该值，只负责业务提交后首删与 CDC 补偿失效。
 
@@ -28,6 +30,8 @@ Java 的 `CacheReadProtectionService` 与 Python 的 LLM runtime repository 都�
 
 - fence：把 `cache:` 前缀替换为 `cache:fence:`，默认保留 30 天。
 - load lock：把 `cache:` 前缀替换为 `cache:lock:`，默认 5 秒。
+
+`dataset_parse_config` 与 LLM runtime 两类跨语言缓存的 data/fence/lock 都带共同 Redis hash tag，保证多 key Lua 在 Redis Cluster 中同槽执行。数据集三键共同使用 `{dataset-config:<datasetId>}`。
 
 ## 写入与删除
 
@@ -68,11 +72,16 @@ CDC bridge 只允许从当前 binlog 行、old image 或声明式全局范围解
 
 建议滚动发布顺序：
 
-1. 先创建两个 DLT，并部署识别新 target、具备重试和 DLT 投递能力的补偿消费者。
-2. 再启用 CDC bridge 与表映射。
-3. 最后打开数据库镜像缓存总开关。
+1. 本次 Dataset key 契约切换前，先关闭 Java 数据库镜像缓存与 Python
+   `DATASET_PARSE_CONFIG_CACHE_ENABLED`，避免旧 key 与 hash-tag 新 key 在滚动期间被不同实例读写。
+2. 创建两个 DLT，并完成全部 Java/Python 实例升级；旧的
+   `cache:dataset:parse-config:<datasetId>` 不再有读者后让 7 天 TTL 自然淘汰，禁止按
+   `cache:dataset:parse-config:*` 宽泛删除，以免同时命中新 key。
+3. 部署识别所有 target、具备重试和 DLT 投递能力的补偿消费者，再启用 CDC bridge 与表映射。
+4. `BusinessCacheHealthIndicator` READY 后先打开 Java 数据库镜像缓存，确认首删与 CDC 补删正常；
+   最后打开 Python Dataset 读缓存。
 
-这避免旧消费者遇到新 target 后静默提交。`BusinessCacheHealthIndicator` 会暴露 readiness 原因。
+这避免旧消费者遇到新 target 后静默提交。`BusinessCacheHealthIndicator` 会暴露 readiness 原因。Python 接入数据集共享缓存时也必须以该 health 为 READY 作为启用前置条件；Java/Python 任一端的 Redis 读取、校验或回填失败都回源 MySQL。
 
 LLM runtime 缓存使用独立门禁：`tolink.llm-runtime-cache.enabled`、`cdc-mapping-enabled`、`consumer-targets-ready` 必须同时为 `true`，且统一缓存一致性组件与 CDC bridge 已就绪。它不依赖 `tolink.business-cache.enabled`。门禁未 READY 时，Java 的事务后首删与 `llm_model_config` CDC 映射都不发出 `llm_runtime_config` target；`LlmRuntimeCacheHealthIndicator` 会单独暴露原因，便于先发布支持新 target 的消费者，再打开映射与 Python 读缓存。
 

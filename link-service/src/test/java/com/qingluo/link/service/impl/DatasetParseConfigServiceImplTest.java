@@ -4,16 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
+import com.qingluo.link.model.dto.cache.DatasetParseConfigSnapshot;
 import com.qingluo.link.model.dto.config.ChunkingConfig;
 import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.DatasetParseConfig;
@@ -63,8 +66,8 @@ class DatasetParseConfigServiceImplTest {
 
     @BeforeEach
     void setupBindingValidator() {
-        lenient().when(datasetParseConfigCache.get(anyLong(), any())).thenAnswer(invocation -> {
-            java.util.function.Supplier<DatasetParseConfigResponse> loader = invocation.getArgument(1);
+        lenient().when(datasetParseConfigCache.get(anyLong(), anyLong(), any())).thenAnswer(invocation -> {
+            java.util.function.Supplier<DatasetParseConfigSnapshot> loader = invocation.getArgument(2);
             return loader.get();
         });
         lenient().when(modelBindingValidator.validateForUpdate(
@@ -102,6 +105,7 @@ class DatasetParseConfigServiceImplTest {
         assertThat(resp.getRecall().getRecallEnabledSources()).containsExactly("bm25", "sparse", "dense");
         assertThat(resp.getRecall().getRerankTopN()).isEqualTo(8);
         assertThat(resp.getRecall().getRecallStrict()).isFalse();
+        verify(datasetParseConfigCache).get(anyLong(), anyLong(), any());
         verify(datasetParseConfigMapper, never()).insert(any());
     }
 
@@ -121,6 +125,28 @@ class DatasetParseConfigServiceImplTest {
         assertThat(resp.getRecall().getRecallEnabledSources()).containsExactly("bm25", "sparse", "dense");
         assertThat(resp.getRecall().getRerankTopN()).isEqualTo(8);
         assertThat(resp.getRecall().getRecallStrict()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Should_FillResponseDefaultsAfterRawSnapshotCacheHit")
+    void Should_FillResponseDefaultsAfterRawSnapshotCacheHit() {
+        RecallConfig storedRecall = new RecallConfig();
+        storedRecall.setDenseTopK(5);
+        DatasetParseConfigSnapshot snapshot = new DatasetParseConfigSnapshot();
+        snapshot.setUserId(1L);
+        snapshot.setDatasetId(10L);
+        snapshot.setRecallConfig(storedRecall);
+        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
+        doReturn(snapshot).when(datasetParseConfigCache).get(eq(1L), eq(10L), any());
+
+        DatasetParseConfigResponse resp = service.getConfig(1L, 10L);
+
+        assertThat(resp.getRecall().getDenseTopK()).isEqualTo(5);
+        assertThat(resp.getRecall().getRecallEnabledSources())
+            .containsExactly("bm25", "sparse", "dense");
+        assertThat(resp.getRecall().getRerankTopN()).isEqualTo(8);
+        assertThat(resp.getRecall().getRecallStrict()).isFalse();
+        verify(datasetParseConfigMapper, never()).selectOne(any());
     }
 
     @Test
@@ -321,6 +347,7 @@ class DatasetParseConfigServiceImplTest {
         // 修复「最后更新时间不变」：更新只写主键+四类，不显式写时间字段，交 DB ON UPDATE 刷新 updated_at
         assertThat(updated.getUpdatedAt()).isNull();
         assertThat(updated.getCreatedAt()).isNull();
+        verify(datasetParseConfigCache).evict(10L);
     }
 
     @Test

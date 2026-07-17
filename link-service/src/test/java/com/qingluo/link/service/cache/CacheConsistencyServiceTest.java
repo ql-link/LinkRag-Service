@@ -132,4 +132,23 @@ class CacheConsistencyServiceTest {
 
         verify(atomicOperations).invalidate(route);
     }
+
+    @Test
+    void transactionCommit_deduplicatesSharedDatasetSnapshotInvalidation() {
+        CacheRoute route = router.route(CacheEvictTarget.DATASET_PARSE_CONFIG, "10");
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager.initSynchronization();
+
+        service.evict(CacheEvictTarget.DATASET_PARSE_CONFIG, 10L);
+        service.evict(CacheEvictTarget.DATASET_PARSE_CONFIG, 10L);
+
+        verify(atomicOperations, never()).invalidate(route);
+        List<TransactionSynchronization> synchronizations =
+            TransactionSynchronizationManager.getSynchronizations();
+        synchronizations.forEach(TransactionSynchronization::afterCommit);
+        synchronizations.forEach(sync ->
+            sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+
+        verify(atomicOperations).invalidate(route);
+    }
 }

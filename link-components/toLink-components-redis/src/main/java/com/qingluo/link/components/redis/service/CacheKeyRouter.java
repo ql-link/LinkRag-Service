@@ -16,7 +16,8 @@ public class CacheKeyRouter {
             throw new IllegalArgumentException("Cache target is required");
         }
         return switch (target) {
-            case DATASET_PARSE_CONFIG -> CacheRoute.of("cache:dataset:parse-config:" + required(identifier));
+            case DATASET_PARSE_CONFIG -> CacheRoute.of(
+                "cache:dataset:parse-config:{dataset-config:" + required(identifier) + "}");
             case USER_PROFILE -> CacheRoute.of("cache:user:profile:" + required(identifier));
             case PUBLISHED_BLOG_INDEX -> CacheRoute.of("cache:blog:published-index");
             case LLM_RUNTIME_CONFIG -> CacheRoute.of(

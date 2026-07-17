@@ -72,6 +72,14 @@ SYSTEM 配置对所有用户可执行；USER 配置只允许所有者执行。Ch
 
 后三项可以替换或清空。只要提交了 ID，即使功能暂时关闭也做存在、active、归属和能力预检。召回 session 签发与 Python 运行前会再次检查已存绑定，防止停用或删除后的旧 ID 继续执行。
 
+该表的高频执行读取使用 Java/Python 共用的原始快照缓存：
+
+- data：`cache:dataset:parse-config:{dataset-config:<datasetId>}`；
+- fence：`cache:fence:dataset:parse-config:{dataset-config:<datasetId>}`；
+- lock：`cache:lock:dataset:parse-config:{dataset-config:<datasetId>}`。
+
+缓存 value 只保存表中五个 ID、四类原始 JSON、user/dataset 与 active 事实。Java 的接口展示默认和 Python 的运行期 Settings 都在命中后于内存中合并，不进入共享 value；因此同一缓存既不会锁死 Python 环境默认，也不会把 Java 展示规则误当成用户显式配置。
+
 ## 缓存一致性
 
 Java 的配置管理与校验读取 MySQL 权威数据，不读取 Python runtime cache。Python 执行端按 `configId` 缓存解密后的运行快照，使用同槽 data/fence/lock 三键：

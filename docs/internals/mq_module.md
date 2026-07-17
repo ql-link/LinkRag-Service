@@ -48,7 +48,7 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 ## CDC 桥接生产端（缓存补偿）
 
 - `tolink.cache.evict` 的生产端骨架：`CdcBridgeKafkaReceiver`（监听 Canal 原始 topic `tolink.canal.binlog`）→ `CdcBridgeService`（映射展开）→ `MQSend` 投递 `CacheCompensationMQ`。
-- 当前 target 为 `dataset_parse_config`、`user_profile`、`published_blog_index`、`llm_runtime_config`。表映射为：`dataset_parse_config.dataset_id`（含 old image）→ 数据集配置；`sys_user.id` → 用户资料；`blog_post` / `blog_asset` → 全局发布索引；`llm_model_config` INSERT/UPDATE 取当前行 `id`、DELETE 取 old image `id` → Python LLM 运行配置。`sys_user` 仅变更 `last_login_at` / `last_login_time` / `updated_at` 时忽略。
+- 当前 target 为 `dataset_parse_config`、`user_profile`、`published_blog_index`、`llm_runtime_config`。表映射为：`dataset_parse_config.dataset_id`（含 old image）→ Java/Python 共享的原始快照缓存；`sys_user.id` → 用户资料；`blog_post` / `blog_asset` → 全局发布索引；`llm_model_config` INSERT/UPDATE 取当前行 `id`、DELETE 取 old image `id` → Python LLM 运行配置。`sys_user` 仅变更 `last_login_at` / `last_login_time` / `updated_at` 时忽略。
 - bridge 校验 `database`，只处理 `tolink.cache-consistency.cdc.database`；路由只能使用当前行、old image 或声明式全局常量，禁止查询 Redis 辅助索引或数据库。
 - CDC bridge 使用 `MQSend.sendConfirmed` 等待 Kafka broker 确认 `tolink.cache.evict` 投递，普通业务消息仍使用原异步 `send`；producer 失败因此会回到源 consumer 重试。专用容器工厂 `cdcBridgeKafkaListenerContainerFactory`（`CdcBridgeKafkaConfig`）：坏消息判不可重试，其余错误退避重试；包含首次消费在内最多投递 3 次，永久错误或重试耗尽后由 `DeadLetterPublishingRecoverer` 发布到 `<CDC source topic>.DLT`。
 - 补偿消费者使用 `cacheCompensationKafkaListenerContainerFactory`：坏载荷、未知 target 和删除耗尽在最多 3 次投递后发布到 `tolink.cache.evict.DLT`；未知 target、消费失败和 DLT 分别记录指标。DLT 使用 broker 确认，发送失败继续抛错；标准 dead-letter headers 保留源 topic/partition/offset 和异常信息，运维修复后把原 payload 重发到源 topic。

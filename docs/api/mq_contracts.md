@@ -36,7 +36,7 @@ MQ 实现事实来源：
 - Canal flatMessage 关键字段：`database`、`table`、`type`(INSERT/UPDATE/DELETE)、`es`、`isDdl`、`data`（当前行数组）、`old`（UPDATE 前值；列名→值均为 String）。
 - bridge 只处理配置的 `tolink.cache-consistency.cdc.database`，且只允许从当前行、old image 或声明式全局常量生成 route；禁止查询 Redis 辅助索引或回查数据库。
 - 当前表映射：
-  - `dataset_parse_config`：当前/旧 `dataset_id` → `dataset_parse_config`
+  - `dataset_parse_config`：当前/旧 `dataset_id` → Java/Python 共享的 `dataset_parse_config` 原始快照缓存
   - `sys_user`：`id` → `user_profile`；UPDATE 仅变化 `last_login_at` / `last_login_time` / `updated_at` 时忽略
   - `blog_post` / `blog_asset`：全局 route `global` → `published_blog_index`
   - `llm_model_config`：INSERT/UPDATE 从 current image 取 `id`，DELETE 只从 old image 取 `id` → `llm_runtime_config`；不回查数据库或 Redis。该映射受独立 `tolink.llm-runtime-cache` readiness 门禁控制。

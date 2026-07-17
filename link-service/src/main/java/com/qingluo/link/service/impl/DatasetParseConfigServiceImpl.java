@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
+import com.qingluo.link.model.dto.cache.DatasetParseConfigSnapshot;
 import com.qingluo.link.model.dto.config.ChunkingConfig;
 import com.qingluo.link.model.dto.config.EnhancementConfig;
 import com.qingluo.link.model.dto.config.PdfConfig;
@@ -47,10 +48,11 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     public DatasetParseConfigResponse getConfig(Long userId, Long datasetId) {
         // 归属校验：越权/不存在抛 BusinessException(404)，复用数据集服务避免重复查询。
         datasetService.detail(userId, datasetId);
-        return datasetParseConfigCache.get(datasetId, () -> {
+        DatasetParseConfigSnapshot snapshot = datasetParseConfigCache.get(userId, datasetId, () -> {
             DatasetParseConfig entity = selectByOwner(userId, datasetId);
-            return entity != null ? assembleResponse(entity) : emptyResponse();
+            return entity != null ? snapshotOf(entity) : null;
         });
+        return snapshot != null ? assembleResponse(snapshot) : emptyResponse();
     }
 
     @Override
@@ -117,18 +119,39 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     }
 
     private DatasetParseConfigResponse assembleResponse(DatasetParseConfig entity) {
+        return assembleResponse(snapshotOf(entity));
+    }
+
+    private DatasetParseConfigResponse assembleResponse(DatasetParseConfigSnapshot snapshot) {
         DatasetParseConfigResponse resp = new DatasetParseConfigResponse();
-        resp.setChunking(entity.getChunkingConfig() != null ? entity.getChunkingConfig() : new ChunkingConfig());
-        resp.setSparseEmbeddingConfigId(entity.getSparseEmbeddingConfigId());
-        resp.setDenseEmbeddingConfigId(entity.getDenseEmbeddingConfigId());
-        resp.setEnhancementChatConfigId(entity.getEnhancementChatConfigId());
-        resp.setEnhancementVisionConfigId(entity.getEnhancementVisionConfigId());
-        resp.setRerankConfigId(entity.getRerankConfigId());
-        resp.setEnhancement(entity.getEnhancementConfig() != null
-            ? entity.getEnhancementConfig() : new EnhancementConfig());
-        resp.setPdf(entity.getPdfConfig() != null ? entity.getPdfConfig() : new PdfConfig());
-        resp.setRecall(fillRecallDefaults(entity.getRecallConfig()));
+        resp.setChunking(snapshot.getChunkingConfig() != null
+            ? snapshot.getChunkingConfig() : new ChunkingConfig());
+        resp.setSparseEmbeddingConfigId(snapshot.getSparseEmbeddingConfigId());
+        resp.setDenseEmbeddingConfigId(snapshot.getDenseEmbeddingConfigId());
+        resp.setEnhancementChatConfigId(snapshot.getEnhancementChatConfigId());
+        resp.setEnhancementVisionConfigId(snapshot.getEnhancementVisionConfigId());
+        resp.setRerankConfigId(snapshot.getRerankConfigId());
+        resp.setEnhancement(snapshot.getEnhancementConfig() != null
+            ? snapshot.getEnhancementConfig() : new EnhancementConfig());
+        resp.setPdf(snapshot.getPdfConfig() != null ? snapshot.getPdfConfig() : new PdfConfig());
+        resp.setRecall(fillRecallDefaults(snapshot.getRecallConfig()));
         return resp;
+    }
+
+    private DatasetParseConfigSnapshot snapshotOf(DatasetParseConfig entity) {
+        return new DatasetParseConfigSnapshot(
+            entity.getUserId(),
+            entity.getDatasetId(),
+            entity.getSparseEmbeddingConfigId(),
+            entity.getDenseEmbeddingConfigId(),
+            entity.getEnhancementChatConfigId(),
+            entity.getEnhancementVisionConfigId(),
+            entity.getRerankConfigId(),
+            entity.getChunkingConfig(),
+            entity.getEnhancementConfig(),
+            entity.getPdfConfig(),
+            entity.getRecallConfig(),
+            entity.getIsActive());
     }
 
     private DatasetParseConfigResponse emptyResponse() {
