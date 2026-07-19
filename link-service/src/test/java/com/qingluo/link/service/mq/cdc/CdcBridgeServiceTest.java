@@ -11,6 +11,8 @@ import com.alibaba.fastjson.JSON;
 import com.qingluo.link.components.mq.AbstractMQ;
 import com.qingluo.link.components.mq.MQSend;
 import com.qingluo.link.components.redis.config.CacheConsistencyProperties;
+import com.qingluo.link.service.cache.LLMRuntimeCacheProperties;
+import com.qingluo.link.service.cache.LLMRuntimeCacheReadiness;
 import com.qingluo.link.service.mq.CacheCompensationMQ;
 import java.util.List;
 import java.util.Map;
@@ -28,13 +30,23 @@ class CdcBridgeServiceTest {
     @Mock private ObjectProvider<MQSend> mqSendProvider;
     @Mock private MQSend mqSend;
     private CdcBridgeService service;
+    private LLMRuntimeCacheProperties llmProperties;
 
     @BeforeEach
     void setUp() {
         CacheConsistencyProperties properties = new CacheConsistencyProperties();
         properties.getCdc().setMappingsEnabled(true);
+        properties.getCdc().setEnabled(true);
         properties.getCdc().setDatabase("tolink_rag_db");
-        service = new CdcBridgeService(mqSendProvider, new CdcCacheEvictMapping(), properties);
+        properties.getCdc().setSourceTopic("tolink.canal.binlog");
+        llmProperties = new LLMRuntimeCacheProperties();
+        llmProperties.setEnabled(true);
+        llmProperties.setCdcMappingEnabled(true);
+        llmProperties.setConsumerTargetsReady(true);
+        LLMRuntimeCacheReadiness readiness =
+            new LLMRuntimeCacheReadiness(properties, llmProperties);
+        service = new CdcBridgeService(
+            mqSendProvider, new CdcCacheEvictMapping(readiness), properties);
     }
 
     @Test
@@ -110,6 +122,57 @@ class CdcBridgeServiceTest {
 
         assertThat(sent).isEqualTo(1);
         verify(mqSend).sendConfirmed(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void llmInsertAndUpdate_useCurrentImageConfigId() {
+        when(mqSendProvider.getIfAvailable()).thenReturn(mqSend);
+
+        int insertSent = service.handle(canal(
+            "llm_model_config", "INSERT", List.of(Map.of("id", "10001")), List.of()));
+        int updateSent = service.handle(canal(
+            "llm_model_config", "UPDATE", List.of(Map.of("id", "10002")),
+            List.of(Map.of("id", "legacy-id"))));
+
+        assertThat(insertSent).isEqualTo(1);
+        assertThat(updateSent).isEqualTo(1);
+        ArgumentCaptor<AbstractMQ> captor = ArgumentCaptor.forClass(AbstractMQ.class);
+        verify(mqSend, org.mockito.Mockito.times(2)).sendConfirmed(captor.capture());
+        assertThat(captor.getAllValues().stream()
+            .map(AbstractMQ::getMessage)
+            .map(CacheCompensationMQ::parseMsg)
+            .map(CacheCompensationMQ.MsgPayload::getRouteId))
+            .containsExactly("10001", "10002");
+    }
+
+    @Test
+    void llmDelete_usesOldImageConfigId() {
+        when(mqSendProvider.getIfAvailable()).thenReturn(mqSend);
+
+        int sent = service.handle(canal(
+            "llm_model_config", "DELETE", List.of(Map.of("id", "current-image-must-not-win")),
+            List.of(Map.of("id", "10003"))));
+
+        assertThat(sent).isEqualTo(1);
+        ArgumentCaptor<AbstractMQ> captor = ArgumentCaptor.forClass(AbstractMQ.class);
+        verify(mqSend).sendConfirmed(captor.capture());
+        CacheCompensationMQ.MsgPayload payload =
+            CacheCompensationMQ.parseMsg(captor.getValue().getMessage());
+        assertThat(payload.getCacheTarget()).isEqualTo("llm_runtime_config");
+        assertThat(payload.getRouteId()).isEqualTo("10003");
+        assertThat(payload.getOperationType()).isEqualTo("DELETE");
+    }
+
+    @Test
+    void llmMappingNotReady_skipsOnlyLlmTable() {
+        llmProperties.setConsumerTargetsReady(false);
+
+        int sent = service.handle(canal(
+            "llm_model_config", "UPDATE", List.of(Map.of("id", "10004")),
+            List.of(Map.of("id", "10004"))));
+
+        assertThat(sent).isZero();
+        verify(mqSend, never()).sendConfirmed(org.mockito.ArgumentMatchers.any());
     }
 
     private String canal(String table, String type,

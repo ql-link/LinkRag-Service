@@ -2,15 +2,12 @@ package com.qingluo.link.api.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import com.qingluo.link.model.dto.entity.ProviderModel;
-import com.qingluo.link.model.dto.entity.SystemPreset;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.AddProviderModelRequest;
-import com.qingluo.link.model.dto.request.CreatePresetRequest;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.PublishModelSyncCandidateRequest;
 import com.qingluo.link.model.dto.request.SyncProviderModelsRequest;
 import com.qingluo.link.model.dto.request.UpdateModelSyncCandidateReviewRequest;
-import com.qingluo.link.model.dto.request.UpdatePresetRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateUserRoleRequest;
@@ -31,7 +28,6 @@ import com.qingluo.link.service.AdminUserStatisticsService;
 import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.ProviderModelService;
 import com.qingluo.link.service.ProviderModelSyncService;
-import com.qingluo.link.service.SystemPresetService;
 import com.qingluo.link.service.oss.UploadResult;
 import com.qingluo.link.core.util.AuthContext;
 import io.swagger.v3.oas.annotations.Operation;
@@ -64,7 +60,6 @@ public class AdminController {
     private final AdminDocumentFileConfigService adminDocumentFileConfigService;
     private final ProviderModelService providerModelService;
     private final ProviderModelSyncService providerModelSyncService;
-    private final SystemPresetService systemPresetService;
     private final OssApplicationService ossApplicationService;
 
     // ---- 用户管理 ----
@@ -335,67 +330,4 @@ public class AdminController {
         return Result.success(providerModelSyncService.updateReviewStatus(id, request.getReviewStatus()));
     }
 
-    // ---- 系统预设管理 ----
-
-    /**
-     * 列出全部系统预设（平台 Key 脱敏返回）。
-     */
-    @GetMapping("/system-presets")
-    @Operation(summary = "查询系统预设列表", description = "列出全部系统预设，平台 Key 脱敏返回")
-    public Result<List<SystemPreset>> listSystemPresets() {
-        return Result.success(systemPresetService.listPresets());
-    }
-
-    /**
-     * 新增系统预设（平台 Key 入库前加密）。
-     */
-    @PostMapping("/system-presets")
-    @Operation(summary = "新增系统预设", description = "预配一条 LinkRag 系统兜底配置，支持手动填写模型运行事实或从正式模型目录快捷加入，平台 Key 入库前加密")
-    public Result<Void> createSystemPreset(@RequestBody @Validated CreatePresetRequest request) {
-        systemPresetService.createPreset(request);
-        return Result.success(null);
-    }
-
-    /**
-     * 更新系统预设。
-     */
-    @PatchMapping("/system-presets/{id}")
-    @Operation(summary = "更新系统预设", description = "部分更新系统预设，支持手动更新模型运行事实或从正式模型目录重新快捷复制；预设始终归属 LinkRag")
-    public Result<SystemPreset> updateSystemPreset(
-            @Parameter(description = "预设ID") @PathVariable Long id,
-            @RequestBody @Validated UpdatePresetRequest request) {
-        return Result.success(systemPresetService.updatePreset(id, request));
-    }
-
-    /**
-     * 启用/禁用系统预设。
-     */
-    @PatchMapping("/system-presets/{id}/active")
-    @Operation(summary = "启用/禁用系统预设", description = "控制该预设是否可作为系统兜底候选；当前默认预设需先指定替代项再禁用")
-    public Result<Void> toggleSystemPreset(
-            @Parameter(description = "预设ID") @PathVariable Long id,
-            @Parameter(description = "是否启用") @RequestParam boolean isActive) {
-        systemPresetService.togglePreset(id, isActive);
-        return Result.success(null);
-    }
-
-    /**
-     * 设置某条系统预设为其能力的系统兜底默认。
-     */
-    @PatchMapping("/system-presets/{id}/default")
-    @Operation(summary = "设置系统默认预设", description = "将该预设设为其能力的 LinkRag 系统兜底默认，并解除同能力其他默认")
-    public Result<Void> setDefaultSystemPreset(@Parameter(description = "预设ID") @PathVariable Long id) {
-        systemPresetService.setDefaultPreset(id);
-        return Result.success(null);
-    }
-
-    /**
-     * 删除系统预设。
-     */
-    @DeleteMapping("/system-presets/{id}")
-    @Operation(summary = "删除系统预设", description = "删除一条系统预设")
-    public Result<Void> deleteSystemPreset(@Parameter(description = "预设ID") @PathVariable Long id) {
-        systemPresetService.deletePreset(id);
-        return Result.success(null);
-    }
 }

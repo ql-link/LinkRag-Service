@@ -19,12 +19,27 @@
 
 ## LLM 配置错误码（10001-10999）
 
+统一 `configId` 链路使用以下错误码。精确配置校验的优先级固定为“不存在 → 已停用 → 越权 → 能力不匹配”，三端不得根据调用入口改变顺序：
+
+- `LLM_CONFIG_NOT_FOUND(10020/404)`：`configId` 在统一配置表中不存在。
+- `LLM_CONFIG_INACTIVE(10021/409)`：配置存在但已停用。
+- `LLM_CONFIG_FORBIDDEN(10022/403)`：USER 配置不属于当前用户；SYSTEM 配置对所有用户可见。
+- `LLM_CONFIG_CAPABILITY_MISMATCH(10023/400)`：配置能力与调用点要求不一致。
+- `LLM_DEFAULT_NOT_CONFIGURED(10024/409)`：USER 默认不存在且对应 SYSTEM 默认也未配置。
+- `LLM_DEFAULT_UPDATE_FAILED(10025/500)`：默认关系在事务内更新失败。
+- `LLM_CONFIG_IN_USE(10026/409)`：配置仍被 `dataset_parse_config` 的任一模型字段引用，禁止删除。
+- `LLM_DEFAULT_REPLACEMENT_REQUIRED(10027/409)`：停用或删除当前 SYSTEM 默认前未指定同能力替代项。
+- `INVALID_DATASET_MODEL_BINDING(10028/400)`：数据集模型绑定或相关配置参数不合法；响应 `data.field` 指向失败字段。
+- `DATASET_MODEL_BINDING_REQUIRED(10029/409)`：启用增强或重排能力时缺少对应 CHAT / VISION / RERANK 配置。
+
+`10001-10019` 属于旧厂商目录与旧双表配置接口的兼容错误码；新统一配置接口不得继续以 `source`、系统预设或用户配置表为身份分支。
+
 - `INVALID_MODEL_CAPABILITY(10011/400)`：模型能力标识无效（合法取值以 `LLMCapabilityServiceImpl.SUPPORTED_CAPABILITIES` 为准：`CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR`），用于用户侧厂商/配置接口的能力参数校验。
 - `MODEL_DISABLED(10012/400)`：选已关停（`is_active=false`）的模型作为某能力生效时拒绝。
-- `PRESET_READONLY(10013/403)`：历史保留错误码；系统预设已改由管理端维护在 `llm_system_preset`，普通用户不再通过 `llm_user_config` 操作预设镜像行。
+- `PRESET_READONLY(10013/403)`：历史保留错误码；统一配置接口不再使用。
 - `MODEL_CONFIG_INCOMPLETE(10014/400)`：模型能力缺少协议或入口，无法保存或展开。触发点：新增模型能力 (`addModelCapability`) 时 `apiBaseUrl` 为空；用户 `setup-provider` 展开时命中协议/入口缺失的历史模型能力（整请求阻断，不静默跳过，避免由执行端猜测）；`createPreset` 命中协议/入口缺失的模型能力。
 - `INVALID_PROTOCOL(10015/400)`：协议不在支持范围内。合法取值以 `LLMProtocolServiceImpl.SUPPORTED_PROTOCOLS` 为准（`openai` / `anthropic` / `google` / `jina` / `dashscope` / `bge_m3` / `doubao_vision`，小写敏感，`OPENAI` 等大写视为非法）。触发点：新增模型能力录入非法 `protocol`。
-- `SYSTEM_PROVIDER_READONLY(10016/400)`：系统服务厂商不支持用户自配或启停。当前用于拒绝普通用户通过 `setup-provider` 配置 `provider_type=linkrag`，以及通过 `/api/v1/llm/configs/toggle-model` 启停 LinkRag 只读配置。
+- `SYSTEM_PROVIDER_READONLY(10016/400)`：系统服务厂商不支持用户通过 `setup-provider` 生成 USER 配置；平台 SYSTEM 配置由管理端统一配置接口维护。
 - `MODEL_SYNC_SOURCE_UNSUPPORTED(10017/400)`：外部模型目录同步来源不支持，或当前来源未收录该厂商。当前管理端手动刷新只支持 `MODELS_DEV`。
 - `MODEL_SYNC_CANDIDATE_NOT_FOUND(10018/404)`：外部模型候选项不存在。用于候选发布和审核状态更新。
 - `PROVIDER_HAS_NO_ACTIVE_MODEL(10019/400)`：启用系统厂商前至少需要有一条已上架模型能力。触发点：创建厂商时直接传 `isActive=true`、更新厂商为启用、调用启用/禁用接口启用厂商，但 `llm_provider_model` 中该厂商没有 `is_active=true` 的模型能力。

@@ -1,138 +1,128 @@
 package com.qingluo.link.api.controller;
 
-import com.qingluo.link.core.util.AuthContext;
-import com.qingluo.link.model.dto.request.SelectEffectiveModelRequest;
-import com.qingluo.link.model.dto.request.SetupProviderRequest;
-import com.qingluo.link.model.dto.request.ToggleModelRequest;
-import com.qingluo.link.model.dto.response.EffectiveLLMConfigDTO;
-import com.qingluo.link.model.dto.response.Result;
-import com.qingluo.link.model.dto.response.UserLLMConfigDTO;
-import com.qingluo.link.service.EffectiveLLMConfigService;
-import com.qingluo.link.service.UserLLMConfigService;
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import com.qingluo.link.core.util.AuthContext;
+import com.qingluo.link.model.dto.request.EmergencyDisableLLMConfigRequest;
+import com.qingluo.link.model.dto.request.SetCapabilityDefaultRequest;
+import com.qingluo.link.model.dto.request.SetupProviderRequest;
+import com.qingluo.link.model.dto.request.UpdateLLMConfigActiveRequest;
+import com.qingluo.link.model.dto.response.CapabilityDefaultDTO;
+import com.qingluo.link.model.dto.response.ExecutableLLMConfigDTO;
+import com.qingluo.link.model.dto.response.Result;
+import com.qingluo.link.model.enums.LLMConfigMutationMode;
+import com.qingluo.link.service.LLMCapabilityDefaultService;
+import com.qingluo.link.service.LLMModelConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
-
-import javax.validation.Valid;
 import java.util.List;
+import javax.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
- * LLM配置控制器
- *
- * <p>用户 LLM 配置两步流：①配置厂商（选厂商 + 填厂商级 Key，自动展开该厂商全部模型能力）；
- * ②按能力选生效模型。LinkRag 作为只读配置厂商返回，用户可选用但不可编辑。</p>
- *
- * @author qingluo
+ * 用户 LLM 配置与能力默认关系入口。
  */
 @RestController
-@RequestMapping("/api/v1/llm/configs")
+@RequestMapping("/api/v1/llm")
 @RequiredArgsConstructor
-@Tag(name = "LLM配置接口", description = "用户LLM配置：配置厂商、模型启停、按能力选生效、LinkRag只读配置")
+@Tag(name = "LLM配置接口", description = "统一配置身份、厂商凭据、启停与能力默认选择")
 public class ConfigController {
 
-    private final UserLLMConfigService userLLMConfigService;
-    private final EffectiveLLMConfigService effectiveLLMConfigService;
+    private final LLMModelConfigService configService;
+    private final LLMCapabilityDefaultService defaultService;
 
-    /**
-     * 获取用户可用 LLM 配置列表。
-     */
-    @GetMapping
+    @GetMapping("/configs")
     @SaCheckLogin
-    @Operation(summary = "获取LLM配置列表", description = "获取当前用户可用配置：用户自配配置 + LinkRag 只读配置，Key 脱敏")
-    public Result<List<UserLLMConfigDTO>> getConfigs(
-            @Parameter(description = "厂商类型，如openai") @RequestParam(required = false) String providerType,
-            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam(required = false) String capability,
-            @Parameter(description = "启用状态") @RequestParam(required = false) Boolean isActive) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(userLLMConfigService.getConfigs(userId, providerType, capability, isActive));
+    @Operation(summary = "获取统一LLM配置列表", description = "返回当前用户配置和各能力当前平台默认配置，唯一身份字段为configId")
+    public Result<List<ExecutableLLMConfigDTO>> getConfigs(
+        @Parameter(description = "厂商类型") @RequestParam(required = false) String providerType,
+        @Parameter(description = "模型能力") @RequestParam(required = false) String capability,
+        @Parameter(description = "启用状态") @RequestParam(required = false) Boolean isActive) {
+        return Result.success(configService.listVisibleConfigs(
+            AuthContext.getLoginUserIdOrThrow(), providerType, capability, isActive));
     }
 
-    /**
-     * 配置厂商（第一步）：选厂商 + 填厂商级 Key，自动展开该厂商全部模型能力。
-     */
-    @PostMapping("/setup-provider")
+    @PostMapping("/configs/setup-provider")
     @SaCheckLogin
-    @Operation(summary = "配置厂商", description = "选厂商并填厂商级 Key，系统自动加载该厂商全部模型；重复配置同厂商更新其 Key")
-    public Result<List<UserLLMConfigDTO>> setupProvider(@Valid @RequestBody SetupProviderRequest request) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(userLLMConfigService.setupProvider(userId, request));
+    @Operation(summary = "配置或刷新厂商", description = "按正式目录创建或刷新用户运行快照，已有自然键复用configId")
+    public Result<List<ExecutableLLMConfigDTO>> setupProvider(
+        @Valid @RequestBody SetupProviderRequest request) {
+        return Result.success(configService.setupProvider(AuthContext.getLoginUserIdOrThrow(), request));
     }
 
-    /**
-     * 模型启停（独立窗口）：capability 存在时按能力单独启停；为空时兼容旧前端，按模型批量启停。
-     */
-    @PatchMapping("/toggle-model")
+    @PatchMapping("/configs/{configId}/active")
     @SaCheckLogin
-    @Operation(summary = "模型启停", description = "capability 存在时只启停该模型能力；为空时按厂商+模型批量启停全部能力。仅允许用户自配配置，LinkRag 只读配置不可启停")
-    public Result<Void> toggleModel(@Valid @RequestBody ToggleModelRequest request) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        userLLMConfigService.toggleModel(userId, request);
+    @Operation(summary = "更新用户配置启用状态", description = "标准停用会保护数据集引用并清除该配置的用户默认关系")
+    public Result<Void> updateActive(
+        @Parameter(description = "全局配置ID") @PathVariable Long configId,
+        @Valid @RequestBody UpdateLLMConfigActiveRequest request) {
+        configService.changeActive(AuthContext.getLoginUserIdOrThrow(), false, configId,
+            request.getIsActive(), LLMConfigMutationMode.STANDARD, null, false);
         return Result.ok(null);
     }
 
-    /**
-     * 按能力选生效模型（第二步）：为某能力选定一个启用模型生效。
-     */
-    @PutMapping("/effective")
+    @PostMapping("/configs/{configId}/emergency-disable")
     @SaCheckLogin
-    @Operation(summary = "按能力选生效模型", description = "为某能力选定一个启用模型生效；providerType=linkrag 时恢复 LinkRag 只读配置生效")
-    public Result<Void> selectEffectiveModel(@Valid @RequestBody SelectEffectiveModelRequest request) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        userLLMConfigService.selectEffectiveModel(userId, request);
+    @Operation(summary = "紧急停用用户配置", description = "保留数据集绑定，所有者必须明确确认，后续精确执行返回配置已停用")
+    public Result<Void> emergencyDisable(
+        @Parameter(description = "全局配置ID") @PathVariable Long configId,
+        @Valid @RequestBody EmergencyDisableLLMConfigRequest request) {
+        configService.changeActive(AuthContext.getLoginUserIdOrThrow(), false, configId, false,
+            LLMConfigMutationMode.EMERGENCY, null, Boolean.TRUE.equals(request.getConfirmed()));
         return Result.ok(null);
     }
 
-    /**
-     * 查询某能力的生效配置。
-     */
-    @GetMapping("/default")
+    @DeleteMapping("/configs/{configId}")
     @SaCheckLogin
-    @Operation(summary = "查询某能力生效配置", description = "按能力查询当前用户的生效 LLM 配置")
-    public Result<EffectiveLLMConfigDTO> getDefaultConfig(
-            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam String capability) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        return Result.success(effectiveLLMConfigService.getEffectiveConfig(userId, capability));
-    }
-
-    /**
-     * 设置某能力用户自配生效配置（按配置 ID）。
-     */
-    @PatchMapping("/{id}/default")
-    @SaCheckLogin
-    @Operation(summary = "设置某能力用户自配生效配置", description = "将当前用户的一条自配配置设为该能力生效")
-    public Result<Void> setDefaultConfig(
-            @Parameter(description = "配置ID") @PathVariable Long id,
-            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam String capability) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        userLLMConfigService.setDefaultConfig(userId, id, capability);
+    @Operation(summary = "删除用户配置", description = "存在数据集引用时拒绝；用户默认关系在同一事务清除")
+    public Result<Void> deleteConfig(
+        @Parameter(description = "全局配置ID") @PathVariable Long configId) {
+        configService.deleteConfig(AuthContext.getLoginUserIdOrThrow(), false, configId);
         return Result.ok(null);
     }
 
-    /**
-     * 清空某能力的用户自配生效配置，恢复 LinkRag 系统兜底。
-     */
-    @PatchMapping("/default/system")
+    @GetMapping("/defaults")
     @SaCheckLogin
-    @Operation(summary = "恢复 LinkRag 配置", description = "兼容接口；清空当前用户某能力的自配默认配置，使生效解析回退到 LinkRag 只读配置。前端优先使用 PUT /effective")
-    public Result<Void> clearDefaultConfig(
-            @Parameter(description = "模型能力，如CHAT/EMBEDDING/SPARSE_EMBEDDING") @RequestParam String capability) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        userLLMConfigService.clearDefaultConfig(userId, capability);
-        return Result.ok(null);
+    @Operation(summary = "查询全部能力默认关系", description = "分别返回用户覆盖、平台默认和当前有效configId")
+    public Result<List<CapabilityDefaultDTO>> listDefaults() {
+        return Result.success(defaultService.listDefaults(AuthContext.getLoginUserIdOrThrow()));
     }
 
-    /**
-     * 删除用户自配 LLM 配置。
-     */
-    @DeleteMapping("/{id}")
+    @GetMapping("/defaults/{capability}")
     @SaCheckLogin
-    @Operation(summary = "删除LLM配置", description = "删除指定的用户自配 LLM 配置")
-    public Result<Void> deleteConfig(@Parameter(description = "配置ID") @PathVariable Long id) {
-        Long userId = AuthContext.getLoginUserIdOrThrow();
-        userLLMConfigService.deleteConfig(userId, id);
-        return Result.ok(null);
+    @Operation(summary = "查询能力默认关系")
+    public Result<CapabilityDefaultDTO> getDefault(
+        @Parameter(description = "模型能力") @PathVariable String capability) {
+        return Result.success(defaultService.getEffectiveDefault(
+            AuthContext.getLoginUserIdOrThrow(), capability));
+    }
+
+    @PutMapping("/defaults/{capability}")
+    @SaCheckLogin
+    @Operation(summary = "设置用户能力默认", description = "只能选择当前用户拥有、启用且能力匹配的USER配置")
+    public Result<CapabilityDefaultDTO> setDefault(
+        @Parameter(description = "模型能力") @PathVariable String capability,
+        @Valid @RequestBody SetCapabilityDefaultRequest request) {
+        return Result.success(defaultService.setUserDefault(
+            AuthContext.getLoginUserIdOrThrow(), capability, request.getConfigId()));
+    }
+
+    @DeleteMapping("/defaults/{capability}")
+    @SaCheckLogin
+    @Operation(summary = "清除用户能力默认", description = "清除覆盖后恢复跟随平台默认")
+    public Result<CapabilityDefaultDTO> clearDefault(
+        @Parameter(description = "模型能力") @PathVariable String capability) {
+        return Result.success(defaultService.clearUserDefault(
+            AuthContext.getLoginUserIdOrThrow(), capability));
     }
 }

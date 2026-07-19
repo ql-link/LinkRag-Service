@@ -40,4 +40,13 @@ class ApiKeyEncryptServiceTest {
         String masked = encryptService.maskApiKey("sk-short");
         assertEquals("****", masked);
     }
+
+    @Test
+    void Should_DecryptBeforeMasking_When_StoredCiphertextProvided() {
+        ReflectionTestUtils.setField(encryptService, "secretKey",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        String encrypted = encryptService.encrypt("sk-1234567890abcdef");
+
+        assertEquals("sk-****....cdef", encryptService.maskEncryptedApiKey(encrypted));
+    }
 }

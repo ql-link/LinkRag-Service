@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.qingluo.link.components.redis.config.CacheConsistencyProperties;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -101,12 +102,12 @@ class CacheReadProtectionServiceTest {
 
     @Test
     void redisReadAndWriteFailures_returnDatabaseValueAndRecordOneErrorEach() {
-        when(valueOperations.get("cache:dataset:parse-config:10"))
+        when(valueOperations.get("cache:dataset:parse-config:{dataset-config:10}"))
             .thenThrow(new RuntimeException("redis down"));
         when(atomicOperations.tryLock(any(), any())).thenThrow(new RuntimeException("redis down"));
         when(atomicOperations.readFence(any())).thenThrow(new RuntimeException("redis down"));
 
-        String result = service.getOrLoad(CacheRoute.of("cache:dataset:parse-config:10"),
+        String result = service.getOrLoad(CacheRoute.of("cache:dataset:parse-config:{dataset-config:10}"),
             String.class, 7, TimeUnit.DAYS, () -> "V2");
 
         assertThat(result).isEqualTo("V2");
@@ -116,13 +117,58 @@ class CacheReadProtectionServiceTest {
 
     @Test
     void changedFence_skipsOldBackfill() {
-        when(valueOperations.get("cache:dataset:parse-config:10")).thenReturn(null);
+        when(valueOperations.get("cache:dataset:parse-config:{dataset-config:10}")).thenReturn(null);
         when(atomicOperations.tryLock(any(), any())).thenReturn(true);
         when(atomicOperations.readFence(any())).thenReturn(3L);
         when(atomicOperations.writeIfFenceUnchanged(any(), anyLong(), any(), any())).thenReturn(false);
 
-        assertThat(service.getOrLoad(CacheRoute.of("cache:dataset:parse-config:10"),
+        assertThat(service.getOrLoad(CacheRoute.of("cache:dataset:parse-config:{dataset-config:10}"),
             String.class, 7, TimeUnit.DAYS, () -> "V1")).isEqualTo("V1");
         verify(metrics).write("fence_changed");
+    }
+
+    @Test
+    void invalidCachedValue_isDeletedAndReloadedThroughFenceProtection() {
+        String key = "cache:dataset:parse-config:{dataset-config:10}";
+        CacheRoute route = CacheRoute.of(key);
+        AtomicReference<Object> cache = new AtomicReference<>("schema-v0");
+        when(valueOperations.get(key)).thenAnswer(invocation -> cache.get());
+        when(atomicOperations.invalidate(route)).thenAnswer(invocation -> {
+            cache.set(null);
+            return 5L;
+        });
+        when(atomicOperations.tryLock(any(), any())).thenReturn(true);
+        when(atomicOperations.readFence(route)).thenReturn(5L);
+        when(atomicOperations.writeIfFenceUnchanged(any(), anyLong(), any(), any()))
+            .thenAnswer(invocation -> {
+                cache.set(invocation.getArgument(2));
+                return true;
+            });
+
+        String result = service.getOrLoad(
+            route, String.class, 7, TimeUnit.DAYS, () -> "schema-v1",
+            "schema-v1"::equals);
+
+        assertThat(result).isEqualTo("schema-v1");
+        assertThat(cache).hasValue("schema-v1");
+        verify(metrics).read("invalid");
+        verify(metrics).write("success");
+        verify(atomicOperations).invalidate(route);
+    }
+
+    @Test
+    void nonNullNegativeEnvelope_usesConfiguredShortTtl() {
+        CacheRoute route = CacheRoute.of("cache:dataset:parse-config:{dataset-config:10}");
+        when(valueOperations.get(route.dataKey())).thenReturn(null);
+        when(atomicOperations.tryLock(any(), any())).thenReturn(true);
+        when(atomicOperations.readFence(route)).thenReturn(0L);
+        when(atomicOperations.writeIfFenceUnchanged(any(), anyLong(), any(), any())).thenReturn(true);
+
+        String result = service.getOrLoad(
+            route, String.class, 7, TimeUnit.DAYS, () -> "NOT_FOUND",
+            value -> true, "NOT_FOUND"::equals);
+
+        assertThat(result).isEqualTo("NOT_FOUND");
+        verify(atomicOperations).writeIfFenceUnchanged(route, 0L, "NOT_FOUND", Duration.ofSeconds(60));
     }
 }

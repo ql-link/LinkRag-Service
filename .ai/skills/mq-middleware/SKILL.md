@@ -37,8 +37,10 @@ MQ 模块位于 `link-components/toLink-components-mq`，通过接口 + AutoConf
 | 消息模型 | Topic/Queue | 位置 | 方向 | 说明 |
 | --- | --- | --- | --- | --- |
 | `DocumentParseTaskMQ` | `tolink.rag.parse_task` | `link-service/.../mq/` | Java→Python | 文档解析任务投递 |
-| `DocumentParseResultMQ` | `tolink.rag.parse_result` | `link-components/.../model/` | Python→Java | 解析终态结果回传 |
-| `CacheCompensationMQ` | `tolink.cache.evict` | `link-service/.../mq/` | 补偿生产者→Java | 缓存补偿删除 |
+| `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | `link-service/.../mq/` | Java→Python | 数据集或文件删除通知 |
+| `ChatTurnMQ` | `tolink.rag.chat_turn` | `link-components/.../model/` | Python→Java | 对话轮次；完成或模型已解析的失败消息必须携带全局 `config_id` |
+| `UsageReportMQ` | `tolink.rag.usage_report` | `link-components/.../model/` | Python→Java | 全链路模型用量；SYSTEM/USER 调用均必须携带全局 `config_id` |
+| `CacheCompensationMQ` | `tolink.cache.evict` | `link-service/.../mq/` | 补偿生产者→Java | 缓存补偿失效；支持 `llm_runtime_config` target，最大 delivery=3 |
 
 ## 3. 发送消息
 

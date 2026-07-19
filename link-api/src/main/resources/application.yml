@@ -66,6 +66,10 @@ tolink:
     user-profile-ttl: 1d
     blog-published-index-ttl: 1d
     blog-published-index-capacity: 100
+  llm-runtime-cache:
+    enabled: false
+    cdc-mapping-enabled: false
+    consumer-targets-ready: false
   document-file:
     max-size-bytes: ${TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES:20971520}
     hard-max-size-bytes: ${TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES:104857600}

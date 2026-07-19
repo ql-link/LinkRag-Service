@@ -58,6 +58,35 @@ class ChatTurnMQTest {
     }
 
     @Test
+    void Should_RejectCompletedTurnWithoutGlobalConfigId() {
+        String raw = "{\"payload\":{\"conversation_id\":1,\"turn_id\":\"t\",\"request_id\":\"r\","
+            + "\"user_id\":2,\"status\":\"COMPLETED\"}}";
+
+        assertThatThrownBy(() -> ChatTurnMQ.parseMsg(raw))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("positive global config id");
+    }
+
+    @Test
+    void Should_AllowFailedTurnBeforeModelResolutionWithoutConfigId() {
+        String raw = "{\"payload\":{\"conversation_id\":1,\"turn_id\":\"t\",\"request_id\":\"r\","
+            + "\"user_id\":2,\"status\":\"FAILED\",\"error_code\":\"LLM_CONFIG_NOT_FOUND\"}}";
+
+        assertThat(ChatTurnMQ.parseMsg(raw).getConfigId()).isNull();
+    }
+
+    @Test
+    void Should_RejectFailedTurnResolvedToModelWithoutConfigId() {
+        String raw = "{\"payload\":{\"conversation_id\":1,\"turn_id\":\"t\",\"request_id\":\"r\","
+            + "\"user_id\":2,\"provider_type\":\"openai\",\"model_name\":\"gpt-4\","
+            + "\"status\":\"FAILED\"}}";
+
+        assertThatThrownBy(() -> ChatTurnMQ.parseMsg(raw))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("positive global config id");
+    }
+
+    @Test
     void Should_ParseFailedStatusWithErrorFields() {
         String raw = "{\"mq_type\":\"CHAT_TURN\",\"mq_name\":\"tolink.rag.chat_turn\",\"payload\":{"
                 + "\"conversation_id\":1,\"turn_id\":\"turn-f\",\"request_id\":\"req-f\",\"user_id\":2,\"query\":\"q\","

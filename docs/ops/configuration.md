@@ -261,12 +261,24 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | 配置项 | 用途 | 默认值 |
 |------|------|--------|
 | `tolink.business-cache.enabled` | 数据库镜像业务缓存总开关 | `true`；但还受 CDC readiness 门禁 |
-| `tolink.business-cache.dataset-parse-config-ttl` | 数据集解析配置基础 TTL | `7d` |
+| `tolink.business-cache.dataset-parse-config-ttl` | Java/Python 共享的数据集解析配置原始快照基础 TTL | `7d` |
 | `tolink.business-cache.user-profile-ttl` | 用户资料基础 TTL | `1d` |
 | `tolink.business-cache.blog-published-index-ttl` | 公开博客发布索引基础 TTL | `1d` |
 | `tolink.business-cache.blog-published-index-capacity` | 固定发布索引最大条数 | `100` |
 
 `application.yml` 当前把 `tolink.cache-consistency.enabled=false`、CDC/mapping/consumer readiness 全部设为 false，因此即使 `business-cache.enabled=true`，数据库镜像缓存仍不会启用。完成 Kafka/Canal 和补偿消费者部署后再逐项打开。上传运行时配置不受该业务缓存总开关控制。
+
+Python 后续启用 `dataset_parse_config` 读缓存前，必须确认 Java `BusinessCacheHealthIndicator` 为 READY；共享 value 使用版本化原始快照，不能由部署配置改成 Java response 或 Python execution bundle。
+
+### 4.15.2 LLM 运行配置缓存（tolink.llm-runtime-cache.*）
+
+| 配置项 | 用途 | 默认值 |
+|------|------|--------|
+| `tolink.llm-runtime-cache.enabled` | 允许启用 Python `configId` 运行配置读缓存 | `false` |
+| `tolink.llm-runtime-cache.cdc-mapping-enabled` | 确认 Canal 已订阅并映射 `llm_model_config` | `false` |
+| `tolink.llm-runtime-cache.consumer-targets-ready` | 确认所有补偿消费者已识别 `llm_runtime_config` target | `false` |
+
+三个开关必须同时开启，且统一缓存一致性组件、CDC database/source topic 与 bridge 均已就绪。该门禁不依赖 `tolink.business-cache.enabled`：只有门禁 READY 时，Java 才允许事务提交后首删和 `llm_model_config` CDC 映射发出新 target；Python 负责运行配置读取与回源。发布时先升级补偿消费者，再启用 CDC 映射，最后启用 Python 读缓存；`LlmRuntimeCacheHealthIndicator` 暴露具体未就绪原因。
 
 ## 5. 本地开发快速启动
 

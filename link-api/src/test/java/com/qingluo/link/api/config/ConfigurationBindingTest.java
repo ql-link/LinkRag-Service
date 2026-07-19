@@ -4,6 +4,7 @@ import com.qingluo.link.components.mq.constant.MQProperties;
 import com.qingluo.link.components.oss.config.OssProperties;
 import com.qingluo.link.components.redis.config.CacheConsistencyProperties;
 import com.qingluo.link.service.config.DocumentFileProperties;
+import com.qingluo.link.service.cache.LLMRuntimeCacheProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +51,9 @@ class ConfigurationBindingTest {
     @Autowired
     private CacheConsistencyProperties cacheConsistencyProperties;
 
+    @Autowired
+    private LLMRuntimeCacheProperties llmRuntimeCacheProperties;
+
     @Test
     @DisplayName("DocumentFileProperties: maxSizeBytes 绑定为 20971520")
     void documentFileMaxSizeBytes() {
@@ -78,5 +82,13 @@ class ConfigurationBindingTest {
     @DisplayName("CacheConsistencyProperties: syncDeleteRequired 绑定为 false")
     void cacheConsistencySyncDeleteRequired() {
         assertThat(cacheConsistencyProperties.isSyncDeleteRequired()).isFalse();
+    }
+
+    @Test
+    @DisplayName("LLMRuntimeCacheProperties: 三项发布门禁默认全部关闭")
+    void llmRuntimeCacheGatesDefaultToClosed() {
+        assertThat(llmRuntimeCacheProperties.isEnabled()).isFalse();
+        assertThat(llmRuntimeCacheProperties.isCdcMappingEnabled()).isFalse();
+        assertThat(llmRuntimeCacheProperties.isConsumerTargetsReady()).isFalse();
     }
 }

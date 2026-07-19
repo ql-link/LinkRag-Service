@@ -52,7 +52,8 @@ class RecallSessionControllerTest {
     @BeforeAll
     void setup() {
         jdbcTemplate.update("DELETE FROM dataset_parse_config");
-        jdbcTemplate.update("DELETE FROM llm_user_config WHERE user_id IN (?, ?)", ACTIVE_USER_ID, DISABLED_USER_ID);
+        jdbcTemplate.update("DELETE FROM llm_capability_default WHERE owner_user_id IN (?, ?)", ACTIVE_USER_ID, DISABLED_USER_ID);
+        jdbcTemplate.update("DELETE FROM llm_model_config WHERE owner_user_id IN (?, ?)", ACTIVE_USER_ID, DISABLED_USER_ID);
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM dataset");
         jdbcTemplate.update("DELETE FROM sys_user");
@@ -93,12 +94,12 @@ class RecallSessionControllerTest {
 
     private void insertEmbeddingConfig(Long id, Long userId, String modelName, String capability) {
         jdbcTemplate.update("""
-            INSERT INTO llm_user_config (
-                id, user_id, provider_id, provider_type, api_key, api_base_url, protocol,
-                model_name, capability, is_active, is_default, is_system_preset
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, false)
+            INSERT INTO llm_model_config (
+                id, scope, owner_user_id, provider_id, provider_type, api_key, api_base_url,
+                protocol, model_name, display_name, capability, is_active, snapshot_version
+            ) VALUES (?, 'USER', ?, ?, ?, ?, ?, ?, ?, ?, ?, true, 1)
             """, id, userId, 1L, "aliyun", "encrypted-key",
-            "https://example.com/embeddings", "openai", modelName, capability);
+            "https://example.com/embeddings", "openai", modelName, modelName, capability);
     }
 
     private void insertParseConfig(Long datasetId) {

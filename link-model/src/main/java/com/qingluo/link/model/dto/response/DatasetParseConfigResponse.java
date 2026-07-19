@@ -22,17 +22,21 @@ public class DatasetParseConfigResponse {
     @Schema(description = "稀疏向量模型配置 ID")
     private Long sparseEmbeddingConfigId;
 
-    @JsonProperty("sparse_embedding_config_source")
-    @Schema(description = "稀疏向量模型配置来源：USER/SYSTEM")
-    private String sparseEmbeddingConfigSource;
-
     @JsonProperty("dense_embedding_config_id")
     @Schema(description = "稠密向量模型配置 ID")
     private Long denseEmbeddingConfigId;
 
-    @JsonProperty("dense_embedding_config_source")
-    @Schema(description = "稠密向量模型配置来源：USER/SYSTEM")
-    private String denseEmbeddingConfigSource;
+    @JsonProperty("enhancement_chat_config_id")
+    @Schema(description = "增强对话配置ID")
+    private Long enhancementChatConfigId;
+
+    @JsonProperty("enhancement_vision_config_id")
+    @Schema(description = "增强视觉配置ID")
+    private Long enhancementVisionConfigId;
+
+    @JsonProperty("rerank_config_id")
+    @Schema(description = "重排配置ID")
+    private Long rerankConfigId;
 
     @Schema(description = "分块策略配置")
     private ChunkingConfig chunking;

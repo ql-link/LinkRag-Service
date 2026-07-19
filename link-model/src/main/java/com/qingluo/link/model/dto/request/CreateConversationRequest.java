@@ -18,6 +18,6 @@ public class CreateConversationRequest {
     @Schema(description = "数据集ID", example = "10001")
     private Long datasetId;
 
-    @Schema(description = "上次使用的配置ID")
+    @Schema(description = "本次选择的全局CHAT配置ID；提供时由Java精确校验")
     private Long lastConfigId;
 }

@@ -45,6 +45,13 @@ public class Result<T> {
     }
 
     /**
+     * 错误响应（带安全的结构化详情）。
+     */
+    public static <T> Result<T> error(int code, String message, T data) {
+        return new Result<>(code, message, data);
+    }
+
+    /**
      * 错误响应（带 HTTP 状态码）
      */
     public static <T> Result<T> error(int code, String message, int httpStatus) {

@@ -106,6 +106,7 @@ public class ChatTurnMQ implements AbstractMQ {
         /** Python 生成的会话标题；Java 仅在当前标题仍为空/默认时写入，不覆盖用户手动标题。 */
         @JSONField(name = "title")
         private String title;
+        /** SYSTEM/USER 共用的全局配置身份；完成态及模型已解析的失败态必须为正整数。 */
         @JSONField(name = "config_id")
         private Long configId;
         @JSONField(name = "provider_type")
@@ -148,6 +149,23 @@ public class ChatTurnMQ implements AbstractMQ {
         }
         if (!ChatTurnStatus.isValid(payload.getStatus())) {
             throw new IllegalArgumentException("chat_turn status is invalid: " + payload.getStatus());
+        }
+        ChatTurnStatus status = ChatTurnStatus.from(payload.getStatus());
+        if (status == ChatTurnStatus.COMPLETED) {
+            requirePositiveConfigId(payload);
+        } else if (status == ChatTurnStatus.FAILED
+            && (payload.getConfigId() != null
+                || StringUtils.hasText(payload.getProviderType())
+                || StringUtils.hasText(payload.getModelName()))) {
+            requirePositiveConfigId(payload);
+        } else if (payload.getConfigId() != null && payload.getConfigId() <= 0L) {
+            requirePositiveConfigId(payload);
+        }
+    }
+
+    private static void requirePositiveConfigId(MsgPayload payload) {
+        if (payload.getConfigId() == null || payload.getConfigId() <= 0L) {
+            throw new IllegalArgumentException("chat_turn config_id must be a positive global config id");
         }
     }
 }

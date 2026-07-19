@@ -22,7 +22,7 @@ import com.qingluo.link.model.dto.request.CreateDatasetRequest;
 import com.qingluo.link.model.dto.request.UpdateDatasetRequest;
 import com.qingluo.link.model.dto.response.DatasetDTO;
 import com.qingluo.link.model.dto.response.PageResult;
-import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
+import com.qingluo.link.service.DatasetModelBindingValidator;
 import com.qingluo.link.service.DatasetService;
 import com.qingluo.link.service.cache.DatasetParseConfigCache;
 import com.qingluo.link.service.delete.DocumentDeleteNotifier;
@@ -51,7 +51,7 @@ public class DatasetServiceImpl implements DatasetService {
     private final ChatMessageMapper chatMessageMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentDeleteNotifier deleteNotifier;
-    private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
+    private final DatasetModelBindingValidator modelBindingValidator;
     private final DatasetParseConfigCache datasetParseConfigCache;
 
     @Override
@@ -60,11 +60,9 @@ public class DatasetServiceImpl implements DatasetService {
      * 创建用户数据集。
      */
     public DatasetDTO create(Long userId, CreateDatasetRequest request) {
-        DatasetEmbeddingConfigValidator.ResolvedBindingPair bindings =
-            embeddingConfigValidator.validateAndResolveBindingPair(
-                userId,
-                request.getSparseEmbeddingConfigId(), request.getSparseEmbeddingConfigSource(),
-                request.getDenseEmbeddingConfigId(), request.getDenseEmbeddingConfigSource());
+        DatasetModelBindingValidator.ValidatedBindings bindings =
+            modelBindingValidator.validateForCreate(
+                userId, request.getDenseEmbeddingConfigId(), request.getSparseEmbeddingConfigId());
 
         Dataset dataset = new Dataset();
         dataset.setUserId(userId);
@@ -77,8 +75,7 @@ public class DatasetServiceImpl implements DatasetService {
             throw new BusinessException(400, "当前用户下已存在同名数据集", 400);
         }
         insertDefaultParseConfig(userId, dataset.getId(),
-            bindings.sparse().configId(), bindings.sparse().source(),
-            bindings.dense().configId(), bindings.dense().source());
+            bindings.denseConfigId(), bindings.sparseConfigId());
         datasetParseConfigCache.evict(dataset.getId());
         return toDTO(dataset);
     }
@@ -194,17 +191,18 @@ public class DatasetServiceImpl implements DatasetService {
     }
 
     private void insertDefaultParseConfig(Long userId, Long datasetId,
-                                          Long sparseEmbeddingConfigId, String sparseEmbeddingConfigSource,
-                                          Long denseEmbeddingConfigId, String denseEmbeddingConfigSource) {
+                                          Long denseEmbeddingConfigId,
+                                          Long sparseEmbeddingConfigId) {
         DatasetParseConfig config = new DatasetParseConfig();
         config.setUserId(userId);
         config.setDatasetId(datasetId);
         config.setSparseEmbeddingConfigId(sparseEmbeddingConfigId);
-        config.setSparseEmbeddingConfigSource(sparseEmbeddingConfigSource);
         config.setDenseEmbeddingConfigId(denseEmbeddingConfigId);
-        config.setDenseEmbeddingConfigSource(denseEmbeddingConfigSource);
+        config.setEnhancementChatConfigId(null);
+        config.setEnhancementVisionConfigId(null);
+        config.setRerankConfigId(null);
         config.setChunkingConfig(new ChunkingConfig());
-        config.setEnhancementConfig(new EnhancementConfig());
+        config.setEnhancementConfig(defaultEnhancementConfig());
         config.setPdfConfig(new PdfConfig());
         config.setRecallConfig(defaultRecallConfig());
         config.setIsActive(true);
@@ -213,10 +211,19 @@ public class DatasetServiceImpl implements DatasetService {
 
     private RecallConfig defaultRecallConfig() {
         RecallConfig recall = new RecallConfig();
+        recall.setEnableRerank(false);
         recall.setRecallEnabledSources(DEFAULT_RECALL_ENABLED_SOURCES);
         recall.setRerankTopN(8);
         recall.setRecallStrict(false);
         return recall;
+    }
+
+    private EnhancementConfig defaultEnhancementConfig() {
+        EnhancementConfig enhancement = new EnhancementConfig();
+        enhancement.setEnableTableEnhancement(false);
+        enhancement.setEnableImageEnhancement(false);
+        enhancement.setEnableHeadingHierarchy(false);
+        return enhancement;
     }
 
     /**

@@ -104,6 +104,7 @@ public class UsageReportMQ implements AbstractMQ {
         private Integer completionTokens;
         @JSONField(name = "total_tokens")
         private Integer totalTokens;
+        /** SYSTEM/USER 模型调用共用的全局配置身份，所有新用量消息必须为正整数。 */
         @JSONField(name = "config_id")
         private Long configId;
         /** 解析任务锚点（parse·embed 携带）。当前 llm_usage_log 无独立 task 列，仅作审计锚点、不落库。 */
@@ -142,6 +143,10 @@ public class UsageReportMQ implements AbstractMQ {
                 || payload.getCompletionTokens() == null
                 || payload.getTotalTokens() == null) {
             throw new IllegalArgumentException("usage_report token fields are missing");
+        }
+        if (payload.getConfigId() == null || payload.getConfigId() <= 0L) {
+            throw new IllegalArgumentException(
+                "usage_report config_id must be a positive global config id");
         }
         String status = payload.getStatus();
         if (StringUtils.hasText(status)

@@ -10,7 +10,8 @@ import java.util.Arrays;
 public enum CacheEvictTarget {
     DATASET_PARSE_CONFIG("dataset_parse_config"),
     USER_PROFILE("user_profile"),
-    PUBLISHED_BLOG_INDEX("published_blog_index");
+    PUBLISHED_BLOG_INDEX("published_blog_index"),
+    LLM_RUNTIME_CONFIG("llm_runtime_config");
 
     private final String code;
 

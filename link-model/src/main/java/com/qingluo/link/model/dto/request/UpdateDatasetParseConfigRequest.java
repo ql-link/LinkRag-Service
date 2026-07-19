@@ -8,6 +8,7 @@ import com.qingluo.link.model.dto.config.PdfConfig;
 import com.qingluo.link.model.dto.config.RecallConfig;
 import io.swagger.v3.oas.annotations.media.Schema;
 import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -20,25 +21,32 @@ import lombok.Data;
 @Schema(description = "数据集解析/检索配置全量更新请求")
 public class UpdateDatasetParseConfigRequest {
 
+    @NotNull(message = "稀疏向量模型配置不能为空")
     @JsonProperty("sparse_embedding_config_id")
     @JsonAlias("sparseEmbeddingConfigId")
-    @Schema(description = "稀疏向量模型配置 ID（source=USER 时为 llm_user_config.id，source=SYSTEM 时为 llm_system_preset.id；能力必须为 SPARSE_EMBEDDING）；已有绑定不可修改")
+    @Schema(description = "全局稀疏向量模型配置ID；已有绑定不可修改")
     private Long sparseEmbeddingConfigId;
 
-    @JsonProperty("sparse_embedding_config_source")
-    @JsonAlias("sparseEmbeddingConfigSource")
-    @Schema(description = "稀疏向量模型配置来源：USER/SYSTEM；不传时后端按 ID 自动解析")
-    private String sparseEmbeddingConfigSource;
-
+    @NotNull(message = "稠密向量模型配置不能为空")
     @JsonProperty("dense_embedding_config_id")
     @JsonAlias("denseEmbeddingConfigId")
-    @Schema(description = "稠密向量模型配置 ID（source=USER 时为 llm_user_config.id，source=SYSTEM 时为 llm_system_preset.id；能力必须为 EMBEDDING）；已有绑定不可修改")
+    @Schema(description = "全局稠密向量模型配置ID；已有绑定不可修改")
     private Long denseEmbeddingConfigId;
 
-    @JsonProperty("dense_embedding_config_source")
-    @JsonAlias("denseEmbeddingConfigSource")
-    @Schema(description = "稠密向量模型配置来源：USER/SYSTEM；不传时后端按 ID 自动解析")
-    private String denseEmbeddingConfigSource;
+    @JsonProperty("enhancement_chat_config_id")
+    @JsonAlias("enhancementChatConfigId")
+    @Schema(description = "表格或标题层级增强使用的全局CHAT配置ID")
+    private Long enhancementChatConfigId;
+
+    @JsonProperty("enhancement_vision_config_id")
+    @JsonAlias("enhancementVisionConfigId")
+    @Schema(description = "图片增强使用的全局VISION配置ID")
+    private Long enhancementVisionConfigId;
+
+    @JsonProperty("rerank_config_id")
+    @JsonAlias("rerankConfigId")
+    @Schema(description = "重排使用的全局RERANK配置ID")
+    private Long rerankConfigId;
 
     @Valid
     @Schema(description = "分块策略配置")

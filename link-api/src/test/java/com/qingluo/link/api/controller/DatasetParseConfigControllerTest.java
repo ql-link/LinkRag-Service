@@ -54,6 +54,9 @@ class DatasetParseConfigControllerTest {
     private static final Long ALICE_DENSE_CONFIG_ID = 99782L;
     private static final Long BOB_SPARSE_CONFIG_ID = 99783L;
     private static final Long BOB_DENSE_CONFIG_ID = 99784L;
+    private static final Long ALICE_CHAT_CONFIG_ID = 99785L;
+    private static final Long ALICE_VISION_CONFIG_ID = 99786L;
+    private static final Long ALICE_RERANK_CONFIG_ID = 99787L;
 
     private String token;
     private Long d1;
@@ -62,7 +65,8 @@ class DatasetParseConfigControllerTest {
     @BeforeAll
     void setup() {
         jdbcTemplate.update("DELETE FROM dataset_parse_config");
-        jdbcTemplate.update("DELETE FROM llm_user_config WHERE user_id IN (?, ?)", ALICE_ID, BOB_ID);
+        jdbcTemplate.update("DELETE FROM llm_capability_default WHERE owner_user_id IN (?, ?)", ALICE_ID, BOB_ID);
+        jdbcTemplate.update("DELETE FROM llm_model_config WHERE owner_user_id IN (?, ?)", ALICE_ID, BOB_ID);
         jdbcTemplate.update("DELETE FROM dataset WHERE user_id IN (?, ?)", ALICE_ID, BOB_ID);
         jdbcTemplate.update("DELETE FROM sys_user WHERE id IN (?, ?)", ALICE_ID, BOB_ID);
 
@@ -72,6 +76,9 @@ class DatasetParseConfigControllerTest {
         insertEmbeddingConfig(ALICE_DENSE_CONFIG_ID, ALICE_ID, "alice-dense", "EMBEDDING");
         insertEmbeddingConfig(BOB_SPARSE_CONFIG_ID, BOB_ID, "bob-sparse", "SPARSE_EMBEDDING");
         insertEmbeddingConfig(BOB_DENSE_CONFIG_ID, BOB_ID, "bob-dense", "EMBEDDING");
+        insertEmbeddingConfig(ALICE_CHAT_CONFIG_ID, ALICE_ID, "alice-chat", "CHAT");
+        insertEmbeddingConfig(ALICE_VISION_CONFIG_ID, ALICE_ID, "alice-vision", "VISION");
+        insertEmbeddingConfig(ALICE_RERANK_CONFIG_ID, ALICE_ID, "alice-rerank", "RERANK");
 
         jdbcTemplate.update("INSERT INTO dataset (user_id, name, status) VALUES (?, 'PC配置-D1', 'ACTIVE')", ALICE_ID);
         d1 = jdbcTemplate.queryForObject(
@@ -104,12 +111,12 @@ class DatasetParseConfigControllerTest {
 
     private void insertEmbeddingConfig(Long id, Long userId, String modelName, String capability) {
         jdbcTemplate.update("""
-            INSERT INTO llm_user_config (
-                id, user_id, provider_id, provider_type, api_key, api_base_url, protocol,
-                model_name, capability, is_active, is_default, is_system_preset
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, false)
+            INSERT INTO llm_model_config (
+                id, scope, owner_user_id, provider_id, provider_type, api_key, api_base_url,
+                protocol, model_name, display_name, capability, is_active, snapshot_version
+            ) VALUES (?, 'USER', ?, ?, ?, ?, ?, ?, ?, ?, ?, true, 1)
             """, id, userId, 1L, "aliyun", "encrypted-key",
-            "https://example.com/embeddings", "openai", modelName, capability);
+            "https://example.com/embeddings", "openai", modelName, modelName, capability);
     }
 
     private Integer configCount(Long datasetId) {
@@ -133,7 +140,10 @@ class DatasetParseConfigControllerTest {
     private String withBindings(String body) {
         String trimmed = body.trim();
         String prefix = "\"sparse_embedding_config_id\":" + ALICE_SPARSE_CONFIG_ID
-            + ",\"dense_embedding_config_id\":" + ALICE_DENSE_CONFIG_ID;
+            + ",\"dense_embedding_config_id\":" + ALICE_DENSE_CONFIG_ID
+            + ",\"enhancement_chat_config_id\":" + ALICE_CHAT_CONFIG_ID
+            + ",\"enhancement_vision_config_id\":" + ALICE_VISION_CONFIG_ID
+            + ",\"rerank_config_id\":" + ALICE_RERANK_CONFIG_ID;
         if ("{}".equals(trimmed)) {
             return "{" + prefix + "}";
         }
@@ -293,18 +303,18 @@ class DatasetParseConfigControllerTest {
         putOk(d1, "{\"chunking\":{\"overlap_tokens\":32}}");
 
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"chunking\":{\"overlap_tokens\":65}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"chunking\":{\"overlap_tokens\":65}}")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message", containsString("overlap_tokens")));
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"chunking\":{\"overlap_tokens\":-1}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"chunking\":{\"overlap_tokens\":-1}}")))
             .andExpect(status().isBadRequest());
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"chunking\":{\"min_candidate_chunk_tokens\":127}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"chunking\":{\"min_candidate_chunk_tokens\":127}}")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message", containsString("min_candidate_chunk_tokens")));
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"chunking\":{\"min_candidate_chunk_tokens\":257}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"chunking\":{\"min_candidate_chunk_tokens\":257}}")))
             .andExpect(status().isBadRequest());
 
         assertThat(column("chunking_config", d1)).contains("32");
@@ -320,11 +330,11 @@ class DatasetParseConfigControllerTest {
                 .andExpect(status().isOk());
         }
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"pdf\":{\"pdf_parser_backend\":\"unknown\"}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"pdf\":{\"pdf_parser_backend\":\"unknown\"}}")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message", containsString("pdf_parser_backend")));
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"pdf\":{\"pdf_parser_backend\":\"\"}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"pdf\":{\"pdf_parser_backend\":\"\"}}")))
             .andExpect(status().isBadRequest());
     }
 
@@ -454,13 +464,15 @@ class DatasetParseConfigControllerTest {
     }
 
     @Test
-    @DisplayName("开启增强但用户未配默认模型后端不阻断")
-    void Should_NotBlock_When_EnhancementOnWithoutModel() throws Exception {
+    @DisplayName("开启增强但未提交精确 CHAT 配置时后端阻断")
+    void Should_Block_When_EnhancementOnWithoutModel() throws Exception {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(withBindings("{\"enhancement\":{\"enable_table_enhancement\":true}}")))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.enhancement.enable_table_enhancement").value(true));
+                .content("{\"sparse_embedding_config_id\":" + ALICE_SPARSE_CONFIG_ID
+                    + ",\"dense_embedding_config_id\":" + ALICE_DENSE_CONFIG_ID
+                    + ",\"enhancement\":{\"enable_table_enhancement\":true}}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.data.field").value("enhancement_chat_config_id"));
     }
 
     // ===== 向量模型绑定 =====
@@ -476,7 +488,7 @@ class DatasetParseConfigControllerTest {
                     + ",\"dense_embedding_config_id\":" + BOB_DENSE_CONFIG_ID
                     + ",\"chunking\":{\"overlap_tokens\":48}}"))
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.message", containsString("dense_embedding_config_id")));
+            .andExpect(jsonPath("$.data.field").value("dense_embedding_config_id"));
 
         mockMvc.perform(get("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token))
             .andExpect(status().isOk())
@@ -497,7 +509,7 @@ class DatasetParseConfigControllerTest {
     @DisplayName("更新他人数据集配置被拒绝")
     void Should_Return404AndNotPersist_When_PutOthersConfig() throws Exception {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d9).header("satoken", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"chunking\":{\"overlap_tokens\":10}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"chunking\":{\"overlap_tokens\":10}}")))
             .andExpect(status().isNotFound());
         assertThat(configCount(d9)).isZero();
     }
@@ -508,7 +520,7 @@ class DatasetParseConfigControllerTest {
         mockMvc.perform(get("/api/v1/datasets/{id}/parse-config", d1))
             .andExpect(status().isUnauthorized());
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"chunking\":{\"overlap_tokens\":10}}"))
+                .contentType(MediaType.APPLICATION_JSON).content(withBindings("{\"chunking\":{\"overlap_tokens\":10}}")))
             .andExpect(status().isUnauthorized());
     }
 

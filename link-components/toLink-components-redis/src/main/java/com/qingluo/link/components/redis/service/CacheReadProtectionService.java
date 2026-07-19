@@ -15,6 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,7 +50,26 @@ public class CacheReadProtectionService {
      */
     public <T> T getOrLoad(CacheRoute route, Class<T> clazz, long ttl,
                            TimeUnit ttlUnit, Supplier<T> loader) {
-        CacheLookup<T> first = readQuietly(route.dataKey(), clazz);
+        return getOrLoad(route, clazz, ttl, ttlUnit, loader, ignored -> true);
+    }
+
+    /**
+     * 读取并校验跨语言缓存值。validator 只判断缓存中的值；回源结果仍由 owner loader 负责保证契约。
+     */
+    public <T> T getOrLoad(CacheRoute route, Class<T> clazz, long ttl,
+                           TimeUnit ttlUnit, Supplier<T> loader, Predicate<T> validator) {
+        return getOrLoad(route, clazz, ttl, ttlUnit, loader, validator, ignored -> false);
+    }
+
+    /**
+     * 读取版本化缓存值，并允许 owner 把非空 envelope 标记为负缓存以使用统一短 TTL。
+     */
+    public <T> T getOrLoad(CacheRoute route, Class<T> clazz, long ttl,
+                           TimeUnit ttlUnit, Supplier<T> loader, Predicate<T> validator,
+                           Predicate<T> negativeValuePredicate) {
+        Objects.requireNonNull(validator, "cache value validator is required");
+        Objects.requireNonNull(negativeValuePredicate, "negative cache predicate is required");
+        CacheLookup<T> first = readQuietly(route, clazz, validator);
         if (first.hit()) {
             return first.value();
         }
@@ -58,7 +78,7 @@ public class CacheReadProtectionService {
         localLock.lock();
         try {
             if (!first.error()) {
-                CacheLookup<T> doubleChecked = readQuietly(route.dataKey(), clazz);
+                CacheLookup<T> doubleChecked = readQuietly(route, clazz, validator);
                 if (doubleChecked.hit()) {
                     return doubleChecked.value();
                 }
@@ -75,12 +95,12 @@ public class CacheReadProtectionService {
             try {
                 if (!distributedLocked && !first.error()) {
                     sleepSilently(properties.getLoadWaitMs());
-                    CacheLookup<T> retried = readQuietly(route.dataKey(), clazz);
+                    CacheLookup<T> retried = readQuietly(route, clazz, validator);
                     if (retried.hit()) {
                         return retried.value();
                     }
                 }
-                return loadAndBackfill(route, ttl, ttlUnit, loader);
+                return loadAndBackfill(route, ttl, ttlUnit, loader, negativeValuePredicate);
             } finally {
                 if (distributedLocked) {
                     try {
@@ -137,14 +157,20 @@ public class CacheReadProtectionService {
         return result;
     }
 
-    private <T> CacheLookup<T> readQuietly(String cacheKey, Class<T> clazz) {
+    private <T> CacheLookup<T> readQuietly(CacheRoute route, Class<T> clazz, Predicate<T> validator) {
         try {
-            CacheLookup<T> lookup = readValue(cacheKey, clazz);
+            CacheLookup<T> lookup = readValue(route.dataKey(), clazz);
+            if (lookup.hit() && !validator.test(lookup.value())) {
+                // 推进 fence 后再删坏值，避免旧版本进程已开始的慢回源在本次清理后重新写回旧 schema。
+                atomicOperations.invalidate(route);
+                metrics.read("invalid");
+                return CacheLookup.miss();
+            }
             metrics.read(lookup.hit() ? "hit" : "miss");
             return lookup;
         } catch (RuntimeException ex) {
             metrics.read("error");
-            log.warn("Read cache failed key={}, fallback to loader: {}", cacheKey, ex.getMessage());
+            log.warn("Read cache failed key={}, fallback to loader: {}", route.dataKey(), ex.getMessage());
             return CacheLookup.failed();
         }
     }
@@ -160,7 +186,8 @@ public class CacheReadProtectionService {
         return CacheLookup.hit(toType(value, clazz));
     }
 
-    private <T> T loadAndBackfill(CacheRoute route, long ttl, TimeUnit ttlUnit, Supplier<T> loader) {
+    private <T> T loadAndBackfill(CacheRoute route, long ttl, TimeUnit ttlUnit,
+                                  Supplier<T> loader, Predicate<T> negativeValuePredicate) {
         long fence;
         try {
             fence = atomicOperations.readFence(route);
@@ -172,7 +199,8 @@ public class CacheReadProtectionService {
         }
 
         T loaded = loader.get();
-        long ttlSeconds = loaded == null
+        boolean negativeValue = loaded != null && negativeValuePredicate.test(loaded);
+        long ttlSeconds = loaded == null || negativeValue
             ? properties.getNullCacheTtlSeconds()
             : withJitter(ttlUnit.toSeconds(ttl));
         Object cacheValue = loaded == null ? NULL_MARKER : loaded;
