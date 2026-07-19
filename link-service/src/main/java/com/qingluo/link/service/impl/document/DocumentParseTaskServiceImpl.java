@@ -19,8 +19,13 @@ import com.qingluo.link.model.dto.entity.DocumentParsePipeline;
 import com.qingluo.link.model.dto.entity.DocumentParsedLog;
 import com.qingluo.link.model.dto.response.FileParseResultDTO;
 import com.qingluo.link.model.dto.response.FileParseSubmitDTO;
+import com.qingluo.link.model.dto.response.MarkdownAssetSummaryDTO;
+import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.DocumentParseTaskService;
 import com.qingluo.link.service.constant.ParsePipelineStatus;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetManifest;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetManifestStore;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetObjectKeys;
 import com.qingluo.link.service.mq.DocumentParseTaskMQ;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -68,11 +73,15 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
     private final DocumentParsedLogMapper documentParsedLogMapper;
     private final DocumentParsePipelineMapper documentParsePipelineMapper;
     private final ObjectProvider<MQSend> mqSendProvider;
+    private final MarkdownAssetManifestStore manifestStore;
 
     /** 入口分类结果。RETRY 携带复用旧 Markdown 坐标与上一轮 task_id。 */
     private enum SubmitKind { FIRST, RETRY, REJECT, RUNNING }
 
     private record RetryContext(String previousTaskId, String mdBucket, String mdObjectKey) {
+    }
+
+    private record Submission(String taskId, boolean alreadyRunning) {
     }
 
     private record Classification(SubmitKind kind, RetryContext retry) {
@@ -88,18 +97,38 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
     @Override
     @Transactional
     public FileParseSubmitDTO submitManualParse(Long userId, Long fileId) {
+        return submitManualParse(userId, fileId, false);
+    }
+
+    @Override
+    @Transactional
+    public FileParseSubmitDTO submitManualParse(Long userId, Long fileId, boolean ignoreMissingAssets) {
         DocumentOriginalFile file = getOwnedUploadedFile(userId, fileId);
         DocumentParseFile parseFile = requireParseFile(fileId);
         Classification classification = classify(parseFile);
+        if (classification.kind() == SubmitKind.RUNNING) {
+            return buildSubmitDTO(file, parseFile.getLatestParseTaskId(), true, null);
+        }
+        if (classification.kind() == SubmitKind.REJECT) {
+            throw new BusinessException(409, "文件已解析成功，无需重复解析", 409);
+        }
+        MarkdownAssetManifest manifest = manifestStore.readRequired(file);
+        MarkdownAssetSummaryDTO assetSummary = manifest == null ? null : manifest.getSummary();
+        if (assetSummary != null && assetSummary.hasBlockingIssues() && !ignoreMissingAssets) {
+            throw new BusinessException(
+                ErrorCode.ASSET_MISSING,
+                ErrorCode.ASSET_MISSING.getMessage(),
+                Map.of("errorKind", "ASSET_MISSING", "assetSummary", assetSummary));
+        }
+        Submission submission;
         switch (classification.kind()) {
-            case RUNNING -> throw new BusinessException(409, "文件正在解析中，请勿重复提交", 409);
-            // 已成功（含稀疏向量阶段）的文件友好拒绝，不发 MQ。
-            case REJECT -> throw new BusinessException(409, "文件已解析成功，无需重复解析", 409);
-            case RETRY -> submit(file, parseFile, TRIGGER_MANUAL_RETRY, classification.retry());
-            case FIRST -> submit(file, parseFile, TRIGGER_MANUAL_RETRY, null);
+            case RETRY -> submission = claimAndSubmit(
+                file, parseFile, TRIGGER_MANUAL_RETRY, classification.retry());
+            case FIRST -> submission = claimAndSubmit(
+                file, parseFile, TRIGGER_MANUAL_RETRY, null);
             default -> throw new IllegalStateException("unexpected classification: " + classification.kind());
         }
-        return buildSubmitDTO(file);
+        return buildSubmitDTO(file, submission.taskId(), submission.alreadyRunning(), assetSummary);
     }
 
     @Override
@@ -121,7 +150,19 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
             log.info("Skip automatic parse for already-succeeded file, fileId={}", file.getId());
             return;
         }
-        submit(file, parseFile, TRIGGER_UPLOAD_AUTO, null);
+        MarkdownAssetManifest manifest;
+        try {
+            manifest = manifestStore.readRequired(file);
+        } catch (BusinessException e) {
+            log.warn("Skip automatic parse because manifest is unavailable, fileId={}", file.getId());
+            return;
+        }
+        if (manifest != null && manifest.getSummary() != null
+            && manifest.getSummary().hasBlockingIssues()) {
+            log.info("Skip automatic parse because markdown assets need confirmation, fileId={}", file.getId());
+            return;
+        }
+        claimAndSubmit(file, parseFile, TRIGGER_UPLOAD_AUTO, null);
     }
 
     @Override
@@ -180,11 +221,27 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
         return Classification.of(SubmitKind.RUNNING);
     }
 
-    private void submit(DocumentOriginalFile file, DocumentParseFile parseFile, String triggerMode, RetryContext retry) {
+    private Submission claimAndSubmit(
+            DocumentOriginalFile file,
+            DocumentParseFile parseFile,
+            String triggerMode,
+            RetryContext retry) {
         String taskId = UUID.randomUUID().toString();
-        documentParseFileMapper.update(null, new LambdaUpdateWrapper<DocumentParseFile>()
-            .eq(DocumentParseFile::getId, parseFile.getId())
-            .set(DocumentParseFile::getLatestParseTaskId, taskId));
+        LambdaUpdateWrapper<DocumentParseFile> claim = new LambdaUpdateWrapper<DocumentParseFile>()
+            .eq(DocumentParseFile::getId, parseFile.getId());
+        if (StringUtils.hasText(parseFile.getLatestParseTaskId())) {
+            claim.eq(DocumentParseFile::getLatestParseTaskId, parseFile.getLatestParseTaskId());
+        } else {
+            claim.isNull(DocumentParseFile::getLatestParseTaskId);
+        }
+        claim.set(DocumentParseFile::getLatestParseTaskId, taskId);
+        if (documentParseFileMapper.update(null, claim) == 0) {
+            DocumentParseFile winner = documentParseFileMapper.selectById(parseFile.getId());
+            if (winner != null && StringUtils.hasText(winner.getLatestParseTaskId())) {
+                return new Submission(winner.getLatestParseTaskId(), true);
+            }
+            throw new BusinessException(409, "解析任务状态已变化，请重试", 409);
+        }
         try {
             MQSend sender = mqSendProvider.getIfAvailable();
             if (sender == null) {
@@ -195,6 +252,7 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
             log.error("Submit parse task failed, fileId={}, taskId={}", file.getId(), taskId, e);
             throw new BusinessException(500, "解析提交失败，请稍后重试", 500);
         }
+        return new Submission(taskId, false);
     }
 
     private DocumentParseTaskMQ.MsgPayload buildPayload(String taskId, String triggerMode,
@@ -338,6 +396,14 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
         dto.setFailureReason(pipeline != null && ParsePipelineStatus.FAILED.equals(pipeline.getPipelineStatus())
             ? pipeline.getFailureReason() : null);
         dto.setFrontendStatus(frontendStatus(parseStatus));
+        if (MarkdownAssetObjectKeys.isV1NormalizedSource(file.getObjectKey())) {
+            try {
+                dto.setAssetSummary(manifestStore.readSummary(file));
+            } catch (BusinessException e) {
+                DocumentParseTaskServiceImpl.log.warn(
+                    "Skip unavailable markdown asset summary in parse result, fileId={}", file.getId());
+            }
+        }
         return dto;
     }
 
@@ -371,11 +437,18 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
         return "parse_waiting";
     }
 
-    private FileParseSubmitDTO buildSubmitDTO(DocumentOriginalFile file) {
+    private FileParseSubmitDTO buildSubmitDTO(
+            DocumentOriginalFile file,
+            String taskId,
+            boolean alreadyRunning,
+            MarkdownAssetSummaryDTO assetSummary) {
         FileParseSubmitDTO dto = new FileParseSubmitDTO();
         dto.setFileId(file.getId());
         dto.setOriginalFilename(file.getOriginalFilename());
         dto.setFrontendStatus("parsing");
+        dto.setTaskId(taskId);
+        dto.setAlreadyRunning(alreadyRunning);
+        dto.setAssetSummary(assetSummary);
         return dto;
     }
 

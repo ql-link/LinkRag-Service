@@ -203,6 +203,7 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | DELETE | `/api/v1/datasets/{datasetId}` | 删除数据集 |
 | GET | `/api/v1/datasets/{datasetId}/parse-config` | 读取数据集解析/检索配置（回显已存；`recall` 新增项缺失时补默认） |
 | PUT | `/api/v1/datasets/{datasetId}/parse-config` | 全量保存数据集解析/检索配置（整页保存，整行四类覆盖） |
+| GET | `/api/v1/document-file-capabilities` | 查询文档、Markdown 图片与 ZIP 导入限制 |
 | POST | `/api/v1/datasets/{datasetId}/files` | 上传文档文件（异步：立即返回 `uploadStatus=UPLOADING`） |
 | GET | `/api/v1/datasets/{datasetId}/files` | 文件列表（支持按 `uploadStatus` 过滤，前端据此轮询上传终态） |
 | GET | `/api/v1/files/recent` | 当前用户全局最近文档列表 |
@@ -212,6 +213,10 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 解析结果列表 |
 
 > 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
+
+> Markdown 本地图片资源包：上传仍为 `multipart/form-data`。普通文件只传 `file`、`parseImmediately`；Markdown 资源包另传 `matchMode`（`FULL_PATH` 或 `SHALLOW_BASENAME`）、`documentPath`、同序的 `assets[]` / `assetRelativePaths[]` 与 `assetInventoryPaths[]`。ZIP 只在浏览器受限解压，Java 不接收原始 ZIP；文件夹使用完整相对路径，单文件补图只使用所选文件夹直接子级 basename。Java 识别标准 Markdown（含引用式）、HTML `<img>` 与 Obsidian 图片语法，按大小写敏感、NFC 和有限 percent-decode 候选重算；命中引用改写为 `tolink-raw://raw/...`。`DocumentFileDTO`、详情和解析结果可返回 `assetSummary`。缺失、歧义或不支持图片属于软问题：文件仍上传成功但不自动解析；`POST .../parse` 默认返回 `30020/409` 和 `data.assetSummary`，用户确认后以 `ignoreMissingAssets=true` 继续。并发重复提交解析会返回同一 `taskId`，`alreadyRunning=true`，不重复发 MQ。v1 manifest 不可读取时返回 `50004/503` 并停止解析。
+
+> `GET /api/v1/document-file-capabilities` 返回 `featureEnabled`、动态文档后缀/大小、图片扩展名/MIME/数量/字节/路径限制、ZIP 压缩大小/条目/展开大小/压缩比/深度限制，以及合法 `matchModes`。Web 必须在导入前读取该接口，但其预检不是信任边界，Java 仍会权威复核。
 
 > 创建数据集：`POST /api/v1/datasets` 请求体除 `name`/`description` 外，必须提供 `sparse_embedding_config_id` 与 `dense_embedding_config_id`。两个字段均直接引用全局 `llm_model_config.id`，不再携带 `source` 或其它身份别名；能力必须分别为 `SPARSE_EMBEDDING` / `EMBEDDING`。Java 内部按“配置不存在 → 已停用 → 越权 → 能力不匹配”的固定顺序校验，Dataset 写接口统一包装为 `INVALID_DATASET_MODEL_BINDING(10028)`，并在 `data.field` 返回失败字段。创建成功时同步写入 `dataset_parse_config` 默认行并固化这两个绑定，后续解析构建向量与召回均以数据集绑定为准，不跟随用户默认选择漂移。
 

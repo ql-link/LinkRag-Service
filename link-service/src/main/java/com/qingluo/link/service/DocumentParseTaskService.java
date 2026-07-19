@@ -12,6 +12,8 @@ public interface DocumentParseTaskService {
 
     FileParseSubmitDTO submitManualParse(Long userId, Long fileId);
 
+    FileParseSubmitDTO submitManualParse(Long userId, Long fileId, boolean ignoreMissingAssets);
+
     void submitAutoParseAfterUpload(Long userId, DocumentOriginalFile originalFile);
 
     List<FileParseResultDTO> listParseResults(Long userId, Long datasetId, List<Long> fileIds);

@@ -23,6 +23,7 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 - `parse_task` 使用扁平 JSON，通过 `document_parse_file_id` 与共享数据库记录关联。
 - `parse_task` 对 PDF 文件可透传数据集级 `pdf_config.pdf_parser_backend` 为 `pdf_parser_backend`；Java 只在配置非空且值合法时写入，不在 MQ 层补默认值。
 - `parse_task` 含 `is_retry` + `previous_task_id`：重试复用上一轮 Markdown 坐标做阶段恢复，发送前完整性校验缺字段不发。端到端终态权威源为 `document_parse_pipeline.pipeline_status`（大写），Java 解析结果查询以 DB 为准（原 `document_parsed_log.task_status` 已删）。
+- Markdown v1 不扩展 `parse_task` 消息模型：`source_object_key` 指向 RAW 中的 `source/normalized.md`，Python 由现有 user/dataset/original_file/source 字段限定图片读取范围。manifest 不可用或存在未确认的图片问题时不投递；手动并发提交用最新任务指针 CAS 保证只发送一次。
 - `document_delete`（删除通知，Java -> Python）：删除事务 afterCommit **真实投递**（回滚不发），`QUEUE` 点对点；按删除范围分流——删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别，发送前完整性校验缺字段不发。生产侧**尽力发**：`DocumentDeleteNotifier` 对发送失败/发送器缺失仅告警留痕并吞掉、不外抛、不影响已提交的删除，无 DLQ、无对账兜底；幂等由 Python 按 id 删天然保证（payload 不带去重/追踪字段）。
 - Python 负责解析终态持久化；Java 不再消费 `tolink.rag.parse_result`，前端终态展示通过 `parse-results` 查询接口读取 DB。
 - MQ trace 只走传输 header，不改 Java/Python 共享消息体：`MQSend` 适配层通过 `link-observability` 的 `TraceHeaders` 把当前 MDC 的 `trace_id` 自动写入 `X-Trace-Id`；Kafka 消费入口（如 `ChatTurnKafkaReceiver`、`UsageReportKafkaReceiver`、`CacheCompensationKafkaReceiver`）读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并用 `TraceContext.start(...)` 恢复 MDC，缺失或非法时自建 trace，`finally` 清理。

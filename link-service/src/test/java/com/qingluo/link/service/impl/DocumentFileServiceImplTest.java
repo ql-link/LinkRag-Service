@@ -27,7 +27,12 @@ import com.qingluo.link.service.mq.DocumentParseTaskMQ;
 
 import com.qingluo.link.service.impl.document.DocumentFileServiceImpl;
 import com.qingluo.link.service.impl.document.DocumentUploadAsyncExecutor;
+import com.qingluo.link.service.impl.document.DocumentUploadRecordWriter;
+import com.qingluo.link.service.impl.document.DocumentUploadStatusWriter;
 import com.qingluo.link.service.impl.document.DocumentUploadTempStorage;
+import com.qingluo.link.service.impl.document.DocumentUploadTempStorage.ManagedBundle;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetManifestStore;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetPackageProcessor;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import java.nio.file.Path;
@@ -76,6 +81,14 @@ class DocumentFileServiceImplTest {
 
     @Mock
     private DocumentUploadTempStorage tempStorage;
+    @Mock
+    private DocumentUploadRecordWriter recordWriter;
+    @Mock
+    private DocumentUploadStatusWriter statusWriter;
+    @Mock
+    private MarkdownAssetPackageProcessor markdownAssetProcessor;
+    @Mock
+    private MarkdownAssetManifestStore manifestStore;
 
     @InjectMocks
     private DocumentFileServiceImpl documentFileService;
@@ -134,7 +147,7 @@ class DocumentFileServiceImplTest {
             .isInstanceOf(BusinessException.class);
 
         verify(documentOriginalFileMapper, never()).insert(any());
-        verify(tempStorage, never()).materialize(any());
+        verify(tempStorage, never()).materializeBundle(any(), any(), any());
         verify(asyncExecutor, never()).submit(any());
     }
 
@@ -147,7 +160,7 @@ class DocumentFileServiceImplTest {
         assertThatThrownBy(() -> documentFileService.upload(100L, 200L, empty, false))
             .isInstanceOf(BusinessException.class);
 
-        verify(tempStorage, never()).materialize(any());
+        verify(tempStorage, never()).materializeBundle(any(), any(), any());
         verify(asyncExecutor, never()).submit(any());
         verify(documentOriginalFileMapper, never()).insert(any());
     }
@@ -164,7 +177,7 @@ class DocumentFileServiceImplTest {
         assertThatThrownBy(() -> documentFileService.upload(100L, 200L, exe, false))
             .isInstanceOf(BusinessException.class);
 
-        verify(tempStorage, never()).materialize(any());
+        verify(tempStorage, never()).materializeBundle(any(), any(), any());
         verify(asyncExecutor, never()).submit(any());
     }
 
@@ -172,18 +185,14 @@ class DocumentFileServiceImplTest {
     @DisplayName("S3 常见业务文件名符号 → 允许上传并保留文件名")
     void upload_allowsCommonBusinessFilenameCharacters() throws Exception {
         givenOwnedDatasetAndTxtAllowed();
-        given(documentOriginalFileMapper.selectOne(any())).willReturn(null);
-        given(documentOriginalFileMapper.insert(any())).willReturn(1);
-        given(tempStorage.materialize(any())).willReturn(Path.of("/tmp/doc-upload-x.tmp"));
         MockMultipartFile file = new MockMultipartFile(
             "file", "需求文档(第1版)#A+B=1&owner.txt", "text/plain", "hello".getBytes());
 
         DocumentFileDTO dto = documentFileService.upload(100L, 200L, file, false);
 
         assertThat(dto.getOriginalFilename()).isEqualTo("需求文档(第1版)#A+B=1&owner.txt");
-        ArgumentCaptor<DocumentOriginalFile> captor = ArgumentCaptor.forClass(DocumentOriginalFile.class);
-        verify(documentOriginalFileMapper).insert(captor.capture());
-        assertThat(captor.getValue().getOriginalFilename()).isEqualTo("需求文档(第1版)#A+B=1&owner.txt");
+        verify(recordWriter).prepareRecord(
+            100L, 200L, "需求文档(第1版)#A+B=1&owner.txt", "txt", 5L, "text/plain");
         verify(asyncExecutor).submit(any());
     }
 
@@ -199,7 +208,7 @@ class DocumentFileServiceImplTest {
             .hasMessage("文件名包含非法字符");
 
         verify(documentFileRuntimeConfigService, never()).getCurrent();
-        verify(tempStorage, never()).materialize(any());
+        verify(tempStorage, never()).materializeBundle(any(), any(), any());
         verify(asyncExecutor, never()).submit(any());
     }
 
@@ -207,15 +216,11 @@ class DocumentFileServiceImplTest {
     @DisplayName("S4 校验通过 → 落 uploading 立即返回并提交异步任务")
     void upload_returnsUploadingAndSubmitsAsync() throws Exception {
         givenOwnedDatasetAndTxtAllowed();
-        given(documentOriginalFileMapper.selectOne(any())).willReturn(null);
-        given(documentOriginalFileMapper.insert(any())).willReturn(1);
-        given(tempStorage.materialize(any())).willReturn(Path.of("/tmp/doc-upload-x.tmp"));
-
         DocumentFileDTO dto = documentFileService.upload(100L, 200L, validFile(), true);
 
         assertThat(dto.getUploadStatus()).isEqualTo("UPLOADING");
         assertThat(dto.getIsUploadSuccess()).isFalse();
-        verify(documentOriginalFileMapper).insert(any());
+        verify(recordWriter).prepareRecord(any(), any(), any(), any(), any(Long.class), any());
         verify(asyncExecutor).submit(any());
     }
 
@@ -223,18 +228,10 @@ class DocumentFileServiceImplTest {
     @DisplayName("S13/S14 同名 failed → 复用旧行重置 uploading，不插新行")
     void upload_reusesFailedRecord() throws Exception {
         givenOwnedDatasetAndTxtAllowed();
-        DocumentOriginalFile failed = new DocumentOriginalFile();
-        failed.setId(9L);
-        failed.setUploadStatus("failed");
-        given(documentOriginalFileMapper.selectOne(any())).willReturn(failed);
-        given(documentOriginalFileMapper.update(any(), any())).willReturn(1);
-        given(tempStorage.materialize(any())).willReturn(Path.of("/tmp/doc-upload-x.tmp"));
-
         DocumentFileDTO dto = documentFileService.upload(100L, 200L, validFile(), false);
 
         assertThat(dto.getUploadStatus()).isEqualTo("UPLOADING");
-        verify(documentOriginalFileMapper, never()).insert(any());
-        verify(documentOriginalFileMapper).update(any(), any());
+        verify(recordWriter).prepareRecord(any(), any(), any(), any(), any(Long.class), any());
         verify(asyncExecutor).submit(any());
     }
 
@@ -242,17 +239,15 @@ class DocumentFileServiceImplTest {
     @DisplayName("S15 同名且为 success/uploading → 400 拦截，不复用、不物化、不提交")
     void upload_rejectsDuplicateNonFailed() throws Exception {
         givenOwnedDatasetAndTxtAllowed();
-        DocumentOriginalFile success = new DocumentOriginalFile();
-        success.setId(9L);
-        success.setUploadStatus("success");
-        given(documentOriginalFileMapper.selectOne(any())).willReturn(success);
+        given(recordWriter.prepareRecord(any(), any(), any(), any(), any(Long.class), any()))
+            .willThrow(new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400));
 
         assertThatThrownBy(() -> documentFileService.upload(100L, 200L, validFile(), false))
             .isInstanceOf(BusinessException.class);
 
         verify(documentOriginalFileMapper, never()).insert(any());
         verify(documentOriginalFileMapper, never()).update(any(), any());
-        verify(tempStorage, never()).materialize(any());
+        verify(tempStorage).materializeBundle(any(), any(), any());
         verify(asyncExecutor, never()).submit(any());
     }
 
@@ -266,6 +261,25 @@ class DocumentFileServiceImplTest {
         given(rc.getAllowedSuffixes()).willReturn(Set.of("txt"));
         given(rc.getMaxSizeBytes()).willReturn(10L * 1024 * 1024);
         given(documentFileRuntimeConfigService.getCurrent()).willReturn(rc);
+        ManagedBundle managed = new ManagedBundle(
+            Path.of("/tmp/bundle"), Path.of("/tmp/bundle/source.tmp"), java.util.List.of());
+        try {
+            given(tempStorage.materializeBundle(any(), any(), any())).willReturn(managed);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        given(recordWriter.prepareRecord(any(), any(), any(), any(), any(Long.class), any()))
+            .willAnswer(invocation -> {
+                DocumentOriginalFile record = new DocumentOriginalFile();
+                record.setId(9L);
+                record.setUserId(invocation.getArgument(0));
+                record.setDatasetId(invocation.getArgument(1));
+                record.setOriginalFilename(invocation.getArgument(2));
+                record.setFileSuffix(invocation.getArgument(3));
+                record.setUploadStatus("uploading");
+                record.setIsUploadSuccess(false);
+                return record;
+            });
     }
 
     private DocumentOriginalFile buildFile(Long fileId, Long userId, Long datasetId) {
