@@ -17,6 +17,13 @@ mvn spring-boot:run -pl link-api
 - Kafka 或 RabbitMQ（默认配置使用 Kafka）
 - 本地 OSS 目录或 MinIO
 
+## Jenkins 与容器配置注入
+
+`application-prod.yml` 随代码打入镜像，只保存结构、地址和非敏感参数。生产账号、密码和密钥
+长期保存在部署机 `/opt/tolink/toLink-Service/config/application-prod-local.yml`，权限必须为
+`600`。Jenkins 每次更新镜像和 Compose，但不覆盖该文件；Compose 只读挂载到
+`/app/config/application-prod-local.yml`，由镜像内的 production 配置自动导入。
+
 ## 日志
 
 logback（`link-api/src/main/resources/logback-spring.xml`）按天输出 JSON Lines 到日期文件夹，仅保留最近 7 天：
