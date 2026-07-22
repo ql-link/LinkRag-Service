@@ -11,7 +11,7 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 核心设计理念：
 
 1. **职责分离** — 公共配置与环境配置互不干扰
-2. **安全加固** — 配置文件中不保留任何真实密码、IP 地址或密钥
+2. **安全加固** — 可提交配置允许保存地址、端口和非敏感参数，不保留真实账号、密码或密钥
 3. **开发友好** — 克隆项目后零配置即可启动（local profile 使用 H2 内存数据库）
 4. **部署统一** — `application-dev.yml` / `application-prod.yml` 使用同一组环境变量注入连接和敏感值
 5. **命名规范** — 环境变量采用统一前缀命名，废弃历史别名
@@ -22,8 +22,11 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 |------|------|------|----------|
 | `application.yml` | `link-api/src/main/resources/` | 环境无关的公共基础配置 | 所有环境始终加载 |
 | `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + localhost Redis + local OSS + MQ none） | 本地开发，克隆即启动 |
+| `application-local-secrets.yml` | `config/` | 本机 local 账号、密码和密钥（Git/Docker 忽略） | local profile |
 | `application-dev.yml` | `link-api/src/main/resources/` | 开发服务器配置（环境变量引用，带开发默认容量） | 开发服务器 |
+| `application-dev-local.yml` | `config/` | 本机 dev 账号、密码和密钥（Git/Docker 忽略） | dev profile |
 | `application-prod.yml` | `link-api/src/main/resources/` | 生产环境配置（环境变量引用，带生产默认容量） | 生产环境 |
+| `application-prod-local.yml` | `config/` | 本机 prod 账号、密码和密钥（Git/Docker 忽略） | prod profile |
 | `schema.sql` | `link-api/src/main/resources/` | local profile 的 H2 初始化表结构 | 本地启动与 local profile 测试 |
 
 ### 各文件包含内容
@@ -31,8 +34,8 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 | 文件 | 包含 | 不包含 |
 |------|------|--------|
 | `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 硬上限、文档上传默认值、业务缓存 TTL/容量、CDC 门禁、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
-| `application-local.yml` | H2 内存数据库及 `classpath:schema.sql` 初始化、localhost Redis（无密码）、Kafka listener 禁用、MQ=none、OSS=local、固定测试密钥 | 真实服务器 IP、真实密码 |
-| `application-dev.yml` / `application-prod.yml` | 所有连接通过 `${ENV_VAR}` 引用；连接池/线程池/日志通过 `${ENV_VAR:default}` 控制 | 真实密码、真实 IP、废弃别名 |
+| `application-local.yml` / `application-dev.yml` / `application-prod.yml` | 配置结构、地址、端口、库名和非敏感运行参数；敏感字段只保留 `${ENV_VAR}` 引用 | 真实账号、密码、JWT、API Key |
+| `config/application-*-local.yml` | 对应 profile 的账号、密码、JWT、API Key、Access Key | 地址、端口、容量等非敏感配置 |
 
 ## 3. Profile 加载优先级
 
@@ -44,7 +47,8 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 ├─────────────────────────────────────────────────────────┤
 │  1. application.yml          ← 基础层，始终加载           │
 │  2. application-{profile}.yml ← Profile 层，覆盖同名属性  │
-│  3. 环境变量 / 系统属性        ← 最高优先级，覆盖所有文件   │
+│  3. config/application-*-local.yml ← 本机密钥覆盖（可选）  │
+│  4. 环境变量 / 系统属性        ← 最高优先级，覆盖所有文件   │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -53,6 +57,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 - `application.yml` 中定义了 `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:local}`，默认激活 `local` profile
 - 当 profile 为 `local` 时，`application-local.yml` 中的配置覆盖 `application.yml` 的同名属性
 - 当 profile 为 `dev` / `prod` 时，对应 `application-dev.yml` / `application-prod.yml` 覆盖 `application.yml` 的同名属性
+- 每个 profile 文件通过 `spring.config.import` 可选导入 `config/` 下对应的 local 密钥文件
 - 环境变量始终具有最高优先级，可覆盖任何文件中的配置值
 
 ### 示例
@@ -316,23 +321,22 @@ The following profiles are active: local
 
 ## 6. 开发/生产环境部署
 
-开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`，两者都通过环境变量注入连接与敏感值。
+开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`。两者可安全提交，
+账号和密钥由 `config/` 下对应的 local 文件注入。
 
 ### 部署步骤
 
 ```bash
-# 1. 复制环境变量模板
-cp .env.example .env
+# 1. 创建对应 profile 的本机密钥文件
+vim config/application-dev-local.yml
+# 或：vim config/application-prod-local.yml
+chmod 600 config/application-*-local.yml
 
-# 2. 编辑 .env，填入实际值
-vim .env
-
-# 3. 设置 profile
+# 2. 设置 profile
 # 开发服务器：SPRING_PROFILES_ACTIVE=dev
 # 生产环境：SPRING_PROFILES_ACTIVE=prod
 
-# 4. 加载环境变量并启动
-export $(grep -v '^#' .env | xargs)
+# 3. 从仓库根目录启动，基础 profile 会自动导入 config 下对应文件
 mvn spring-boot:run -pl link-api
 ```
 
