@@ -19,20 +19,10 @@ mvn spring-boot:run -pl link-api
 
 ## Jenkins 与容器配置注入
 
-`application-prod.yml` 随代码打入镜像，只保存可提交的结构和非敏感默认值。生产密钥长期
-保存在部署机 `/opt/tolink/toLink-Service/config/application-prod-local.yml`，Jenkins
-每次只更新 Compose 文件并重新构建镜像，不覆盖该密钥文件。Compose 将它只读挂载到
-`/app/config/application-prod-local.yml`，由镜像内的 `application-prod.yml` 自动导入。
-
-服务器首次部署需要创建一次文件并设置权限：
-
-```bash
-install -m 0600 /path/to/application-prod-local.yml \
-  /opt/tolink/toLink-Service/config/application-prod-local.yml
-```
-
-缺少文件或权限不是 `600` 时，Jenkins 会在重建容器前终止。旧的
-`config/application-prod.yml` 不再被容器挂载，可在确认新部署稳定后自行归档。
+`application-prod.yml` 随代码打入镜像，只保存结构、地址和非敏感参数。生产账号、密码和密钥
+长期保存在部署机 `/opt/tolink/toLink-Service/config/application-prod-local.yml`，权限必须为
+`600`。Jenkins 每次更新镜像和 Compose，但不覆盖该文件；Compose 只读挂载到
+`/app/config/application-prod-local.yml`，由镜像内的 production 配置自动导入。
 
 ## 日志
 

@@ -11,7 +11,7 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 核心设计理念：
 
 1. **职责分离** — 公共配置与环境配置互不干扰
-2. **安全加固** — 可提交配置中不保留任何真实密码或密钥；dev 内网地址允许作为非敏感默认值
+2. **安全加固** — 可提交配置允许保存地址、端口和非敏感参数，不保留真实账号、密码或密钥
 3. **开发友好** — 克隆项目后零配置即可启动（local profile 使用 H2 内存数据库）
 4. **部署统一** — `application-dev.yml` / `application-prod.yml` 使用同一组环境变量注入连接和敏感值
 5. **命名规范** — 环境变量采用统一前缀命名，废弃历史别名
@@ -22,11 +22,11 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 |------|------|------|----------|
 | `application.yml` | `link-api/src/main/resources/` | 环境无关的公共基础配置 | 所有环境始终加载 |
 | `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + localhost Redis + local OSS + MQ none） | 本地开发，克隆即启动 |
-| `application-local-secrets.yml` | `config/` | 本机 local 账号、密码和密钥（Git 与 Docker 均忽略） | 本机 local profile |
+| `application-local-secrets.yml` | `config/` | 本机 local 账号、密码和密钥（Git/Docker 忽略） | local profile |
 | `application-dev.yml` | `link-api/src/main/resources/` | 开发服务器配置（环境变量引用，带开发默认容量） | 开发服务器 |
-| `application-dev-local.yml` | `config/` | 本机 dev 密钥覆盖（Git 与 Docker 均忽略） | 本机使用 dev profile 联调 |
-| `application-prod-local.yml` | `config/` | 本机 prod 密钥覆盖（Git 与 Docker 均忽略） | 本机使用 prod profile 验证 |
+| `application-dev-local.yml` | `config/` | 本机 dev 账号、密码和密钥（Git/Docker 忽略） | dev profile |
 | `application-prod.yml` | `link-api/src/main/resources/` | 生产环境配置（环境变量引用，带生产默认容量） | 生产环境 |
+| `application-prod-local.yml` | `config/` | 本机 prod 账号、密码和密钥（Git/Docker 忽略） | prod profile |
 | `schema.sql` | `link-api/src/main/resources/` | local profile 的 H2 初始化表结构 | 本地启动与 local profile 测试 |
 
 ### 各文件包含内容
@@ -34,11 +34,8 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 | 文件 | 包含 | 不包含 |
 |------|------|--------|
 | `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 硬上限、文档上传默认值、业务缓存 TTL/容量、CDC 门禁、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
-| `application-local.yml` | 本地连接结构、组件开关和非敏感默认值；账号与密钥通过 `${ENV_VAR}` 引用 | 真实账号、密码、JWT、API Key |
-| `config/application-local-secrets.yml` | 本机 local 账号、密码、JWT、API Key | 可提交配置、dev/prod 配置 |
-| `application-dev.yml` / `application-prod.yml` | 所有连接通过 `${ENV_VAR}` 引用；连接池/线程池/日志通过 `${ENV_VAR:default}` 控制 | 真实密码、密钥、废弃别名 |
-| `config/application-dev-local.yml` | 本机 dev 密码、JWT、API Key；由 `application-dev.yml` 可选导入 | 可提交配置、生产配置 |
-| `config/application-prod-local.yml` | 本机 prod 密码、JWT、API Key；由 `application-prod.yml` 可选导入 | 可提交配置、服务器配置 |
+| `application-local.yml` / `application-dev.yml` / `application-prod.yml` | 配置结构、地址、端口、库名和非敏感运行参数；敏感字段只保留 `${ENV_VAR}` 引用 | 真实账号、密码、JWT、API Key |
+| `config/application-*-local.yml` | 对应 profile 的账号、密码、JWT、API Key、Access Key | 地址、端口、容量等非敏感配置 |
 
 ## 3. Profile 加载优先级
 
@@ -50,7 +47,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 ├─────────────────────────────────────────────────────────┤
 │  1. application.yml          ← 基础层，始终加载           │
 │  2. application-{profile}.yml ← Profile 层，覆盖同名属性  │
-│  3. application-dev-local.yml ← 本机 dev 密钥覆盖（可选） │
+│  3. config/application-*-local.yml ← 本机密钥覆盖（可选）  │
 │  4. 环境变量 / 系统属性        ← 最高优先级，覆盖所有文件   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -66,6 +63,7 @@ Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或�
 - `application.yml` 中定义了 `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:local}`，默认激活 `local` profile
 - 当 profile 为 `local` 时，`application-local.yml` 中的配置覆盖 `application.yml` 的同名属性
 - 当 profile 为 `dev` / `prod` 时，对应 `application-dev.yml` / `application-prod.yml` 覆盖 `application.yml` 的同名属性
+- 每个 profile 文件通过 `spring.config.import` 可选导入 `config/` 下对应的 local 密钥文件
 - 环境变量始终具有最高优先级，可覆盖任何文件中的配置值
 
 ### 示例
@@ -329,14 +327,13 @@ The following profiles are active: local
 
 ## 6. 开发/生产环境部署
 
-开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`。可提交的 profile
-文件保存连接结构和非敏感默认值；本机或部署服务器分别通过
-`config/application-dev-local.yml`、`config/application-prod-local.yml` 提供密钥。
+开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`。两者可安全提交，
+账号和密钥由 `config/` 下对应的 local 文件注入。
 
 ### 部署步骤
 
 ```bash
-# 1. 创建对应 profile 的本机密钥文件（只需首次创建）
+# 1. 创建对应 profile 的本机密钥文件
 vim config/application-dev-local.yml
 # 或：vim config/application-prod-local.yml
 chmod 600 config/application-*-local.yml
@@ -345,7 +342,7 @@ chmod 600 config/application-*-local.yml
 # 开发服务器：SPRING_PROFILES_ACTIVE=dev
 # 生产环境：SPRING_PROFILES_ACTIVE=prod
 
-# 3. 从仓库根目录启动，profile 基础文件会自动导入对应的 local 文件
+# 3. 从仓库根目录启动，基础 profile 会自动导入 config 下对应文件
 mvn spring-boot:run -pl link-api
 ```
 

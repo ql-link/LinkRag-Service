@@ -1,5 +1,5 @@
 # 部署用 compose：引用本机 docker build 出来的镜像并启动
-# application-prod.yml 随代码打入镜像；真实密钥不进镜像/不进 Git，运行时单文件挂载注入。
+# application-prod.yml 随代码打入镜像；账号、密码和密钥通过单独的只读 local 文件注入。
 # 用法：TAG=xxx SERVICE_SECRET_CONFIG_FILE=../config/application-prod-local.yml \
 #   docker compose -f deploy/docker-compose.yml up -d
 services:
@@ -17,7 +17,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      # 镜像内 application-prod.yml 会通过 spring.config.import 加载此密钥覆盖文件。
+      # 镜像内 application-{profile}.yml 会导入对应的 local 密钥覆盖文件。
       - ${SERVICE_SECRET_CONFIG_FILE:-../config/application-prod-local.yml}:/app/config/${SERVICE_SECRET_CONFIG_NAME:-application-prod-local.yml}:ro
       # 日志持久化：容器 /app/logs（logback 按天文件夹输出）-> 宿主 /opt/tolink/toLink-Service/logs
       - ../logs:/app/logs

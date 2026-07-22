@@ -51,8 +51,8 @@ pipeline {
                     cmp -s deploy/docker-compose.yml "$DEPLOY_DIR/deploy/docker-compose.yml" || \
                         install -m 0644 deploy/docker-compose.yml "$DEPLOY_DIR/deploy/docker-compose.yml"
 
-                    test -f "$SERVICE_SECRET_CONFIG_FILE" || {
-                        echo "Missing service secret config: $SERVICE_SECRET_CONFIG_FILE"
+                    test -r "$SERVICE_SECRET_CONFIG_FILE" || {
+                        echo "Missing or unreadable service secret config: $SERVICE_SECRET_CONFIG_FILE"
                         exit 14
                     }
                     test "$(stat -c '%a' "$SERVICE_SECRET_CONFIG_FILE")" = "600" || {
