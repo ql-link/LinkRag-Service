@@ -11,3 +11,9 @@
 .env
 .env.*
 !.env.example
+config/application-dev-local.yml
+**/application-dev-local.yml
+config/application-prod-local.yml
+**/application-prod-local.yml
+config/application-local-secrets.yml
+**/application-local-secrets.yml
