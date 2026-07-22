@@ -166,6 +166,18 @@ Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或�
 | `TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES` | 允许上传的后缀列表（Spring Boot 集合绑定格式） | 否 | `md,markdown,pdf,docx,txt` | `pdf,md` |
 | `DOCUMENT_FILE_HARD_MAX_SIZE` | Spring multipart 单文件硬上限 | 否 | `100MB` | `100MB` |
 | `DOCUMENT_FILE_HARD_MAX_REQUEST_SIZE` | Spring multipart 请求硬上限 | 否 | `101MB` | `101MB` |
+| `TOLINK_MARKDOWN_ASSETS_ENABLED` | Markdown 配套图片资源包开关 | 否 | `true` | `true` |
+| `TOLINK_MARKDOWN_ASSET_MAX_BYTES` | 单张图片最大字节数 | 否 | `20971520` | `10485760` |
+| `TOLINK_MARKDOWN_ASSET_MAX_COUNT` | 单资源包最大图片数 | 否 | `200` | `100` |
+| `TOLINK_MARKDOWN_INVENTORY_MAX_COUNT` | 虚拟树目录清单最大条目数 | 否 | `5000` | `3000` |
+| `TOLINK_MARKDOWN_BUNDLE_MAX_BYTES` | Markdown 与配套图片总字节上限 | 否 | `83886080` | `83886080` |
+| `TOLINK_MARKDOWN_ASSET_PATH_MAX_LENGTH` | 图片相对路径最大字符数 | 否 | `512` | `512` |
+| `TOLINK_MARKDOWN_DOCUMENT_PATH_MAX_LENGTH` | 文档相对路径最大字符数 | 否 | `255` | `255` |
+| `TOLINK_ZIP_MAX_COMPRESSED_BYTES` | Web ZIP 压缩文件上限（capabilities 下发） | 否 | `104857600` | `104857600` |
+| `TOLINK_ZIP_MAX_ENTRIES` | ZIP 最大条目数 | 否 | `5000` | `5000` |
+| `TOLINK_ZIP_MAX_EXPANDED_BYTES` | ZIP 最大展开字节数 | 否 | `524288000` | `524288000` |
+| `TOLINK_ZIP_MAX_RATIO` | ZIP 单条目最大压缩比 | 否 | `100` | `100` |
+| `TOLINK_ZIP_MAX_DEPTH` | ZIP 最大目录深度 | 否 | `20` | `20` |
 
 `DocumentFileProperties` 提供部署默认值和管理员可修改范围；管理员通过 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入 Redis `runtime:document-file:upload-config`，不设置 TTL。Redis key 缺失时使用部署默认值，故修改默认环境变量仍需重启所有实例。`DOCUMENT_FILE_HARD_MAX_SIZE`、网关 body 上限和反向代理上限必须不低于 `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES`。
 

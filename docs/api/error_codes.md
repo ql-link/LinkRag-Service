@@ -56,6 +56,17 @@
 - `CACHE_DELETE_FAILED(50002/500)`：CDC/MQ 补偿删除在重试预算内仍失败。业务写入提交后的首次删除失败不会把这个错误返回给原写请求。
 - `DOCUMENT_FILE_CONFIG_UPDATE_FAILED(50003/503)`：管理员上传配置写 Redis 失败；本实例不会提前更新最后有效快照。
 
+## Markdown 图片资源包错误码
+
+- `MARKDOWN_LOCAL_ASSET_REQUIRES_CONTEXT(30010/400)`：Markdown 含本地图片但请求未声明匹配模式，或携带图片却没有资源包上下文。
+- `LOCAL_ABSOLUTE_PATH_REJECTED(30011/400)`：引用或目录清单包含 `file:`、Unix/UNC/Windows 绝对路径。
+- `ASSET_FILENAME_COLLISION(30012/400)`、`ASSET_PATH_COLLISION(30013/400)`：一级文件名或完整相对路径规范化后冲突。
+- `IMAGE_CONTENT_MISMATCH(30014/400)`：扩展名、声明 MIME 与图片魔数不一致。
+- `ASSET_FILE_SIZE_LIMIT_EXCEEDED(30016/400)`、`ASSET_COUNT_LIMIT_EXCEEDED(30017/400)`、`ASSET_BUNDLE_SIZE_LIMIT_EXCEEDED(30018/400)`、`ASSET_PATH_LENGTH_EXCEEDED(30019/400)`：资源包硬上限失败；不会创建新文件记录或写 OSS。
+- `ASSET_MISSING(30020/409)`：资源包存在缺失、歧义或不支持图片，手动解析未显式确认忽略；响应 `data` 含 `errorKind` 与 `assetSummary`。
+- `ASSET_PATH_OUTSIDE_ROOT(30021/400)`：完整路径引用越出上传虚拟树根目录。
+- `ASSET_MANIFEST_UNAVAILABLE(50004/503)`：v1 manifest 缺失、损坏、下载失败或与文件归属不一致；解析失败关闭，不按无缺图继续。
+
 ## 召回错误码（recall）
 
 > **变更（LINK-122）**：旧召回网关链路（Java 中转代理 `/api/v1/recall/stream`）已废弃移除，其专用错误码

@@ -5,29 +5,37 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
-import com.qingluo.link.components.oss.service.IOssService;
 import com.qingluo.link.components.oss.service.PrivateFileResolver;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetMapper;
 import com.qingluo.link.mapper.DocumentOriginalFileMapper;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
+import com.qingluo.link.model.dto.response.DocumentFileCapabilitiesDTO;
 import com.qingluo.link.model.dto.response.DocumentFileDTO;
 import com.qingluo.link.model.dto.response.PageResult;
+import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.DocumentFileDownloadResource;
 import com.qingluo.link.service.DocumentFileService;
 import com.qingluo.link.service.DocumentFileRuntimeConfigService;
+import com.qingluo.link.service.document.DocumentFileUploadCommand;
 import com.qingluo.link.service.delete.DocumentDeleteNotifier;
 import com.qingluo.link.service.config.DocumentFileProperties;
 import com.qingluo.link.service.config.DocumentFileRuntimeConfig;
+import com.qingluo.link.service.impl.document.DocumentUploadTempStorage.ManagedBundle;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetManifestStore;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetMatchMode;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetObjectKeys;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetPackageProcessor;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetPackageProcessor.PreflightPlan;
+import com.qingluo.link.service.impl.document.markdown.MarkdownUploadBundle;
 import java.io.File;
-import java.nio.file.Path;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -43,135 +51,139 @@ import org.springframework.web.multipart.MultipartFile;
 @Slf4j
 public class DocumentFileServiceImpl implements DocumentFileService {
 
-    private static final String UPLOADING = "uploading";
     private static final String UPLOAD_SUCCESS = "success";
     private static final String UPLOAD_FAILED = "failed";
     private static final int ORIGINAL_FILENAME_MAX_LENGTH = 255;
     private final DatasetMapper datasetMapper;
     private final DocumentOriginalFileMapper documentOriginalFileMapper;
     private final DocumentDeleteNotifier deleteNotifier;
-    private final IOssService ossService;
     private final PrivateFileResolver privateFileResolver;
     private final DocumentFileProperties properties;
     private final DocumentFileRuntimeConfigService documentFileRuntimeConfigService;
     private final DocumentUploadAsyncExecutor asyncExecutor;
     private final DocumentUploadTempStorage tempStorage;
+    private final DocumentUploadRecordWriter recordWriter;
+    private final DocumentUploadStatusWriter statusWriter;
+    private final MarkdownAssetPackageProcessor markdownAssetProcessor;
+    private final MarkdownAssetManifestStore manifestStore;
 
     @Override
-    @Transactional
-    /**
-     * 上传原始文档文件：同步阶段（鉴权/校验/同名处理/物化临时文件/落 uploading）后立即返回 uploading；
-     * OSS 上传、终态回写与（parseImmediately 时的）解析投递在事务提交后于专用线程池异步完成。
-     */
     public DocumentFileDTO upload(Long userId, Long datasetId, MultipartFile file, boolean parseImmediately) {
+        return upload(userId, datasetId, new DocumentFileUploadCommand(
+            file, parseImmediately, null, null, List.of(), List.of(), List.of()));
+    }
+
+    @Override
+    public DocumentFileDTO upload(Long userId, Long datasetId, DocumentFileUploadCommand command) {
         assertOwnedDataset(userId, datasetId);
+        MultipartFile file = command.file();
         assertFilePresent(file);
 
         String originalFilename = normalizeOriginalFilename(file.getOriginalFilename());
         validateFile(file, originalFilename);
         String suffix = extractSuffix(originalFilename);
+        boolean markdown = MarkdownAssetObjectKeys.isMarkdown(suffix);
+        MarkdownAssetMatchMode matchMode = MarkdownAssetMatchMode.parse(command.matchMode());
+        if (!markdown && hasAssetContext(command)) {
+            throw new BusinessException(400, "仅 Markdown 文件支持配套图片", 400);
+        }
+        if (matchMode == null && hasCompanionParts(command)) {
+            throw new BusinessException(ErrorCode.MARKDOWN_LOCAL_ASSET_REQUIRES_CONTEXT);
+        }
 
-        // 同名分流：撞 failed 复用旧行重置 uploading；撞 uploading/success 拦截 400；无同名则新建。
-        DocumentOriginalFile record = resolveTargetRecord(userId, datasetId, originalFilename, suffix, file);
-
-        // 物化临时文件：趁请求期 MultipartFile 仍有效取得所有权，供请求结束后的异步线程使用（同卷 rename，≈免费）。
-        Path tempFile;
+        ManagedBundle managed = null;
+        DocumentOriginalFile record = null;
+        boolean submitted = false;
         try {
-            tempFile = tempStorage.materialize(file);
-        } catch (Exception e) {
-            // 物化失败：抛出后事务回滚，撤销刚落库的 uploading 记录，不残留在途产物。
-            log.error("Materialize upload temp file failed, userId={}, datasetId={}, fileName={}",
-                userId, datasetId, originalFilename, e);
-            throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
-        }
-
-        String objectKey = buildObjectKey(userId, datasetId, originalFilename);
-        DocumentUploadAsyncExecutor.UploadTask task = new DocumentUploadAsyncExecutor.UploadTask(
-            record.getId(), tempFile, objectKey, file.getContentType(), parseImmediately, userId);
-
-        // 事务提交后再提交异步任务，确保池线程能看到已提交的 uploading 记录；
-        // 若事务回滚（如后续异常）则清理已物化的临时文件，避免泄漏。
-        if (TransactionSynchronizationManager.isActualTransactionActive()
-            && TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    asyncExecutor.submit(task);
-                }
-
-                @Override
-                public void afterCompletion(int status) {
-                    if (status != TransactionSynchronization.STATUS_COMMITTED) {
-                        tempStorage.delete(tempFile);
+            managed = tempStorage.materializeBundle(
+                file, command.assets(), command.assetRelativePaths());
+            PreflightPlan plan = null;
+            String recordFilename = originalFilename;
+            if (markdown) {
+                if (matchMode == null) {
+                    if (!markdownAssetProcessor.scan(managed.sourceFile()).isEmpty()) {
+                        throw new BusinessException(ErrorCode.MARKDOWN_LOCAL_ASSET_REQUIRES_CONTEXT);
                     }
+                } else {
+                    plan = markdownAssetProcessor.preflight(
+                        managed.sourceFile(),
+                        originalFilename,
+                        matchMode,
+                        command.documentPath(),
+                        managed.assets(),
+                        command.assetInventoryPaths());
+                    recordFilename = plan.documentPath();
                 }
-            });
-        } else {
+            }
+
+            record = recordWriter.prepareRecord(
+                userId, datasetId, recordFilename, suffix, file.getSize(), file.getContentType());
+            DocumentUploadAsyncExecutor.UploadTask task;
+            DocumentFileDTO dto = toDTO(record);
+            if (plan == null) {
+                String objectKey = buildObjectKey(userId, datasetId, recordFilename);
+                task = DocumentUploadAsyncExecutor.UploadTask.legacy(
+                    record.getId(), userId, command.parseImmediately(), managed,
+                    objectKey, file.getContentType());
+            } else {
+                MarkdownUploadBundle bundle = markdownAssetProcessor.finalizeForFile(
+                    plan, userId, datasetId, record.getId(), managed.directory());
+                dto.setAssetSummary(bundle.summary());
+                task = DocumentUploadAsyncExecutor.UploadTask.markdown(
+                    record.getId(), userId, command.parseImmediately(), managed, bundle);
+            }
             asyncExecutor.submit(task);
+            submitted = true;
+            return dto;
+        } catch (IOException e) {
+            if (record != null) {
+                statusWriter.markUploadFailed(record.getId(), "文件上传失败，请稍后重试");
+            }
+            throw new BusinessException(500, "文件上传失败，请稍后重试", 500);
+        } catch (RuntimeException e) {
+            if (record != null) {
+                statusWriter.markUploadFailed(record.getId(), "文件上传失败，请稍后重试");
+            }
+            throw e;
+        } finally {
+            if (!submitted) {
+                tempStorage.deleteAll(managed);
+            }
         }
-        return toDTO(record);
     }
 
-    /**
-     * 同名分流（受唯一约束 uk_dataset_user_name_suffix 约束，只能复用旧行、不能插新行）：
-     * <ul>
-     *   <li>撞到的同名记录为 failed → 守卫更新复用该行（failed→uploading、清空上次产物/原因、刷新元数据）；</li>
-     *   <li>撞到 uploading/success → 抛 400 拦截；</li>
-     *   <li>无同名 → 插入新的 uploading 记录（并发同名由唯一约束兜底为 400）。</li>
-     * </ul>
-     */
-    private DocumentOriginalFile resolveTargetRecord(
-            Long userId, Long datasetId, String originalFilename, String suffix, MultipartFile file) {
-        DocumentOriginalFile existing = documentOriginalFileMapper.selectOne(
-            new LambdaQueryWrapper<DocumentOriginalFile>()
-                .eq(DocumentOriginalFile::getUserId, userId)
-                .eq(DocumentOriginalFile::getDatasetId, datasetId)
-                .eq(DocumentOriginalFile::getOriginalFilename, originalFilename)
-                .eq(DocumentOriginalFile::getFileSuffix, suffix));
-        if (existing != null) {
-            if (!UPLOAD_FAILED.equals(existing.getUploadStatus())) {
-                throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
-            }
-            int reused = documentOriginalFileMapper.update(null, new LambdaUpdateWrapper<DocumentOriginalFile>()
-                .eq(DocumentOriginalFile::getId, existing.getId())
-                .eq(DocumentOriginalFile::getUploadStatus, UPLOAD_FAILED)
-                .set(DocumentOriginalFile::getUploadStatus, UPLOADING)
-                .set(DocumentOriginalFile::getIsUploadSuccess, false)
-                .set(DocumentOriginalFile::getFailureReason, null)
-                .set(DocumentOriginalFile::getObjectKey, null)
-                .set(DocumentOriginalFile::getFileUrl, null)
-                .set(DocumentOriginalFile::getFileSize, file.getSize())
-                .set(DocumentOriginalFile::getContentType, file.getContentType())
-                .set(DocumentOriginalFile::getBucketName, ossService.getBucketName(OssSavePlaceEnum.RAW)));
-            if (reused == 0) {
-                // 并发：旧行已被他人复用或改状态。
-                throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
-            }
-            existing.setUploadStatus(UPLOADING);
-            existing.setIsUploadSuccess(false);
-            existing.setFailureReason(null);
-            existing.setObjectKey(null);
-            existing.setFileUrl(null);
-            existing.setFileSize(file.getSize());
-            existing.setContentType(file.getContentType());
-            return existing;
-        }
-        DocumentOriginalFile record = new DocumentOriginalFile();
-        record.setDatasetId(datasetId);
-        record.setUserId(userId);
-        record.setOriginalFilename(originalFilename);
-        record.setFileSuffix(suffix);
-        record.setFileSize(file.getSize());
-        record.setContentType(file.getContentType());
-        record.setBucketName(ossService.getBucketName(OssSavePlaceEnum.RAW));
-        record.setUploadStatus(UPLOADING);
-        record.setIsUploadSuccess(false);
-        try {
-            documentOriginalFileMapper.insert(record);
-        } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400);
-        }
-        return record;
+    private boolean hasAssetContext(DocumentFileUploadCommand command) {
+        return StringUtils.hasText(command.matchMode()) || StringUtils.hasText(command.documentPath())
+            || hasCompanionParts(command) || !command.assetInventoryPaths().isEmpty();
+    }
+
+    private boolean hasCompanionParts(DocumentFileUploadCommand command) {
+        return !command.assets().isEmpty() || !command.assetRelativePaths().isEmpty();
+    }
+
+    @Override
+    public DocumentFileCapabilitiesDTO getCapabilities() {
+        DocumentFileRuntimeConfig runtime = documentFileRuntimeConfigService.getCurrent();
+        DocumentFileCapabilitiesDTO dto = new DocumentFileCapabilitiesDTO();
+        dto.setFeatureEnabled(properties.isMarkdownAssetsEnabled());
+        dto.getDocument().setAllowedSuffixes(runtime.getAllowedSuffixes().stream().sorted().toList());
+        dto.getDocument().setMaxSizeBytes(runtime.getMaxSizeBytes());
+        dto.getImage().setExtensions(List.of("jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff"));
+        dto.getImage().setMimeTypes(List.of(
+            "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"));
+        dto.getImage().setMaxAssetBytes(properties.getMarkdownAssetMaxBytes());
+        dto.getImage().setMaxAssetCount(properties.getMarkdownAssetMaxCount());
+        dto.getImage().setMaxInventoryCount(properties.getMarkdownInventoryMaxCount());
+        dto.getImage().setMaxBundleBytes(properties.getMarkdownBundleMaxBytes());
+        dto.getImage().setMaxPathLength(properties.getMarkdownAssetPathMaxLength());
+        dto.getImage().setMaxDocumentPathLength(properties.getMarkdownDocumentPathMaxLength());
+        dto.getZip().setMaxCompressedBytes(properties.getZipMaxCompressedBytes());
+        dto.getZip().setMaxEntries(properties.getZipMaxEntries());
+        dto.getZip().setMaxExpandedBytes(properties.getZipMaxExpandedBytes());
+        dto.getZip().setMaxRatio(properties.getZipMaxRatio());
+        dto.getZip().setMaxDepth(properties.getZipMaxDepth());
+        dto.setMatchModes(List.of("FULL_PATH", "SHALLOW_BASENAME"));
+        return dto;
     }
 
     @Override
@@ -214,7 +226,12 @@ public class DocumentFileServiceImpl implements DocumentFileService {
      * 查询文档文件详情。
      */
     public DocumentFileDTO detail(Long userId, Long fileId) {
-        return toDTO(getOwnedFile(userId, fileId));
+        DocumentOriginalFile record = getOwnedFile(userId, fileId);
+        DocumentFileDTO dto = toDTO(record);
+        if (MarkdownAssetObjectKeys.isV1NormalizedSource(record.getObjectKey())) {
+            dto.setAssetSummary(manifestStore.readSummary(record));
+        }
+        return dto;
     }
 
     @Override
@@ -382,19 +399,6 @@ public class DocumentFileServiceImpl implements DocumentFileService {
             }
         }
         return false;
-    }
-
-    /**
-     * 规范化内部下载地址的基础 URL。
-     */
-    private String normalizeBaseUrl(String value) {
-        if (!StringUtils.hasText(value)) {
-            return "http://localhost:8080";
-        }
-        while (value.endsWith("/")) {
-            value = value.substring(0, value.length() - 1);
-        }
-        return value;
     }
 
     /**

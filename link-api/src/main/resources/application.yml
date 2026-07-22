@@ -74,3 +74,15 @@ tolink:
     max-size-bytes: ${TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES:20971520}
     hard-max-size-bytes: ${TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES:104857600}
     allowed-suffixes: ${TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES:md,markdown,pdf,docx,txt}
+    markdown-assets-enabled: ${TOLINK_MARKDOWN_ASSETS_ENABLED:true}
+    markdown-asset-max-bytes: ${TOLINK_MARKDOWN_ASSET_MAX_BYTES:20971520}
+    markdown-asset-max-count: ${TOLINK_MARKDOWN_ASSET_MAX_COUNT:200}
+    markdown-inventory-max-count: ${TOLINK_MARKDOWN_INVENTORY_MAX_COUNT:5000}
+    markdown-bundle-max-bytes: ${TOLINK_MARKDOWN_BUNDLE_MAX_BYTES:83886080}
+    markdown-asset-path-max-length: ${TOLINK_MARKDOWN_ASSET_PATH_MAX_LENGTH:512}
+    markdown-document-path-max-length: ${TOLINK_MARKDOWN_DOCUMENT_PATH_MAX_LENGTH:255}
+    zip-max-compressed-bytes: ${TOLINK_ZIP_MAX_COMPRESSED_BYTES:104857600}
+    zip-max-entries: ${TOLINK_ZIP_MAX_ENTRIES:5000}
+    zip-max-expanded-bytes: ${TOLINK_ZIP_MAX_EXPANDED_BYTES:524288000}
+    zip-max-ratio: ${TOLINK_ZIP_MAX_RATIO:100}
+    zip-max-depth: ${TOLINK_ZIP_MAX_DEPTH:20}
