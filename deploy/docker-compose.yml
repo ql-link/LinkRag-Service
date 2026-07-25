@@ -13,7 +13,7 @@ services:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       - RECALL_SESSION_STREAM_BASE_URL=${RECALL_SESSION_STREAM_BASE_URL:-http://117.72.214.40:8000}
       # 管理端日志查询代理访问 Loki；云服务器默认走主机 VPN 地址，可覆盖为同网络内的 http://tolink-loki:3100
-      - OBSERVABILITY_LOKI_BASE_URL=${OBSERVABILITY_LOKI_BASE_URL:-http://${HOST_VPN_IP:-100.86.10.52}:3100}
+      - OBSERVABILITY_LOKI_BASE_URL=${OBSERVABILITY_LOKI_BASE_URL:-http://tolink-loki:3100}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
