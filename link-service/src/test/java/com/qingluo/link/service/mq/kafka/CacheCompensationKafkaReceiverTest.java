@@ -17,7 +17,6 @@ class CacheCompensationKafkaReceiverTest {
 
     @Mock
     private CacheCompensationMQ.MQReceiver receiver;
-
     @InjectMocks
     private CacheCompensationKafkaReceiver kafkaReceiver;
 

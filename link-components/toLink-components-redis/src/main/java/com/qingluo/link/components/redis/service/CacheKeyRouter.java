@@ -2,8 +2,6 @@ package com.qingluo.link.components.redis.service;
 
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-
 /**
  * 缓存 key 路由器。
  *
@@ -13,7 +11,24 @@ import java.util.List;
 @Component
 public class CacheKeyRouter {
 
-    public List<String> route(CacheEvictTarget target, String identifier) {
-        return List.of();
+    public CacheRoute route(CacheEvictTarget target, String identifier) {
+        if (target == null) {
+            throw new IllegalArgumentException("Cache target is required");
+        }
+        return switch (target) {
+            case DATASET_PARSE_CONFIG -> CacheRoute.of(
+                "cache:dataset:parse-config:{dataset-config:" + required(identifier) + "}");
+            case USER_PROFILE -> CacheRoute.of("cache:user:profile:" + required(identifier));
+            case PUBLISHED_BLOG_INDEX -> CacheRoute.of("cache:blog:published-index");
+            case LLM_RUNTIME_CONFIG -> CacheRoute.of(
+                "cache:llm:runtime-config:{llm-runtime:" + required(identifier) + "}");
+        };
+    }
+
+    private String required(String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            throw new IllegalArgumentException("Cache route identifier is required");
+        }
+        return identifier;
     }
 }

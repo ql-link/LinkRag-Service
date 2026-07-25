@@ -26,6 +26,8 @@ import com.qingluo.link.model.dto.entity.DocumentOriginalFile;
 import com.qingluo.link.model.dto.entity.DocumentParseFile;
 import com.qingluo.link.model.dto.entity.DocumentParsePipeline;
 import com.qingluo.link.model.dto.entity.DocumentParsedLog;
+import com.qingluo.link.model.dto.response.FileParseSubmitDTO;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetManifestStore;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,7 @@ class DocumentParseTaskServiceImplTest {
     @Mock private DocumentParsePipelineMapper documentParsePipelineMapper;
     @Mock private org.springframework.beans.factory.ObjectProvider<MQSend> mqSendProvider;
     @Mock private MQSend mqSend;
+    @Mock private MarkdownAssetManifestStore manifestStore;
     @InjectMocks private DocumentParseTaskServiceImpl service;
 
     @BeforeAll
@@ -94,6 +97,7 @@ class DocumentParseTaskServiceImplTest {
         file.setFileSuffix("txt");
         given(documentOriginalFileMapper.selectOne(any())).willReturn(file);
         given(documentParseFileMapper.selectOne(any())).willReturn(parseFile(null));
+        given(documentParseFileMapper.update(any(), any())).willReturn(1);
         given(mqSendProvider.getIfAvailable()).willReturn(mqSend);
 
         service.submitManualParse(401L, 101L);
@@ -173,37 +177,42 @@ class DocumentParseTaskServiceImplTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"PENDING", "PROCESSING"})
-    void Should_Reject_When_PipelineRunning(String status) {
+    void Should_ReturnSameTask_When_PipelineRunning(String status) {
         givenOwnedUploadedFile();
         given(documentParseFileMapper.selectOne(any())).willReturn(parseFile("task-run"));
         given(documentParsedLogMapper.selectOne(any())).willReturn(log("task-run", "rag-md", "parsed/x.md"));
         given(documentParsePipelineMapper.selectOne(any())).willReturn(pipeline(status));
 
-        assertThatThrownBy(() -> service.submitManualParse(401L, 101L))
-            .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("正在解析中");
+        FileParseSubmitDTO result = service.submitManualParse(401L, 101L);
 
+        assertThat(result.getTaskId()).isEqualTo("task-run");
+        assertThat(result.getAlreadyRunning()).isTrue();
         verify(documentParseFileMapper, never()).update(any(), any());
+        verify(mqSend, never()).send(any());
     }
 
     @Test
-    void Should_Reject_When_PointerAheadOfPythonLog() {
+    void Should_ReturnSameTask_When_PointerAheadOfPythonLog() {
         givenOwnedUploadedFile();
         given(documentParseFileMapper.selectOne(any())).willReturn(parseFile("task-new"));
         // 指针已设但 Python 日志未到 → 运行中
         given(documentParsedLogMapper.selectOne(any())).willReturn(null);
 
-        assertThatThrownBy(() -> service.submitManualParse(401L, 101L))
-            .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("正在解析中");
+        FileParseSubmitDTO result = service.submitManualParse(401L, 101L);
 
+        assertThat(result.getTaskId()).isEqualTo("task-new");
+        assertThat(result.getAlreadyRunning()).isTrue();
         verify(documentParseFileMapper, never()).update(any(), any());
+        verify(mqSend, never()).send(any());
     }
 
     // ===== helpers =====
 
     private void givenOwnedUploadedFile() {
         given(documentOriginalFileMapper.selectOne(any())).willReturn(ownedFile());
+        org.mockito.Mockito.lenient()
+            .when(documentParseFileMapper.update(any(), any()))
+            .thenReturn(1);
     }
 
     private void givenPdfParserBackend(String backend) {

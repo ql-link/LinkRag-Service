@@ -63,8 +63,8 @@ class DatasetControllerTest {
         jdbcTemplate.update("DELETE FROM document_original_file");
         jdbcTemplate.update("DELETE FROM dataset_parse_config");
         jdbcTemplate.update("DELETE FROM dataset");
-        jdbcTemplate.update("DELETE FROM llm_user_config");
-        jdbcTemplate.update("DELETE FROM llm_system_preset");
+        jdbcTemplate.update("DELETE FROM llm_capability_default");
+        jdbcTemplate.update("DELETE FROM llm_model_config");
         jdbcTemplate.update("DELETE FROM sys_user");
 
         SysUser user = new SysUser();
@@ -76,33 +76,25 @@ class DatasetControllerTest {
         user.setRole("USER");
         user.setStatus(1);
         sysUserMapper.insert(user);
-        insertEmbeddingConfig(SPARSE_CONFIG_ID, TEST_USER_ID, "qwen-sparse", "SPARSE_EMBEDDING");
-        insertEmbeddingConfig(DENSE_CONFIG_ID, TEST_USER_ID, "text-embedding-v4", "EMBEDDING");
-        insertSystemPreset(SYSTEM_SPARSE_CONFIG_ID, "doubao-embedding-vision-251215", "SPARSE_EMBEDDING");
-        insertSystemPreset(SYSTEM_DENSE_CONFIG_ID, "BAAI/bge-m3", "EMBEDDING");
+        insertConfig(SPARSE_CONFIG_ID, "USER", TEST_USER_ID, "qwen-sparse", "SPARSE_EMBEDDING");
+        insertConfig(DENSE_CONFIG_ID, "USER", TEST_USER_ID, "text-embedding-v4", "EMBEDDING");
+        insertConfig(SYSTEM_SPARSE_CONFIG_ID, "SYSTEM", 0L,
+            "doubao-embedding-vision-251215", "SPARSE_EMBEDDING");
+        insertConfig(SYSTEM_DENSE_CONFIG_ID, "SYSTEM", 0L, "BAAI/bge-m3", "EMBEDDING");
 
         StpUtil.login(TEST_USER_ID);
         token = StpUtil.getTokenValue();
     }
 
-    private void insertEmbeddingConfig(Long id, Long userId, String modelName, String capability) {
+    private void insertConfig(Long id, String scope, Long ownerUserId,
+                              String modelName, String capability) {
         jdbcTemplate.update("""
-            INSERT INTO llm_user_config (
-                id, user_id, provider_id, provider_type, api_key, api_base_url, protocol,
-                model_name, capability, is_active, is_default, is_system_preset
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, false)
-            """, id, userId, 1L, "aliyun", "encrypted-key",
-            "https://example.com/embeddings", "openai", modelName, capability);
-    }
-
-    private void insertSystemPreset(Long id, String modelName, String capability) {
-        jdbcTemplate.update("""
-            INSERT INTO llm_system_preset (
-                id, provider_id, model_name, display_name, capability, provider_type,
-                protocol, api_base_url, api_key, is_active, is_default
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, true)
-            """, id, 1L, modelName, modelName, capability, "linkrag",
-            "openai", "https://example.com/embeddings", "system-key");
+            INSERT INTO llm_model_config (
+                id, scope, owner_user_id, provider_id, provider_type, api_key, api_base_url,
+                protocol, model_name, display_name, capability, is_active, snapshot_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, 1)
+            """, id, scope, ownerUserId, 1L, "aliyun", "encrypted-key",
+            "https://example.com/embeddings", "openai", modelName, modelName, capability);
     }
 
     @Test
@@ -256,8 +248,8 @@ class DatasetControllerTest {
 
     @Test
     @Order(7)
-    @DisplayName("创建数据集支持 LinkRag 系统预设向量模型")
-    void Should_CreateDataset_When_UseSystemPresetEmbeddingConfigs() throws Exception {
+    @DisplayName("创建数据集支持 SYSTEM 范围向量配置")
+    void Should_CreateDataset_When_UseSystemEmbeddingConfigs() throws Exception {
         String requestJson = """
             {"name":"系统预设向量知识库","description":"使用系统预设","sparse_embedding_config_id":99893,"dense_embedding_config_id":99894}
             """;
@@ -276,17 +268,13 @@ class DatasetControllerTest {
             TEST_USER_ID,
             "系统预设向量知识库"
         );
-        String sparseSource = jdbcTemplate.queryForObject(
-            "SELECT sparse_embedding_config_source FROM dataset_parse_config WHERE dataset_id = ?",
-            String.class,
-            systemDatasetId
-        );
-        String denseSource = jdbcTemplate.queryForObject(
-            "SELECT dense_embedding_config_source FROM dataset_parse_config WHERE dataset_id = ?",
-            String.class,
-            systemDatasetId
-        );
-        assertThat(sparseSource).isEqualTo("SYSTEM");
-        assertThat(denseSource).isEqualTo("SYSTEM");
+        Long sparseConfigId = jdbcTemplate.queryForObject(
+            "SELECT sparse_embedding_config_id FROM dataset_parse_config WHERE dataset_id = ?",
+            Long.class, systemDatasetId);
+        Long denseConfigId = jdbcTemplate.queryForObject(
+            "SELECT dense_embedding_config_id FROM dataset_parse_config WHERE dataset_id = ?",
+            Long.class, systemDatasetId);
+        assertThat(sparseConfigId).isEqualTo(SYSTEM_SPARSE_CONFIG_ID);
+        assertThat(denseConfigId).isEqualTo(SYSTEM_DENSE_CONFIG_ID);
     }
 }

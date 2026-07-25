@@ -9,14 +9,19 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.MDC;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
+import org.springframework.util.concurrent.ListenableFuture;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class KafkaMQSendTest {
 
@@ -49,6 +54,35 @@ class KafkaMQSendTest {
 
         ProducerRecord<String, String> record = sentRecord(kafkaTemplate);
         assertThat(header(record, TraceHeaders.TRACE_ID_HEADER)).isEqualTo("trace-explicit");
+    }
+
+    @Test
+    void confirmed_send_waits_for_broker_result() throws Exception {
+        KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
+        @SuppressWarnings("unchecked")
+        ListenableFuture<SendResult<String, String>> future = mock(ListenableFuture.class);
+        when(kafkaTemplate.send(org.mockito.ArgumentMatchers.any(ProducerRecord.class))).thenReturn(future);
+        when(future.get()).thenReturn(mock(SendResult.class));
+        KafkaMQSend sender = new KafkaMQSend(kafkaTemplate);
+
+        sender.sendConfirmed(new TestMQ(Collections.emptyMap()));
+
+        verify(future).get();
+    }
+
+    @Test
+    void confirmed_send_propagates_async_broker_failure() throws Exception {
+        KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
+        @SuppressWarnings("unchecked")
+        ListenableFuture<SendResult<String, String>> future = mock(ListenableFuture.class);
+        when(kafkaTemplate.send(org.mockito.ArgumentMatchers.any(ProducerRecord.class))).thenReturn(future);
+        when(future.get()).thenThrow(new ExecutionException(new RuntimeException("broker rejected")));
+        KafkaMQSend sender = new KafkaMQSend(kafkaTemplate);
+
+        assertThatThrownBy(() -> sender.sendConfirmed(new TestMQ(Collections.emptyMap())))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("confirmed send failed")
+            .hasRootCauseMessage("broker rejected");
     }
 
     private ProducerRecord<String, String> sentRecord(KafkaTemplate<String, String> kafkaTemplate) {

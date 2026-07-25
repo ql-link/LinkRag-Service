@@ -1,7 +1,6 @@
 package com.qingluo.link.api.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SysUser;
@@ -15,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,16 +23,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * ConfigController（LLM 两步配置）真实集成测试。
+ * ConfigController 统一 LLM 配置真实集成测试。
  *
  * <h2>测试链路</h2>
- * <p>MockMvc → Controller → UserLLMConfigService → Mapper → H2；API Key 经真实 AES-256-GCM 加密。</p>
+ * <p>MockMvc → Controller → 统一配置服务 → Mapper → H2；API Key 经真实 AES-256-GCM 加密。</p>
  *
  * <h2>覆盖</h2>
  * <ul>
  *   <li>配置厂商展开整厂商模型 {@code POST /api/v1/llm/configs/setup-provider}</li>
- *   <li>按能力选生效 + 取回 {@code PUT /effective}、{@code GET /default}</li>
- *   <li>模型启停 {@code PATCH /toggle-model}</li>
+ *   <li>按 configId 设置与查询能力默认</li>
+ *   <li>按 configId 启停模型</li>
  *   <li>未登录访问校验</li>
  * </ul>
  *
@@ -55,9 +55,6 @@ class ConfigControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
     private SysUserMapper sysUserMapper;
 
     @Autowired
@@ -68,6 +65,9 @@ class ConfigControllerTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private static final Long TEST_USER_ID = 990001L;
     private static final Long TEST_PROVIDER_ID = 990002L;
@@ -135,8 +135,12 @@ class ConfigControllerTest {
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.data").isArray())
             .andExpect(jsonPath("$.data.length()").value(3))
-            .andExpect(jsonPath("$.data[0].source").value("USER"))
-            .andExpect(jsonPath("$.data[0].isSystemPreset").value(false))
+            .andExpect(jsonPath("$.data[0].configId").isNumber())
+            .andExpect(jsonPath("$.data[0].scope").value("USER"))
+            .andExpect(jsonPath("$.data[0].id").doesNotExist())
+            .andExpect(jsonPath("$.data[0].source").doesNotExist())
+            .andExpect(jsonPath("$.data[0].configSource").doesNotExist())
+            .andExpect(jsonPath("$.data[0].isSystemPreset").doesNotExist())
             // 用户配置快照携带从模型能力层复制的协议
             .andExpect(jsonPath("$.data[0].protocol").value("openai"));
     }
@@ -154,34 +158,50 @@ class ConfigControllerTest {
 
     @Test
     @Order(3)
-    @DisplayName("按能力选生效并取回生效配置 - PUT /effective + GET /default")
+    @DisplayName("按 configId 设置并查询能力默认")
     void Should_SelectEffective_When_PutEffective() throws Exception {
-        String requestJson = "{\"capability\":\"CHAT\",\"providerType\":\"openai_config\",\"modelName\":\"gpt-4\"}";
+        Long configId = jdbcTemplate.queryForObject(
+            "SELECT id FROM llm_model_config WHERE owner_user_id = ? AND model_name = 'gpt-4' AND capability = 'CHAT'",
+            Long.class, TEST_USER_ID);
+        String requestJson = "{\"configId\":" + configId + "}";
 
-        mockMvc.perform(put("/api/v1/llm/configs/effective")
+        mockMvc.perform(put("/api/v1/llm/defaults/CHAT")
                 .header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(200));
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.userDefaultConfigId").value(configId))
+            .andExpect(jsonPath("$.data.effectiveConfigId").value(configId));
 
-        mockMvc.perform(get("/api/v1/llm/configs/default")
-                .header("satoken", token)
-                .param("capability", "CHAT"))
+        mockMvc.perform(get("/api/v1/llm/defaults/CHAT")
+                .header("satoken", token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.source").value("USER"))
-            .andExpect(jsonPath("$.data.configId").isNumber())
-            .andExpect(jsonPath("$.data.modelName").value("gpt-4"))
-            .andExpect(jsonPath("$.data.providerType").value("openai_config"));
+            .andExpect(jsonPath("$.data.userDefaultConfigId").value(configId))
+            .andExpect(jsonPath("$.data.effectiveConfigId").value(configId));
     }
 
     @Test
     @Order(4)
-    @DisplayName("模型启停 - PATCH /toggle-model")
-    void Should_ToggleModel_When_PatchToggle() throws Exception {
-        String requestJson = "{\"providerType\":\"openai_config\",\"modelName\":\"gpt-35-turbo\",\"enabled\":false}";
+    @DisplayName("清除用户能力默认后不再保留覆盖指针")
+    void Should_ClearUserDefault() throws Exception {
+        mockMvc.perform(delete("/api/v1/llm/defaults/CHAT")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.userDefaultConfigId").doesNotExist())
+            .andExpect(jsonPath("$.data.effectiveConfigId").doesNotExist());
+    }
 
-        mockMvc.perform(patch("/api/v1/llm/configs/toggle-model")
+    @Test
+    @Order(5)
+    @DisplayName("按 configId 停用模型")
+    void Should_ToggleModel_When_PatchToggle() throws Exception {
+        Long configId = jdbcTemplate.queryForObject(
+            "SELECT id FROM llm_model_config WHERE owner_user_id = ? AND model_name = 'gpt-35-turbo' AND capability = 'CHAT'",
+            Long.class, TEST_USER_ID);
+        String requestJson = "{\"isActive\":false}";
+
+        mockMvc.perform(patch("/api/v1/llm/configs/{configId}/active", configId)
                 .header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
@@ -197,7 +217,7 @@ class ConfigControllerTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("未登录访问应返回 401")
     void Should_Return401_When_NotLoggedIn() throws Exception {
         mockMvc.perform(get("/api/v1/llm/configs"))

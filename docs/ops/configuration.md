@@ -11,7 +11,7 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 核心设计理念：
 
 1. **职责分离** — 公共配置与环境配置互不干扰
-2. **安全加固** — 配置文件中不保留任何真实密码、IP 地址或密钥
+2. **安全加固** — 可提交配置允许保存地址、端口和非敏感参数，不保留真实账号、密码或密钥
 3. **开发友好** — 克隆项目后零配置即可启动（local profile 使用 H2 内存数据库）
 4. **部署统一** — `application-dev.yml` / `application-prod.yml` 使用同一组环境变量注入连接和敏感值
 5. **命名规范** — 环境变量采用统一前缀命名，废弃历史别名
@@ -22,17 +22,20 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 |------|------|------|----------|
 | `application.yml` | `link-api/src/main/resources/` | 环境无关的公共基础配置 | 所有环境始终加载 |
 | `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + localhost Redis + local OSS + MQ none） | 本地开发，克隆即启动 |
+| `application-local-secrets.yml` | `config/` | 本机 local 账号、密码和密钥（Git/Docker 忽略） | local profile |
 | `application-dev.yml` | `link-api/src/main/resources/` | 开发服务器配置（环境变量引用，带开发默认容量） | 开发服务器 |
+| `application-dev-local.yml` | `config/` | 本机 dev 账号、密码和密钥（Git/Docker 忽略） | dev profile |
 | `application-prod.yml` | `link-api/src/main/resources/` | 生产环境配置（环境变量引用，带生产默认容量） | 生产环境 |
+| `application-prod-local.yml` | `config/` | 本机 prod 账号、密码和密钥（Git/Docker 忽略） | prod profile |
 | `schema.sql` | `link-api/src/main/resources/` | local profile 的 H2 初始化表结构 | 本地启动与 local profile 测试 |
 
 ### 各文件包含内容
 
 | 文件 | 包含 | 不包含 |
 |------|------|--------|
-| `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 限制、allowed-suffixes、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
-| `application-local.yml` | H2 内存数据库及 `classpath:schema.sql` 初始化、localhost Redis（无密码）、Kafka listener 禁用、MQ=none、OSS=local、固定测试密钥 | 真实服务器 IP、真实密码 |
-| `application-dev.yml` / `application-prod.yml` | 所有连接通过 `${ENV_VAR}` 引用；连接池/线程池/日志通过 `${ENV_VAR:default}` 控制 | 真实密码、真实 IP、废弃别名 |
+| `application.yml` | mybatis-plus 映射、sa-token、server.port、thread-pool 默认值、multipart 硬上限、文档上传默认值、业务缓存 TTL/容量、CDC 门禁、spring.application.name、logging.level | 数据源、Redis、Kafka、OSS 连接、敏感值、llm.api-key |
+| `application-local.yml` / `application-dev.yml` / `application-prod.yml` | 配置结构、地址、端口、库名和非敏感运行参数；敏感字段只保留 `${ENV_VAR}` 引用 | 真实账号、密码、JWT、API Key |
+| `config/application-*-local.yml` | 对应 profile 的账号、密码、JWT、API Key、Access Key | 地址、端口、容量等非敏感配置 |
 
 ## 3. Profile 加载优先级
 
@@ -44,15 +47,23 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 ├─────────────────────────────────────────────────────────┤
 │  1. application.yml          ← 基础层，始终加载           │
 │  2. application-{profile}.yml ← Profile 层，覆盖同名属性  │
-│  3. 环境变量 / 系统属性        ← 最高优先级，覆盖所有文件   │
+│  3. config/application-*-local.yml ← 本机密钥覆盖（可选）  │
+│  4. 环境变量 / 系统属性        ← 最高优先级，覆盖所有文件   │
 └─────────────────────────────────────────────────────────┘
 ```
+
+`application-dev.yml` 和 `application-prod.yml` 通过 `spring.config.import` 分别可选
+加载仓库根目录下的 `config/application-dev-local.yml` 与
+`config/application-prod-local.yml`。本地文件只保存对应环境的密钥，已被 Git 和
+Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或服务器环境变量仍具有
+更高优先级，可直接覆盖这两层文件。
 
 ### 覆盖机制说明
 
 - `application.yml` 中定义了 `spring.profiles.active: ${SPRING_PROFILES_ACTIVE:local}`，默认激活 `local` profile
 - 当 profile 为 `local` 时，`application-local.yml` 中的配置覆盖 `application.yml` 的同名属性
 - 当 profile 为 `dev` / `prod` 时，对应 `application-dev.yml` / `application-prod.yml` 覆盖 `application.yml` 的同名属性
+- 每个 profile 文件通过 `spring.config.import` 可选导入 `config/` 下对应的 local 密钥文件
 - 环境变量始终具有最高优先级，可覆盖任何文件中的配置值
 
 ### 示例
@@ -151,9 +162,26 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `DOCUMENT_FILE_INTERNAL_BASE_URL` | 内部服务访问地址 | 否 | `http://tolink-service:8080` | `http://localhost:8080` |
 | `DOCUMENT_FILE_SERVICE_TOKEN` | 内部服务 Token | 否 | 空 | `your-service-token-here` |
 | `TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES` | 单文件上传大小上限（字节） | 否 | `20971520` | `10485760` |
+| `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES` | 管理员动态配置允许的硬上限（字节） | 否 | `104857600` | `104857600` |
 | `TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES` | 允许上传的后缀列表（Spring Boot 集合绑定格式） | 否 | `md,markdown,pdf,docx,txt` | `pdf,md` |
+| `DOCUMENT_FILE_HARD_MAX_SIZE` | Spring multipart 单文件硬上限 | 否 | `100MB` | `100MB` |
+| `DOCUMENT_FILE_HARD_MAX_REQUEST_SIZE` | Spring multipart 请求硬上限 | 否 | `101MB` | `101MB` |
+| `TOLINK_MARKDOWN_ASSETS_ENABLED` | Markdown 配套图片资源包开关 | 否 | `true` | `true` |
+| `TOLINK_MARKDOWN_ASSET_MAX_BYTES` | 单张图片最大字节数 | 否 | `20971520` | `10485760` |
+| `TOLINK_MARKDOWN_ASSET_MAX_COUNT` | 单资源包最大图片数 | 否 | `200` | `100` |
+| `TOLINK_MARKDOWN_INVENTORY_MAX_COUNT` | 虚拟树目录清单最大条目数 | 否 | `5000` | `3000` |
+| `TOLINK_MARKDOWN_BUNDLE_MAX_BYTES` | Markdown 与配套图片总字节上限 | 否 | `83886080` | `83886080` |
+| `TOLINK_MARKDOWN_ASSET_PATH_MAX_LENGTH` | 图片相对路径最大字符数 | 否 | `512` | `512` |
+| `TOLINK_MARKDOWN_DOCUMENT_PATH_MAX_LENGTH` | 文档相对路径最大字符数 | 否 | `255` | `255` |
+| `TOLINK_ZIP_MAX_COMPRESSED_BYTES` | Web ZIP 压缩文件上限（capabilities 下发） | 否 | `104857600` | `104857600` |
+| `TOLINK_ZIP_MAX_ENTRIES` | ZIP 最大条目数 | 否 | `5000` | `5000` |
+| `TOLINK_ZIP_MAX_EXPANDED_BYTES` | ZIP 最大展开字节数 | 否 | `524288000` | `524288000` |
+| `TOLINK_ZIP_MAX_RATIO` | ZIP 单条目最大压缩比 | 否 | `100` | `100` |
+| `TOLINK_ZIP_MAX_DEPTH` | ZIP 最大目录深度 | 否 | `20` | `20` |
 
-上传大小和后缀以 `DocumentFileProperties` 为唯一事实来源，不写 MySQL 或 Redis。修改部署变量后需要重启或重新发布实例；管理端 `GET /api/v1/admin/document-file-config` 仅用于查看当前实例绑定值。
+`DocumentFileProperties` 提供部署默认值和管理员可修改范围；管理员通过 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入 Redis `runtime:document-file:upload-config`，不设置 TTL。Redis key 缺失时使用部署默认值，故修改默认环境变量仍需重启所有实例。`DOCUMENT_FILE_HARD_MAX_SIZE`、网关 body 上限和反向代理上限必须不低于 `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES`。
+
+多实例默认值由无 TTL key `runtime:document-file:default-fingerprint` 校验。受控修改部署默认值时，应先完成所有实例配置收敛，再删除该 fingerprint key，让新版本实例重新建立指纹；滚动过程中指纹不一致会令动态 PUT 返回 503，避免不同实例接受不同后缀/大小边界。不要删除 `runtime:document-file:upload-config`，除非明确要撤销管理员覆盖并回到部署默认值。
 
 ### 4.11 LLM（LLM_*）
 
@@ -190,7 +218,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `LOG_LEVEL` | 应用日志级别（`application.yml` 已接 `${LOG_LEVEL:info}`，对 `com.qingluo.link` 生效） | 否 | `info` | `debug`（本地排查） |
 | `SQL_LOG_LEVEL` | Mapper SQL 日志级别（SLF4J） | 否 | `info` | `debug`（排查）/ `info`（生产） |
 | `LOG_PATH` | JSON Lines 日志输出目录（`logback-spring.xml` 按天文件夹滚动、保留 7 天；Docker 部署挂载到宿主） | 否 | `logs` | `/app/logs` |
-| `OBSERVABILITY_LOKI_BASE_URL` | Java 管理端日志查询代理访问 Loki 的内网地址；不应暴露给前端或公网 | 否 | `http://localhost:3100` | `http://100.86.10.52:3100` |
+| `OBSERVABILITY_LOKI_BASE_URL` | Java 管理端日志查询代理访问 Loki 的内网地址；不应暴露给前端或公网 | 否 | `http://localhost:3100` | `http://tolink-loki:3100` |
 
 **链路追踪（trace_id）**：`link-observability` 提供 `TraceIdFilter` / `TraceContext` / `MdcTaskDecorator` / `TraceHeaders`。`TraceIdFilter` 为每个 HTTP 请求建立 `trace_id` 写入 MDC（优先复用上游 `X-Trace-Id` 头，缺失或非法则新建，并回写响应头）；异步线程池经 `MdcTaskDecorator` 透传。MQ 生产侧由 `MQSend` 适配层把当前 MDC `trace_id` 写入 `X-Trace-Id` header；Kafka 消费入口读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复 MDC，缺失或非法时自建。日志输出为 JSON Lines，Java 顶层字段包括 `time` / `level` / `service` / `host` / `pid` / `trace_id` / `logger_name` / `message` / `exception`。
 
@@ -210,7 +238,7 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 |------|------|----------|--------|
 | `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致） | 是 | 空 |
 | `RECALL_SESSION_JWT_EXP_SECONDS` | session token 有效期（秒），Python 强制校验 `exp` | 否 | `30` |
-| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python RAG 流式问答地址（公网/网关），用于拼接响应 `streamUrl = base + /api/v1/rag/stream`（LINK-138：Python 端点由 `/api/v1/recall/stream` 改名） | 否 | `http://localhost:8000` |
+| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python RAG 流式问答地址（公网/网关），用于拼接响应 `streamUrl = base + /api/v1/rag/stream`（LINK-138：Python 端点由 `/api/v1/recall/stream` 改名） | 否 | 本地 `http://localhost:8000`；生产 `https://linkrag.cn` |
 
 > `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空时直接 fail-fast，因此启用本服务必须配置一个非空 session 密钥。
 >
@@ -232,7 +260,12 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
 | `tolink.cache-consistency.null-cache-ttl-seconds` | 空值缓存 TTL（秒） | `60` | 读保护使用 |
 | `tolink.cache-consistency.ttl-jitter-seconds` | TTL 抖动上限（秒） | `300` | 读保护使用 |
 | `tolink.cache-consistency.load-wait-ms` | 并发回源等待时间（毫秒） | `50` | 读保护使用 |
+| `tolink.cache-consistency.load-lock-ttl-ms` | 跨实例回源锁 TTL（毫秒） | `5000` | 只协调回源，不承载业务数据 |
+| `tolink.cache-consistency.fence-ttl-seconds` | 写入 fence TTL（秒） | `2592000` | 默认 30 天；失效时续期 |
 | `tolink.cache-consistency.cdc.enabled` | 是否启用 CDC 桥接生产端 | `false` | 默认全环境关闭；线上接入 Canal 后置 `true` 开启 |
+| `tolink.cache-consistency.cdc.mappings-enabled` | 是否启用声明式表映射 | `false` | 消费者和路由验证后再开启 |
+| `tolink.cache-consistency.cdc.consumer-targets-ready` | 当前补偿消费者是否已识别全部新 target | `false` | 滚动发布门禁 |
+| `tolink.cache-consistency.cdc.database` | 允许处理的 Canal database | `${DB_NAME:tolink_rag_db}` | 其它数据库事件忽略 |
 | `tolink.cache-consistency.cdc.source-topic` | Canal 原始变更 topic | 无 | `cdc.enabled=true` 时必填，如 `tolink.canal.binlog` |
 | `tolink.cache-consistency.cdc.group-id` | CDC 桥接消费者消费组 | `tolink-cdc-bridge` | — |
 
@@ -243,7 +276,32 @@ Spring Boot 配置加载遵循 **后加载覆盖先加载** 的原则：
   - 无事务写路径：数据库写成功后立即执行
 - 只要数据库写已经成功，第一次删缓存失败都不会再改变请求结果，而是记录日志并依赖 `tolink.cache.evict` 补偿链路最终收敛。
 - CDC / MQ 驱动的第二次补偿删除仍保持强失败语义：删除失败时抛异常，由消费重试机制继续收敛。
-- CDC 桥接生产端（`tolink.cache-consistency.cdc.*`）默认 false 全环境关闭，主配置 `application.yml` 已显式声明 `cdc.enabled: false`；线上接入 Canal 后置 `true` 并配 `source-topic`。该开关同时控制桥接消费者与专用容器工厂的装配（共用同一条件），改这一个布尔即可整体开关 CDC。Canal 起始位点（首次从当前位点、不回放历史）属 Canal 容器侧运维配置，不在 Java 配置内。
+- CDC bridge 与补偿消费者的永久失败/重试耗尽会发布到 `<原 topic>.DLT`。上线前必须创建 `${tolink.cache-consistency.cdc.source-topic}.DLT` 和 `tolink.cache.evict.DLT`；DLT 发送使用 broker 确认，失败时源消费继续报错。运维修复原因后把 DLT 原 payload 重发到对应源 topic。
+- CDC 桥接生产端（`tolink.cache-consistency.cdc.*`）默认全环境关闭。上线应按“消费者识别新 target → bridge/mapping → 业务缓存”的顺序逐步开启。Canal 起始位点（首次从当前位点、不回放历史）属 Canal 容器侧运维配置，不在 Java 配置内。
+
+### 4.15.1 业务缓存（tolink.business-cache.*）
+
+| 配置项 | 用途 | 默认值 |
+|------|------|--------|
+| `tolink.business-cache.enabled` | 数据库镜像业务缓存总开关 | `true`；但还受 CDC readiness 门禁 |
+| `tolink.business-cache.dataset-parse-config-ttl` | Java/Python 共享的数据集解析配置原始快照基础 TTL | `7d` |
+| `tolink.business-cache.user-profile-ttl` | 用户资料基础 TTL | `1d` |
+| `tolink.business-cache.blog-published-index-ttl` | 公开博客发布索引基础 TTL | `1d` |
+| `tolink.business-cache.blog-published-index-capacity` | 固定发布索引最大条数 | `100` |
+
+`application.yml` 当前把 `tolink.cache-consistency.enabled=false`、CDC/mapping/consumer readiness 全部设为 false，因此即使 `business-cache.enabled=true`，数据库镜像缓存仍不会启用。完成 Kafka/Canal 和补偿消费者部署后再逐项打开。上传运行时配置不受该业务缓存总开关控制。
+
+Python 后续启用 `dataset_parse_config` 读缓存前，必须确认 Java `BusinessCacheHealthIndicator` 为 READY；共享 value 使用版本化原始快照，不能由部署配置改成 Java response 或 Python execution bundle。
+
+### 4.15.2 LLM 运行配置缓存（tolink.llm-runtime-cache.*）
+
+| 配置项 | 用途 | 默认值 |
+|------|------|--------|
+| `tolink.llm-runtime-cache.enabled` | 允许启用 Python `configId` 运行配置读缓存 | `false` |
+| `tolink.llm-runtime-cache.cdc-mapping-enabled` | 确认 Canal 已订阅并映射 `llm_model_config` | `false` |
+| `tolink.llm-runtime-cache.consumer-targets-ready` | 确认所有补偿消费者已识别 `llm_runtime_config` target | `false` |
+
+三个开关必须同时开启，且统一缓存一致性组件、CDC database/source topic 与 bridge 均已就绪。该门禁不依赖 `tolink.business-cache.enabled`：只有门禁 READY 时，Java 才允许事务提交后首删和 `llm_model_config` CDC 映射发出新 target；Python 负责运行配置读取与回源。发布时先升级补偿消费者，再启用 CDC 映射，最后启用 Python 读缓存；`LlmRuntimeCacheHealthIndicator` 暴露具体未就绪原因。
 
 ## 5. 本地开发快速启动
 
@@ -281,25 +339,39 @@ The following profiles are active: local
 
 ## 6. 开发/生产环境部署
 
-开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`，两者都通过环境变量注入连接与敏感值。
+开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`。两者可安全提交，
+账号和密钥由 `config/` 下对应的 local 文件注入。
+
+`application-dev.yml` 的可提交默认值固定指向 Primary 开发环境：数据库
+`100.86.10.52:13306/tolink_rag_dev`，MinIO bucket 为 `tolink-dev-raw`、
+`tolink-dev-docs` 和 `tolink-dev-public`。`application-dev-local.yml` 只覆盖账号、密码、
+JWT 与 API Key，不应再依赖旧容器环境变量修正数据库名或 bucket 名。
 
 ### 部署步骤
 
 ```bash
-# 1. 复制环境变量模板
-cp .env.example .env
+# 1. 创建对应 profile 的本机密钥文件
+vim config/application-dev-local.yml
+# 或：vim config/application-prod-local.yml
+chmod 600 config/application-*-local.yml
 
-# 2. 编辑 .env，填入实际值
-vim .env
-
-# 3. 设置 profile
+# 2. 设置 profile
 # 开发服务器：SPRING_PROFILES_ACTIVE=dev
 # 生产环境：SPRING_PROFILES_ACTIVE=prod
 
-# 4. 加载环境变量并启动
-export $(grep -v '^#' .env | xargs)
+# 3. 从仓库根目录启动，基础 profile 会自动导入 config 下对应文件
 mvn spring-boot:run -pl link-api
 ```
+
+Docker/Jenkins 生产部署只把服务器上的
+`/opt/tolink/toLink-Service/config/application-prod-local.yml` 单文件挂载到容器
+`/app/config/application-prod-local.yml`。`application-prod.yml` 已打入镜像，不再挂载整个
+配置目录，避免遗留的 `application-prod.yml` 覆盖新版本。服务器环境变量仍可作为最高
+优先级覆盖项。
+
+同一份 Compose 也可用于 dev：同时设置 `SPRING_PROFILES_ACTIVE=dev`、
+`SERVICE_SECRET_CONFIG_FILE=/path/to/application-dev-local.yml` 和
+`SERVICE_SECRET_CONFIG_NAME=application-dev-local.yml` 即可；三个值必须属于同一 profile。
 
 ### 开发环境 vs 生产环境差异
 
@@ -370,7 +442,7 @@ services:
 
 ## 博客上传与权限配置
 
-- 博客正文和图片不设置业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用默认 multipart 限制为 20MB，需要支持更大文件时由部署环境调大。
+- 博客正文和图片不设置独立业务层大小上限，但仍受 `spring.servlet.multipart.max-file-size`、`spring.servlet.multipart.max-request-size`、网关、JVM 和 OSS 客户端限制。当前应用 multipart 硬上限默认 100MB/101MB。
 - 博客封面图片、编辑器上传的正文图片以及 Markdown 正文自动抓取的正文图片使用公开桶 `tolink-public`（`OssSavePlaceEnum.PUBLIC` 枚举），部署时必须对该桶配置匿名读策略（`mc anonymous set download tolink-public`）或公开反向代理。原 `tolink-blog` 专用桶已合并，存量对象不迁移、旧桶待服务稳定后删除。
 - Markdown 自动抓取远端正文图片时，单张图片业务上限为 10MB；仅允许 `http` / `https`、jpg/jpeg/png/gif/webp，拒绝 svg，并拦截 localhost、回环、私有网段、链路本地等地址。下载失败、超时、大小超限、类型不允许或安全校验失败时保留原 URL，不阻断导入/保存。
 - `.md` 内本地相对路径图片不会随单文件上传进入后端，需要改成 `http` / `https`、`data:image/*;base64`，或在编辑器中粘贴/上传正文图片。

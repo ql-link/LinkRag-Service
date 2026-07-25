@@ -3,6 +3,7 @@
 ## 查询能力
 
 - 数据集内文件列表：`GET /api/v1/datasets/{datasetId}/files`，按当前用户和数据集过滤，支持上传状态筛选。
+- 导入能力：`GET /api/v1/document-file-capabilities`，供 Web 对齐文档、图片与 ZIP 限制。
 - 全局最近文档：`GET /api/v1/files/recent`，按当前用户过滤所有数据集下的原始文档，使用 `created_at DESC, id DESC` 稳定排序并返回 `PageResult<DocumentFileDTO>`。
 
 ## 职责
@@ -19,11 +20,23 @@
 
 ## 上传配置来源
 
-文件大小上限和允许后缀直接来自 `DocumentFileProperties`（`tolink.document-file.max-size-bytes`、`tolink.document-file.allowed-suffixes`），不读 MySQL 或 Redis。`GET /api/v1/admin/document-file-config` 只读展示当前实例绑定值，动态修改 PATCH 已删除；部署配置变化需重启实例生效。
+上传限制按“Redis 管理员覆盖 → 实例最后有效快照 → 部署默认值”解析：
+
+- 部署默认值来自 `DocumentFileProperties`：`tolink.document-file.max-size-bytes`、`hard-max-size-bytes`、`allowed-suffixes`。
+- 管理员通过 `PUT /api/v1/admin/document-file-config` 完整替换 `maxSizeBytes` 和 `allowedSuffixes`；后端单次写入 `runtime:document-file:upload-config`，不设置 TTL。
+- `GET /api/v1/admin/document-file-config` 返回当前有效配置，以及管理员覆盖值的 `updatedBy` / `updatedAt`；使用部署默认值时二者为 `null`。
+- 历史 `PATCH` 不恢复，继续返回 405，避免部分字段更新造成跨实例中间态。
+- Redis key 缺失时直接使用部署默认值且不自动回填；Redis 故障或值损坏时，优先使用当前实例最近一次读到/写入的有效快照，否则使用部署默认值。
+- 管理员写 Redis 失败时接口返回 `DOCUMENT_FILE_CONFIG_UPDATE_FAILED(50003/503)`，本实例也不提前更新内存快照。
+- 管理员可选后缀必须属于部署配置声明的全集；动态大小不得超过 `hard-max-size-bytes`。应用 multipart/网关上限必须不低于该硬上限。
+
+上传配置不存 MySQL，不参与 CDC/binlog 映射。多实例部署通过 `runtime:document-file:default-fingerprint` 检查部署默认值是否一致。
 
 ## 上传异步化
 
-上传接口（`POST /api/v1/datasets/{datasetId}/files`）同步阶段只做鉴权、数据集归属、格式/大小/文件名校验、同名处理、物化临时文件、落 `uploading` 记录并**立即返回 `uploadStatus=UPLOADING`**；OSS 上传（原文件写入 RAW 私有桶 `tolink-rag-raw`，Java 写 / Python 只读，桶名落 `document_original_file.bucket_name` 并随解析任务 MQ 的 `source_bucket` 下发）、终态回写（`success`/`failed`）、`parseImmediately=true` 时的解析投递都移到 `documentUploadExecutor` 专用线程池，在事务提交后（afterCommit）异步执行。前端按 `uploadStatus` 轮询 list/detail 获取终态（**跨端依赖：前端需配合改为轮询**）。
+上传接口（`POST /api/v1/datasets/{datasetId}/files`）同步阶段先解析当前有效上传配置，再做鉴权、数据集归属、格式/大小/文件名校验、同名处理、物化临时文件、落 `uploading` 记录并**立即返回 `uploadStatus=UPLOADING`**；OSS 上传（原文件写入 RAW 私有桶 `tolink-rag-raw`，Java 写 / Python 只读，桶名落 `document_original_file.bucket_name` 并随解析任务 MQ 的 `source_bucket` 下发）、终态回写（`success`/`failed`）、`parseImmediately=true` 时的解析投递都移到 `documentUploadExecutor` 专用线程池，在事务提交后（afterCommit）异步执行。前端按 `uploadStatus` 轮询 list/detail 获取终态（**跨端依赖：前端需配合改为轮询**）。
+
+Markdown 本地图片有三种 Web 入口：ZIP 在浏览器安全解压后逐文档上传，完整文件夹由用户勾选文档，单文件可补充一个仅读取直接子级的图片文件夹。前两者使用 `FULL_PATH`，单文件使用 `SHALLOW_BASENAME`。Java 在创建记录前完成路径、引用语法、有限候选、图片 magic/MIME 与硬上限校验；创建或复用 fileId 后才生成哈希图片名、规范化 Markdown 和 manifest。上传顺序固定为删除旧 manifest → original → images → normalized → manifest，manifest 最后成功才允许回写 `UPLOAD_SUCCESS`。缺失/歧义/不支持格式写入 `assetSummary` 并暂停自动解析；手动解析须显式 `ignoreMissingAssets=true`，任务指针使用 CAS，竞争请求复用赢家 taskId。
 
 - **失败可见性**：OSS 失败/池满拒绝/`uploading` 超时都落 `failed` + `failureReason`，由轮询发现，不以上传接口 HTTP 错误暴露。
 - **同名重试**：受唯一约束 `uk_dataset_user_name_suffix` 约束，撞到的同名记录为 `failed` 则复用该行重置为 `uploading`（不插新行），为 `uploading`/`success` 则 400 拦截。

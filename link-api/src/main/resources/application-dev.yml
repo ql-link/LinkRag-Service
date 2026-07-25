@@ -1,0 +1,105 @@
+spring:
+  config:
+    import: optional:file:./config/application-dev-local.yml
+  datasource:
+    url: jdbc:mysql://${DB_HOST:100.86.10.52}:${DB_PORT:13306}/${DB_NAME:tolink_rag_dev}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectTimeout=3000&socketTimeout=5000
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      initial-size: 0
+      min-idle: 2
+      max-active: 8
+      max-wait: 3000
+      validation-query: SELECT 1
+      test-while-idle: true
+      test-on-borrow: true
+      test-on-return: false
+      keep-alive: true
+      time-between-eviction-runs-millis: 30000
+      min-evictable-idle-time-millis: 300000
+  redis:
+    host: ${REDIS_HOST:100.86.10.52}
+    port: ${REDIS_PORT:16379}
+    password: ${REDIS_PASSWORD}
+    database: ${REDIS_DB:0}
+    timeout: 2s
+    lettuce:
+      shutdown-timeout: 100ms
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: 1000ms
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:100.86.10.52:19092}
+    listener:
+      auto-startup: ${KAFKA_LISTENER_AUTO_STARTUP:true}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_PLAINTEXT}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:PLAIN}
+      sasl.jaas.config: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${KAFKA_SASL_USERNAME}"
+        password="${KAFKA_SASL_PASSWORD}";
+mybatis-plus:
+  configuration:
+    # 走 SLF4J，由日志级别控制是否打印 SQL（不再无条件 stdout 刷屏）
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+logging:
+  level:
+    # 默认 info 不打印 SQL；需要排查时设 SQL_LOG_LEVEL=debug 单独打开
+    com.qingluo.link.mapper: ${SQL_LOG_LEVEL:info}
+tolink:
+  mq:
+    vender: kafka
+    scan-base-packages:
+      - com.qingluo
+    kafka-auto-create-topics: true
+    kafka-topic-partitions: 1
+    kafka-topic-replicas: 1
+  oss:
+    service-type: ${OSS_SERVICE_TYPE:minio}
+    file-root-path: ${user.home}/.tolink/oss
+    public-base-url: /api/v1/oss-files/public
+    minio:
+      endpoint: ${MINIO_ENDPOINT:http://100.86.10.52:9000}
+      raw-bucket-name: ${MINIO_RAW_BUCKET:tolink-dev-raw}
+      private-bucket-name: ${MINIO_PRIVATE_BUCKET:tolink-dev-docs}
+      public-bucket-name: ${MINIO_PUBLIC_BUCKET:tolink-dev-public}
+      access-key: ${MINIO_ACCESS_KEY}
+      secret-key: ${MINIO_SECRET_KEY}
+    aliyun-oss:
+      endpoint: ${ALIYUN_OSS_ENDPOINT:}
+      public-bucket-name:
+      private-bucket-name:
+      access-key-id: ${ALIYUN_OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${ALIYUN_OSS_ACCESS_KEY_SECRET:}
+  document-file:
+    max-size-bytes: 20971520
+    internal-base-url: ${DOCUMENT_FILE_INTERNAL_BASE_URL:http://tolink-service:8080}
+    service-token: ${DOCUMENT_FILE_SERVICE_TOKEN:}
+    sse-timeout-ms: 300000
+  parse-result:
+    stuck:
+      default-threshold: 5m
+      scan-interval-ms: 60000
+      dataset-thresholds: {}
+  recall:
+    # 前端直连召回 session token 独立密钥（LINK-104），与 Python RECALL_SESSION_JWT_SECRET 一致。
+    session-jwt-secret: ${RECALL_SESSION_JWT_SECRET}
+    # 前端直连 session token 有效期（秒），Python 强制校验 exp。
+    session-jwt-exp-seconds: ${RECALL_SESSION_JWT_EXP_SECONDS:30}
+    # 前端可见的 Python 召回地址（公网/网关），用于拼接返回给前端的 streamUrl。
+    session-stream-base-url: ${RECALL_SESSION_STREAM_BASE_URL:http://localhost:8000}
+  llm:
+    api-key:
+      secret: ${LLM_SECRET}

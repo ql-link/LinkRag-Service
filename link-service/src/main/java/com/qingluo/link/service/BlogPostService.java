@@ -8,6 +8,7 @@ import com.qingluo.link.model.dto.response.BlogPostAdminListDTO;
 import com.qingluo.link.model.dto.response.BlogPostPublicDetailDTO;
 import com.qingluo.link.model.dto.response.BlogPostPublicListDTO;
 import com.qingluo.link.model.dto.response.PageResult;
+import com.qingluo.link.service.blog.BlogPublicDetailSnapshot;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface BlogPostService {
@@ -32,5 +33,7 @@ public interface BlogPostService {
 
     PageResult<BlogPostPublicListDTO> listPublished(int page, int pageSize);
 
-    BlogPostPublicDetailDTO publicDetail(String slug);
+    BlogPublicDetailSnapshot resolvePublicDetail(String slug);
+
+    BlogPostPublicDetailDTO publicDetail(BlogPublicDetailSnapshot snapshot);
 }

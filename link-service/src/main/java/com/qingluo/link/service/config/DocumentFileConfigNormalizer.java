@@ -23,12 +23,13 @@ public final class DocumentFileConfigNormalizer {
         if (suffixes == null || suffixes.isEmpty()) {
             throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
         }
+        LinkedHashSet<String> normalizedSupported = normalize(List.copyOf(supportedSuffixes));
         LinkedHashSet<String> normalized = suffixes.stream()
             .filter(StringUtils::hasText)
             .map(String::trim)
             .map(value -> value.toLowerCase(Locale.ROOT))
             .peek(value -> {
-                if (!supportedSuffixes.contains(value)) {
+                if (!normalizedSupported.contains(value)) {
                     throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
                 }
             })
@@ -37,6 +38,14 @@ public final class DocumentFileConfigNormalizer {
             throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
         }
         return normalized;
+    }
+
+    public static LinkedHashSet<String> normalizeAndValidate(Long maxSizeBytes, List<String> suffixes,
+                                                              DocumentFileProperties properties) {
+        if (maxSizeBytes == null || maxSizeBytes < 1 || maxSizeBytes > properties.getHardMaxSizeBytes()) {
+            throw new BusinessException(ErrorCode.DOCUMENT_FILE_CONFIG_INVALID);
+        }
+        return normalizeAndValidate(suffixes, properties.getAllowedSuffixes());
     }
 
     public static Set<String> parseSuffixes(String rawValue, Set<String> fallback, ObjectMapper objectMapper) {

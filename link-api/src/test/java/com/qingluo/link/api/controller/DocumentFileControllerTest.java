@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -156,6 +157,60 @@ class DocumentFileControllerTest {
         assertThat(objectKey).isEqualTo("%d/%d/%04d/%02d/%02d/%s".formatted(
             userId, datasetId, today.getYear(), today.getMonthValue(), today.getDayOfMonth(), "guide.MD"));
         assertThat(bucketName).isEqualTo("local-raw");
+    }
+
+    @Test
+    void Should_CommitMarkdownAssetBundleAndRewriteLocalImage_When_FullPathMatches() throws Exception {
+        MockMultipartFile markdown = new MockMultipartFile(
+            "file", "guide.md", "text/markdown",
+            "![架构](../images/a.png)".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile image = new MockMultipartFile(
+            "assets", "a.png", "image/png",
+            new byte[] {(byte) 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 1});
+
+        MvcResult result = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(markdown)
+                .file(image)
+                .param("parseImmediately", "false")
+                .param("matchMode", "FULL_PATH")
+                .param("documentPath", "docs/guide.md")
+                .param("assetRelativePaths", "images/a.png")
+                .param("assetInventoryPaths", "images/a.png")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.originalFilename").value("docs/guide.md"))
+            .andExpect(jsonPath("$.data.assetSummary.matchMode").value("FULL_PATH"))
+            .andExpect(jsonPath("$.data.assetSummary.matchedCount").value(1))
+            .andExpect(jsonPath("$.data.assetSummary.blockingIssues").value(false))
+            .andReturn();
+
+        Long fileId = objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asLong();
+        String base = "markdown-assets/v1/user-%d/dataset-%d/file-%d/".formatted(userId, datasetId, fileId);
+        String objectKey = jdbcTemplate.queryForObject(
+            "SELECT object_key FROM document_original_file WHERE id = ?", String.class, fileId);
+        assertThat(objectKey).isEqualTo(base + "source/normalized.md");
+        String normalized = Files.readString(
+            Path.of("/tmp/tolink-document-file-test/raw").resolve(objectKey), StandardCharsets.UTF_8);
+        assertThat(normalized).contains("![架构](tolink-raw://raw/" + base + "images/image-");
+        assertThat(normalized).doesNotContain("../images/a.png");
+        assertThat(Path.of("/tmp/tolink-document-file-test/raw").resolve(base + "manifest.json"))
+            .exists();
+        try (Stream<Path> images = Files.list(
+                Path.of("/tmp/tolink-document-file-test/raw").resolve(base + "images"))) {
+            assertThat(images).hasSize(1);
+        }
+        assertThat(recordingMQSend.messages()).isEmpty();
+    }
+
+    @Test
+    void Should_ReturnMarkdownAndZipCapabilities() throws Exception {
+        mockMvc.perform(get("/api/v1/document-file-capabilities").header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.featureEnabled").value(true))
+            .andExpect(jsonPath("$.data.matchModes[0]").value("FULL_PATH"))
+            .andExpect(jsonPath("$.data.matchModes[1]").value("SHALLOW_BASENAME"))
+            .andExpect(jsonPath("$.data.image.extensions").isArray())
+            .andExpect(jsonPath("$.data.zip.maxEntries").value(5000));
     }
 
     @Test
@@ -589,7 +644,7 @@ class DocumentFileControllerTest {
     }
 
     @Test
-    void Should_BlockDuplicateParseSubmit_When_LatestPointerHasNoPythonLogYet() throws Exception {
+    void Should_ReuseRunningParseTask_When_LatestPointerHasNoPythonLogYet() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
             "file", "duplicate.txt", MediaType.TEXT_PLAIN_VALUE, "parse duplicate".getBytes(StandardCharsets.UTF_8));
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
@@ -599,14 +654,19 @@ class DocumentFileControllerTest {
             .andReturn();
         Long fileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString()).get("data").get("id").asLong();
 
-        mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
+        MvcResult firstSubmit = mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
                 .header("satoken", token))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.alreadyRunning").value(false))
+            .andReturn();
+        String taskId = objectMapper.readTree(firstSubmit.getResponse().getContentAsString())
+            .get("data").get("taskId").asText();
 
         mockMvc.perform(post("/api/v1/files/{fileId}/parse", fileId)
                 .header("satoken", token))
-            .andExpect(status().isConflict())
-            .andExpect(jsonPath("$.code").value(409));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.taskId").value(taskId))
+            .andExpect(jsonPath("$.data.alreadyRunning").value(true));
 
         assertThat(recordingMQSend.messages()).hasSize(1);
     }

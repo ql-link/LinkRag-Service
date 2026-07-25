@@ -1,11 +1,16 @@
 package com.qingluo.link.service.impl.document;
 
 import com.qingluo.link.service.config.DocumentUploadAsyncProperties;
+import com.qingluo.link.service.impl.document.markdown.MarkdownAssetFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
+import com.qingluo.link.core.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -42,6 +47,46 @@ public class DocumentUploadTempStorage implements ApplicationRunner {
         return target;
     }
 
+    public ManagedBundle materializeBundle(
+            MultipartFile file,
+            List<MultipartFile> assets,
+            List<String> assetRelativePaths) throws IOException {
+        if (assets == null) {
+            assets = List.of();
+        }
+        if (assetRelativePaths == null) {
+            assetRelativePaths = List.of();
+        }
+        if (assets.size() != assetRelativePaths.size()) {
+            throw new BusinessException(400, "配套图片数量与路径数量不一致", 400);
+        }
+        Path directory = resolveDir().resolve("bundle-" + UUID.randomUUID());
+        Files.createDirectories(directory);
+        try {
+            Path source = directory.resolve("source.tmp");
+            file.transferTo(source.toFile());
+            List<MarkdownAssetFile> managedAssets = new ArrayList<>(assets.size());
+            for (int i = 0; i < assets.size(); i++) {
+                MultipartFile asset = assets.get(i);
+                Path target = directory.resolve("asset-" + UUID.randomUUID() + ".tmp");
+                asset.transferTo(target.toFile());
+                managedAssets.add(new MarkdownAssetFile(
+                    assetRelativePaths.get(i),
+                    asset.getOriginalFilename(),
+                    target,
+                    asset.getContentType(),
+                    asset.getSize()));
+            }
+            return new ManagedBundle(directory, source, managedAssets);
+        } catch (IllegalStateException e) {
+            delete(directory);
+            throw new IOException("transfer multipart bundle to temp files failed", e);
+        } catch (IOException | RuntimeException e) {
+            delete(directory);
+            throw e;
+        }
+    }
+
     /**
      * 终态后清理临时文件，吞 IO 异常仅日志（清理失败不影响主流程）。
      */
@@ -50,9 +95,27 @@ public class DocumentUploadTempStorage implements ApplicationRunner {
             return;
         }
         try {
+            if (Files.isDirectory(tempFile)) {
+                try (Stream<Path> paths = Files.walk(tempFile)) {
+                    paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException e) {
+                            log.warn("Delete upload temp path failed, path={}", path, e);
+                        }
+                    });
+                }
+                return;
+            }
             Files.deleteIfExists(tempFile);
         } catch (IOException e) {
             log.warn("Delete upload temp file failed, path={}", tempFile, e);
+        }
+    }
+
+    public void deleteAll(ManagedBundle bundle) {
+        if (bundle != null) {
+            delete(bundle.directory());
         }
     }
 
@@ -65,7 +128,7 @@ public class DocumentUploadTempStorage implements ApplicationRunner {
             return;
         }
         try (Stream<Path> files = Files.list(dir)) {
-            files.filter(Files::isRegularFile).forEach(this::delete);
+            files.forEach(this::delete);
         } catch (IOException e) {
             log.warn("Cleanup residual upload temp files failed, dir={}", dir, e);
         }
@@ -78,5 +141,15 @@ public class DocumentUploadTempStorage implements ApplicationRunner {
 
     private Path resolveDir() {
         return Path.of(properties.getTempDir()).toAbsolutePath().normalize();
+    }
+
+    public record ManagedBundle(
+        Path directory,
+        Path sourceFile,
+        List<MarkdownAssetFile> assets
+    ) {
+        public ManagedBundle {
+            assets = assets == null ? List.of() : List.copyOf(assets);
+        }
     }
 }

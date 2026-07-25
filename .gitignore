@@ -25,6 +25,14 @@ release.properties
 **/application-prod.yaml
 **/application-personal.yml
 **/application-personal.yaml
+!link-api/src/main/resources/application-local.yml
+!link-api/src/main/resources/application-dev.yml
+!link-api/src/main/resources/application-prod.yml
+
+# 本机账号、密码和密钥覆盖文件
+/config/application-local-secrets.yml
+/config/application-dev-local.yml
+/config/application-prod-local.yml
 
 # 环境变量文件（保留 .env.example 作为模板）
 .env

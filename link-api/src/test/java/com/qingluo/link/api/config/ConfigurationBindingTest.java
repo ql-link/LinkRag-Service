@@ -4,6 +4,7 @@ import com.qingluo.link.components.mq.constant.MQProperties;
 import com.qingluo.link.components.oss.config.OssProperties;
 import com.qingluo.link.components.redis.config.CacheConsistencyProperties;
 import com.qingluo.link.service.config.DocumentFileProperties;
+import com.qingluo.link.service.cache.LLMRuntimeCacheProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +26,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5</p>
  */
-@SpringBootTest(properties = "tolink.mq.vender=none")
+@SpringBootTest(properties = {
+        "tolink.mq.vender=none",
+        "LLM_SECRET=test-only-secret",
+        "spring.task.scheduling.enabled=false"
+})
 @ActiveProfiles("local")
 @DisplayName("ConfigurationProperties 绑定测试")
 class ConfigurationBindingTest {
@@ -50,6 +55,9 @@ class ConfigurationBindingTest {
     @Autowired
     private CacheConsistencyProperties cacheConsistencyProperties;
 
+    @Autowired
+    private LLMRuntimeCacheProperties llmRuntimeCacheProperties;
+
     @Test
     @DisplayName("DocumentFileProperties: maxSizeBytes 绑定为 20971520")
     void documentFileMaxSizeBytes() {
@@ -63,9 +71,9 @@ class ConfigurationBindingTest {
     }
 
     @Test
-    @DisplayName("OssProperties: serviceType 绑定为 local")
+    @DisplayName("OssProperties: serviceType 绑定为 minio")
     void ossServiceType() {
-        assertThat(ossProperties.getServiceType()).isEqualTo("local");
+        assertThat(ossProperties.getServiceType()).isEqualTo("minio");
     }
 
     @Test
@@ -78,5 +86,13 @@ class ConfigurationBindingTest {
     @DisplayName("CacheConsistencyProperties: syncDeleteRequired 绑定为 false")
     void cacheConsistencySyncDeleteRequired() {
         assertThat(cacheConsistencyProperties.isSyncDeleteRequired()).isFalse();
+    }
+
+    @Test
+    @DisplayName("LLMRuntimeCacheProperties: 三项发布门禁默认全部关闭")
+    void llmRuntimeCacheGatesDefaultToClosed() {
+        assertThat(llmRuntimeCacheProperties.isEnabled()).isFalse();
+        assertThat(llmRuntimeCacheProperties.isCdcMappingEnabled()).isFalse();
+        assertThat(llmRuntimeCacheProperties.isConsumerTargetsReady()).isFalse();
     }
 }

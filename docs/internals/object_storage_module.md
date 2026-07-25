@@ -58,6 +58,19 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 | `RAW` | `tolink-rag-raw` | 对象 key（字符串路径，私有桶不可匿名访问） |
 | `PRIVATE` | `tolink-rag-docs` | 对象 key（字符串路径，私有桶不可匿名访问） |
 
+### Markdown v1 RAW 资源包
+
+每个 Markdown 文件按用户/数据集/fileId 隔离，不共享图片对象：
+
+| 对象 | RAW object key |
+| --- | --- |
+| 用户原始 Markdown | `markdown-assets/v1/user-{userId}/dataset-{datasetId}/file-{fileId}/source/original.md` |
+| Java 规范化 Markdown | `.../source/normalized.md` |
+| 内容寻址图片 | `.../images/image-{sha256}.{jpg|png|gif|webp|bmp|tiff}` |
+| 完整提交标记 | `.../manifest.json` |
+
+`document_original_file.object_key` 与解析 MQ 的 `source_object_key` 都指向 `source/normalized.md`。Markdown 内只写 `tolink-raw://raw/{objectKey}` 逻辑 URI，不暴露真实桶名、原图片名、服务 Token 或预签名参数。异步重试开始时先删除旧 manifest，最后上传新 manifest；前序对象失败可能留下无清单孤儿，但解析门禁会失败关闭。Python 只读 RAW，并按消息坐标限制到当前 fileId 的 `images/` 前缀。
+
 ## 用户头像对象规则
 
 用户头像写入公开桶 `tolink-public`（`OssSavePlaceEnum.PUBLIC`），上传成功后将公开访问地址写入 `sys_user.avatar_url`。MinIO 部署下公开访问地址优先使用 `tolink.oss.public-base-url` 生成，例如生产环境返回 `/tolink-public/avatar/...`，由前端 Nginx 反向代理到 MinIO；未配置时才回退为 `{endpoint}/{publicBucket}/{objectKey}`。对象 key 按用户分目录，便于后续按用户排查和清理历史头像。
@@ -86,6 +99,7 @@ OSS 组件（`link-components/toLink-components-oss`）提供存储能力：`IOs
 - 封面图片上传使用 `upload2PreviewUrl(PUBLIC, MultipartFile, key)`，资源类型为 `COVER`。
 - 正文图片上传使用 `upload2PreviewUrl(PUBLIC, MultipartFile, key)`，资源类型为 `CONTENT_IMAGE`，响应返回可插入编辑器的 Markdown 图片片段。
 - Markdown 导入/保存会扫描 `![](...)` 图片引用，支持 `http` / `https` 远端图片和 `data:image/*;base64` 内联图片；成功下载或解码后写入 `tolink-public` 桶、记录 `blog_asset.CONTENT_IMAGE`，并将 Markdown 图片地址改写为公开 URL。已属于当前文章 `blog_asset` 的图片允许继续使用完整公开 URL 或 `/{PUBLIC bucket}/{objectKey}` 形式（如 `/tolink-public/blog/{postId}/images/{uuid}.png`），不会重复抓取；其它本地相对路径图片会被拒绝。
-- 文章删除为数据库软删，不批量删除 MinIO 对象。资源删除为数据库软删；正文图片仍被当前 Markdown 引用时拒绝删除，允许删除时同步调用 `deleteFile(PUBLIC, objectKey)` 删除 `tolink-public` 对象。
-- MinIO 与 MySQL 不可同事务；DB 写失败可能留下孤儿 UUID 对象，后续可按 `blog/` 前缀对账清理。
+- 正文替换、资源删除和文章删除都先完成数据库事务；旧正文/资源对象仅在 `afterCommit` 后 best-effort 删除。事务回滚时旧对象保持不变，避免数据库仍指向已被提前删除的对象。
+- 每次正文保存使用新的 UUID object key，不原地覆盖旧 Markdown。新对象上传成功但数据库事务失败时可能留下孤儿 UUID 对象，后续可按 `blog/` 前缀对账清理。
+- 文章删除为数据库软删，并在提交后清理当前正文和文章资源对象；资源删除同样为数据库软删，正文图片仍被当前 Markdown 引用时拒绝删除。提交后的对象清理失败只告警，不回滚数据库结果。
 - `tolink-public` 桶必须配置匿名读策略（`mc anonymous set download`），否则已生成的 `public_url` 仍会访问失败。

@@ -14,8 +14,10 @@ MQ 实现事实来源：
 | `DocumentDeleteNotifyMQ` | `tolink.rag.document_delete` | Java -> Python | 删除通知（通知 Python 删衍生产物） |
 | `ChatTurnMQ` | `tolink.rag.chat_turn` | Python -> Java | 对话轮次落库（一轮问答内容，**不含 token**，不写用量账本） |
 | `UsageReportMQ` | `tolink.rag.usage_report` | Python -> Java | 统一 Token 用量上报（**全部模型调用**：解析/召回侧 + 对话 generate） |
-| `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 保留的缓存补偿基础契约；当前无业务 target/表映射 |
+| `CacheCompensationMQ` | `tolink.cache.evict` | CDC 桥接生产 -> Java | 数据库镜像缓存补偿失效；新增统一 LLM runtime config 精确失效 target |
 | Canal flatMessage（原始变更） | `tolink.canal.binlog` | Canal -> Java（CDC 桥接消费） | 行变更原始事件，桥接翻译为 `CacheCompensationMQ` |
+| Canal flatMessage DLT | `<CDC source topic>.DLT` | Java -> 运维 | CDC bridge 永久失败或重试耗尽后的原始记录 |
+| 缓存补偿 DLT | `tolink.cache.evict.DLT` | Java -> 运维 | 补偿消费永久失败或重试耗尽后的原始记录 |
 
 ## 契约要求
 
@@ -31,10 +33,20 @@ MQ 实现事实来源：
 ## 缓存补偿生产端（CDC 桥接）
 
 - `tolink.cache.evict` 的生产端骨架是 CDC 桥接消费者（`CdcBridgeKafkaReceiver` / `CdcBridgeService`）：消费 Canal 原始变更 topic `tolink.canal.binlog`（flatMessage、单 topic 多表），按映射展开为 `CacheCompensationMQ` 投递。
-- Canal flatMessage 关键字段：`table`、`type`(INSERT/UPDATE/DELETE)、`es`、`isDdl`、`data`（变更行数组，列名→值均为 String，DELETE 为 before image）。
-- 当前 `CdcCacheEvictMapping` 规则为空，`sys_user`、`llm_user_config`、`llm_system_provider`、`llm_provider_model` 的变化不会发送缓存补偿消息。发布新版本前需停止旧生产端并排空遗留 `tolink.cache.evict` 消息。
-- 失败分类（专用容器工厂 `cdcBridgeKafkaListenerContainerFactory`）：坏消息（IllegalArgumentException/DeserializationException）立即跳过 + 告警 + 指标；暂时错误退避重试（最多 3 次）耗尽后跳过；不引入 DLQ。
-- 装配开关：`tolink.cache-consistency.cdc.enabled`（默认 false）且 vender=kafka 二者皆满足才装载；消费者与专用容器工厂共用同一条件，不会出现 vender=kafka 但开关关闭时容器工厂仍被创建的“半开”状态。本地/测试零报错。
+- Canal flatMessage 关键字段：`database`、`table`、`type`(INSERT/UPDATE/DELETE)、`es`、`isDdl`、`data`（当前行数组）、`old`（UPDATE 前值；列名→值均为 String）。
+- bridge 只处理配置的 `tolink.cache-consistency.cdc.database`，且只允许从当前行、old image 或声明式全局常量生成 route；禁止查询 Redis 辅助索引或回查数据库。
+- 当前表映射：
+  - `dataset_parse_config`：当前/旧 `dataset_id` → Java/Python 共享的 `dataset_parse_config` 原始快照缓存
+  - `sys_user`：`id` → `user_profile`；UPDATE 仅变化 `last_login_at` / `last_login_time` / `updated_at` 时忽略
+  - `blog_post` / `blog_asset`：全局 route `global` → `published_blog_index`
+  - `llm_model_config`：INSERT/UPDATE 从 current image 取 `id`，DELETE 只从 old image 取 `id` → `llm_runtime_config`；不回查数据库或 Redis。该映射受独立 `tolink.llm-runtime-cache` readiness 门禁控制。
+- `CacheCompensationMQ` 是扁平 JSON：`event_id`、`cache_target`、`route_id`、`source_table`、`operation_type`、`trace_id`、`occurred_at`。合法 target 为 `dataset_parse_config` / `user_profile` / `published_blog_index` / `llm_runtime_config`。
+- `event_id` 由源 `topic:partition:offset:rowIndex:target:routeId` 派生，Kafka 重投时保持稳定；同一源事件内相同 target/route 先去重。
+- bridge 对已映射坏事件（空行数组、route 缺失、未知操作）不发送补偿消息。投递 `tolink.cache.evict` 时使用 Kafka broker 确认发送，异步 producer 失败会向源 CDC consumer 抛回；发送错误退避重试，永久错误或重试耗尽后把原记录发布到 `<原 topic>.DLT`。
+- 补偿消费者同样使用专用容器工厂：每条消息最大 delivery 固定为 3（首次 + 2 次重试）；坏载荷、未知 target 或删除重试耗尽都发布到 `<原 topic>.DLT`。每次失败递增 `cache_compensation_consume_failure_total`，DLT 发布成功后递增 `cache_compensation_dlt_total`；标签仅使用低基数 target/reason。补偿删除只做幂等 `fence++ + DEL data`，不写业务数据。
+- DLT 发送必须取得 broker 成功结果；DLT 发送失败会继续向容器抛错，不允许源记录在没有可靠落点时结束失败处理。DLT 使用 Kafka 自选分区，原 topic、partition、offset 和异常信息由 Spring Kafka 标准 dead-letter headers 保留。
+- 当前两个死信 topic 分别为 `tolink.canal.binlog.DLT`（实际名称跟随配置的 CDC source topic）与 `tolink.cache.evict.DLT`。运维确认原因并修复后，把原 payload 重新发布到对应源 topic；缓存删除和稳定 `event_id` 保证重放幂等。
+- 装配开关：bridge 要求 `tolink.mq.vender=kafka` 且 `tolink.cache-consistency.cdc.enabled=true`；LLM 映射还要求全局 cache/CDC source 就绪以及 `tolink.llm-runtime-cache.enabled`、`cdc-mapping-enabled`、`consumer-targets-ready` 全部为 true。新消费者未就绪时 health reason 固定为 `LLM_RUNTIME_CONSUMER_TARGET_NOT_READY`。
 
 ## 解析消息字段
 
@@ -49,6 +61,8 @@ MQ 实现事实来源：
 - `previous_task_id`（重试时填上一轮失败任务 `task_id`，首次解析为空）
 
 `pdf_parser_backend` 不在 Java MQ 层补默认值；未传时应由 Python 按「数据集配置 → 环境默认 → 系统内置默认」继续兜底，避免把缺省字段伪装成显式指定。
+
+Markdown v1 资源包不增加 MQ 字段。其 `source_bucket` 仍为 RAW 桶，`source_object_key` 改为 `markdown-assets/v1/user-{userId}/dataset-{datasetId}/file-{fileId}/source/normalized.md`；Python 由消息已有的 user/dataset/file/source 坐标验证 `tolink-raw://raw/.../images/image-{sha256}.{ext}` 范围并直接读取同一 RAW 桶。存在阻塞图片问题或 manifest 不可用时 Java 不发送自动解析消息。
 
 发送时 Java MQ 适配层会随消息附带 `X-Trace-Id` header（取当前 MDC `trace_id`），Python 消费端据此绑定日志上下文；payload 仍保持上述字段，不新增 `trace_id` 字段。
 
@@ -69,7 +83,7 @@ MQ 实现事实来源：
 - `query`（string）：用户提问 → `chat_message.query`。
 - `answer`（string）：LLM 回答 → `chat_message.answer`（`GENERATING`/`FAILED` 可为空或半截）。
 - `title`（string，可空）：Python 在首轮问答完成后生成的会话标题 → `chat_conversation.title`。Java 只在当前标题为空或仍为默认“新对话”时写入，且按 255 字符列宽截断；如果用户已手动改成其它标题则跳过，不覆盖。
-- `config_id`（int）、`model_name`（string）：本轮配置与模型快照（`GENERATING` 起点可能未解析）。
+- `config_id`（正整数）、`model_name`（string）：`config_id` 是 SYSTEM/USER 共用的全局配置身份。`COMPLETED` 必填；已解析到 provider/model 的 `FAILED` 必填；`GENERATING` 和模型解析前失败允许为空。
 - `provider_type`（string，**可空**）：`GENERATING` 起点与模型未解析的前置失败时为空串，终态补齐。`chat_message` 无对应列，本通道不落库它。
 - `references`（string[]）：召回片段 chunk_id 列表（仅标识、不含正文）→ `chat_message.references`(JSON)。
 - `latency_ms`（int，可空）：生成延迟；`chat_message` 无对应列，本通道不落库它。
@@ -102,7 +116,7 @@ Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersis
 - `stage`（string，必填）→ `stage`：`parse` / `recall` / `chat`。
 - `operation`（string，必填）→ `operation`：`embed` / `rerank` / `vision` / `table` / **`generate`**（对话生成；`sparse` 本期预留不上报）。Java 按 `stage`/`operation` 通用落库，无需特判 generate。
 - `prompt_tokens` / `completion_tokens` / `total_tokens`（int，必填）→ 同名列；向量类（embed/rerank）`completion_tokens` 恒 0 是预期值，vision/table/generate 为真实生成 token。
-- `config_id`（int，可空）→ `config_id`；系统配置调用（如召回 query 编码）缺省 → **NULL**。
+- `config_id`（正整数，必填）→ `config_id`；SYSTEM 与 USER 模型调用使用同一全局身份，系统配置调用也不得为 NULL。
 - `latency_ms`（int，可空）→ `latency_ms`；缺省 NULL。
 - `status`（string，可空）→ `status`：`success`/`failed`，缺省补 `success`（对话 generate 端：轮次 `FAILED` 且 `total_tokens>0` → `failed`，否则 `success`；0 token 不发）。
 - `task_id`（string，可空）：parse·embed 携带的解析任务锚点；当前表无独立 task 列，仅作审计锚点（日志记录）、**不落库**。
@@ -117,7 +131,7 @@ Java 消费链路：`UsageReportKafkaReceiver`（从 Kafka header 恢复 `trace_
 - **旁路、最终一致**：用量是事后算账的旁路记录，Python 上报失败只告警不阻断主链路，**偶发丢条可接受**，不要求强一致；全缓存命中（token=0）不上报。
 - **task 级聚合**：一次解析的多个 chunk 的 embed token 合并成一条上报，不是每 chunk 一条。
 - **幂等**：本通道默认 at-least-once、偶发重复可接受；未启用强去重以免与 Python 侧 schema 漂移，信封 `message_id` 仅用于排障追踪（不入库）。
-- **NULL 合法态**：`config_id` / `latency_ms` 缺省即落 NULL，不补默认值。
+- **NULL 合法态**：仅 `latency_ms` 可缺省落 NULL；`config_id` 必须是正整数。
 
 topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `UsageReportMQ` 自动注册创建。
 

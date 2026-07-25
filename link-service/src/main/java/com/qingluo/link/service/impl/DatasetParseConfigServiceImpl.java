@@ -3,6 +3,7 @@ package com.qingluo.link.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
+import com.qingluo.link.model.dto.cache.DatasetParseConfigSnapshot;
 import com.qingluo.link.model.dto.config.ChunkingConfig;
 import com.qingluo.link.model.dto.config.EnhancementConfig;
 import com.qingluo.link.model.dto.config.PdfConfig;
@@ -10,14 +11,14 @@ import com.qingluo.link.model.dto.config.RecallConfig;
 import com.qingluo.link.model.dto.entity.DatasetParseConfig;
 import com.qingluo.link.model.dto.request.UpdateDatasetParseConfigRequest;
 import com.qingluo.link.model.dto.response.DatasetParseConfigResponse;
-import com.qingluo.link.service.DatasetEmbeddingConfigValidator;
+import com.qingluo.link.service.DatasetModelBindingValidator;
 import com.qingluo.link.service.DatasetParseConfigService;
 import com.qingluo.link.service.DatasetService;
+import com.qingluo.link.service.cache.DatasetParseConfigCache;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -40,14 +41,18 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
 
     private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final DatasetService datasetService;
-    private final DatasetEmbeddingConfigValidator embeddingConfigValidator;
+    private final DatasetModelBindingValidator modelBindingValidator;
+    private final DatasetParseConfigCache datasetParseConfigCache;
 
     @Override
     public DatasetParseConfigResponse getConfig(Long userId, Long datasetId) {
         // 归属校验：越权/不存在抛 BusinessException(404)，复用数据集服务避免重复查询。
         datasetService.detail(userId, datasetId);
-        DatasetParseConfig entity = selectByOwner(userId, datasetId);
-        return entity != null ? assembleResponse(entity) : emptyResponse();
+        DatasetParseConfigSnapshot snapshot = datasetParseConfigCache.get(userId, datasetId, () -> {
+            DatasetParseConfig entity = selectByOwner(userId, datasetId);
+            return entity != null ? snapshotOf(entity) : null;
+        });
+        return snapshot != null ? assembleResponse(snapshot) : emptyResponse();
     }
 
     @Override
@@ -57,7 +62,9 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         datasetService.detail(userId, datasetId);
         DatasetParseConfig existing = selectByOwner(userId, datasetId);
         if (existing != null) {
-            return overwriteRow(userId, existing, request);
+            DatasetParseConfigResponse response = overwriteRow(userId, existing, request);
+            datasetParseConfigCache.evict(datasetId);
+            return response;
         }
 
         DatasetParseConfig created = new DatasetParseConfig();
@@ -68,11 +75,15 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         applyConfigs(created, request);
         try {
             datasetParseConfigMapper.insert(created);
-            return assembleResponse(created);
+            DatasetParseConfigResponse response = assembleResponse(created);
+            datasetParseConfigCache.evict(datasetId);
+            return response;
         } catch (DataIntegrityViolationException e) {
             // 并发下唯一键 uk_user_dataset 撞行：转为更新已存在的行。
             DatasetParseConfig concurrent = selectByOwner(userId, datasetId);
-            return overwriteRow(userId, concurrent, request);
+            DatasetParseConfigResponse response = overwriteRow(userId, concurrent, request);
+            datasetParseConfigCache.evict(datasetId);
+            return response;
         }
     }
 
@@ -108,26 +119,49 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     }
 
     private DatasetParseConfigResponse assembleResponse(DatasetParseConfig entity) {
+        return assembleResponse(snapshotOf(entity));
+    }
+
+    private DatasetParseConfigResponse assembleResponse(DatasetParseConfigSnapshot snapshot) {
         DatasetParseConfigResponse resp = new DatasetParseConfigResponse();
-        resp.setChunking(entity.getChunkingConfig() != null ? entity.getChunkingConfig() : new ChunkingConfig());
-        resp.setSparseEmbeddingConfigId(entity.getSparseEmbeddingConfigId());
-        resp.setSparseEmbeddingConfigSource(normalizeStoredSource(entity.getSparseEmbeddingConfigSource()));
-        resp.setDenseEmbeddingConfigId(entity.getDenseEmbeddingConfigId());
-        resp.setDenseEmbeddingConfigSource(normalizeStoredSource(entity.getDenseEmbeddingConfigSource()));
-        resp.setEnhancement(entity.getEnhancementConfig() != null
-            ? entity.getEnhancementConfig() : new EnhancementConfig());
-        resp.setPdf(entity.getPdfConfig() != null ? entity.getPdfConfig() : new PdfConfig());
-        resp.setRecall(fillRecallDefaults(entity.getRecallConfig()));
+        resp.setChunking(snapshot.getChunkingConfig() != null
+            ? snapshot.getChunkingConfig() : new ChunkingConfig());
+        resp.setSparseEmbeddingConfigId(snapshot.getSparseEmbeddingConfigId());
+        resp.setDenseEmbeddingConfigId(snapshot.getDenseEmbeddingConfigId());
+        resp.setEnhancementChatConfigId(snapshot.getEnhancementChatConfigId());
+        resp.setEnhancementVisionConfigId(snapshot.getEnhancementVisionConfigId());
+        resp.setRerankConfigId(snapshot.getRerankConfigId());
+        resp.setEnhancement(snapshot.getEnhancementConfig() != null
+            ? snapshot.getEnhancementConfig() : new EnhancementConfig());
+        resp.setPdf(snapshot.getPdfConfig() != null ? snapshot.getPdfConfig() : new PdfConfig());
+        resp.setRecall(fillRecallDefaults(snapshot.getRecallConfig()));
         return resp;
+    }
+
+    private DatasetParseConfigSnapshot snapshotOf(DatasetParseConfig entity) {
+        return new DatasetParseConfigSnapshot(
+            entity.getUserId(),
+            entity.getDatasetId(),
+            entity.getSparseEmbeddingConfigId(),
+            entity.getDenseEmbeddingConfigId(),
+            entity.getEnhancementChatConfigId(),
+            entity.getEnhancementVisionConfigId(),
+            entity.getRerankConfigId(),
+            entity.getChunkingConfig(),
+            entity.getEnhancementConfig(),
+            entity.getPdfConfig(),
+            entity.getRecallConfig(),
+            entity.getIsActive());
     }
 
     private DatasetParseConfigResponse emptyResponse() {
         DatasetParseConfigResponse resp = new DatasetParseConfigResponse();
         resp.setChunking(new ChunkingConfig());
         resp.setSparseEmbeddingConfigId(null);
-        resp.setSparseEmbeddingConfigSource(null);
         resp.setDenseEmbeddingConfigId(null);
-        resp.setDenseEmbeddingConfigSource(null);
+        resp.setEnhancementChatConfigId(null);
+        resp.setEnhancementVisionConfigId(null);
+        resp.setRerankConfigId(null);
         resp.setEnhancement(new EnhancementConfig());
         resp.setPdf(new PdfConfig());
         resp.setRecall(fillRecallDefaults(new RecallConfig()));
@@ -159,32 +193,13 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
 
     private void applyModelBindings(Long userId, DatasetParseConfig target, DatasetParseConfig existing,
                                     UpdateDatasetParseConfigRequest request) {
-        Long sparse = request.getSparseEmbeddingConfigId() != null
-            ? request.getSparseEmbeddingConfigId()
-            : existing != null ? existing.getSparseEmbeddingConfigId() : null;
-        String sparseSource = request.getSparseEmbeddingConfigSource() != null
-            ? request.getSparseEmbeddingConfigSource()
-            : existing != null ? normalizeStoredSource(existing.getSparseEmbeddingConfigSource()) : null;
-        Long dense = request.getDenseEmbeddingConfigId() != null
-            ? request.getDenseEmbeddingConfigId()
-            : existing != null ? existing.getDenseEmbeddingConfigId() : null;
-        String denseSource = request.getDenseEmbeddingConfigSource() != null
-            ? request.getDenseEmbeddingConfigSource()
-            : existing != null ? normalizeStoredSource(existing.getDenseEmbeddingConfigSource()) : null;
-        if (existing != null) {
-            validateBindingImmutable("sparse_embedding_config_id/source",
-                existing.getSparseEmbeddingConfigId(), normalizeStoredSource(existing.getSparseEmbeddingConfigSource()),
-                sparse, sparseSource);
-            validateBindingImmutable("dense_embedding_config_id/source",
-                existing.getDenseEmbeddingConfigId(), normalizeStoredSource(existing.getDenseEmbeddingConfigSource()),
-                dense, denseSource);
-        }
-        DatasetEmbeddingConfigValidator.ResolvedBindingPair bindings =
-            embeddingConfigValidator.validateAndResolveBindingPair(userId, sparse, sparseSource, dense, denseSource);
-        target.setSparseEmbeddingConfigId(bindings.sparse().configId());
-        target.setSparseEmbeddingConfigSource(bindings.sparse().source());
-        target.setDenseEmbeddingConfigId(bindings.dense().configId());
-        target.setDenseEmbeddingConfigSource(bindings.dense().source());
+        DatasetModelBindingValidator.ValidatedBindings bindings =
+            modelBindingValidator.validateForUpdate(userId, existing, request);
+        target.setDenseEmbeddingConfigId(bindings.denseConfigId());
+        target.setSparseEmbeddingConfigId(bindings.sparseConfigId());
+        target.setEnhancementChatConfigId(bindings.enhancementChatConfigId());
+        target.setEnhancementVisionConfigId(bindings.enhancementVisionConfigId());
+        target.setRerankConfigId(bindings.rerankConfigId());
     }
 
     private ChunkingConfig normalizeChunking(ChunkingConfig source) {
@@ -257,21 +272,11 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         }
     }
 
-    private void validateBindingImmutable(String fieldName, Long existingId, String existingSource,
-                                          Long requestedId, String requestedSource) {
-        if (existingId != null
-            && (!Objects.equals(existingId, requestedId)
-            || !Objects.equals(existingSource, normalizeStoredSource(requestedSource)))) {
-            throw new BusinessException(400, fieldName + " 已绑定，不能修改", 400);
-        }
-    }
-
-    private String normalizeStoredSource(String source) {
-        return source != null ? source.trim().toUpperCase(Locale.ROOT) : DatasetEmbeddingConfigValidator.SOURCE_USER;
-    }
-
     private RecallConfig fillRecallDefaults(RecallConfig source) {
         RecallConfig filled = source != null ? copyRecall(source) : new RecallConfig();
+        if (filled.getEnableRerank() == null) {
+            filled.setEnableRerank(false);
+        }
         if (filled.getRecallEnabledSources() == null) {
             filled.setRecallEnabledSources(DEFAULT_RECALL_ENABLED_SOURCES);
         }
@@ -298,6 +303,7 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
 
     private RecallConfig copyRecall(RecallConfig source) {
         RecallConfig copy = new RecallConfig();
+        copy.setEnableRerank(source.getEnableRerank());
         copy.setRecallResultLimit(source.getRecallResultLimit());
         copy.setRecallContextTokenBudget(source.getRecallContextTokenBudget());
         copy.setBm25TopK(source.getBm25TopK());

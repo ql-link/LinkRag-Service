@@ -35,6 +35,16 @@ public enum ErrorCode {
     MODEL_SYNC_SOURCE_UNSUPPORTED(10017, "外部模型目录同步来源不支持", 400),
     MODEL_SYNC_CANDIDATE_NOT_FOUND(10018, "外部模型候选项不存在", 404),
     PROVIDER_HAS_NO_ACTIVE_MODEL(10019, "启用厂商前至少需要上架一个模型", 400),
+    LLM_CONFIG_NOT_FOUND(10020, "LLM配置不存在", 404),
+    LLM_CONFIG_INACTIVE(10021, "LLM配置已停用", 409),
+    LLM_CONFIG_FORBIDDEN(10022, "无权使用该LLM配置", 403),
+    LLM_CONFIG_CAPABILITY_MISMATCH(10023, "LLM配置能力不匹配", 400),
+    LLM_DEFAULT_NOT_CONFIGURED(10024, "该能力尚未配置可用默认模型", 409),
+    LLM_DEFAULT_UPDATE_FAILED(10025, "LLM默认关系更新失败", 500),
+    LLM_CONFIG_IN_USE(10026, "LLM配置仍被数据集引用", 409),
+    LLM_DEFAULT_REPLACEMENT_REQUIRED(10027, "当前平台默认配置需要先指定替代项", 409),
+    INVALID_DATASET_MODEL_BINDING(10028, "数据集模型绑定不合法", 400),
+    DATASET_MODEL_BINDING_REQUIRED(10029, "数据集缺少必需的模型绑定", 409),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),
@@ -50,10 +60,23 @@ public enum ErrorCode {
     // 召回 session 签发链路的数据集归属校验（前端直连 Python 召回，LINK-104）。
     // 旧召回网关链路（Java 同步转发 Python 内部召回端点）已于 LINK-122 废弃，相关错误码一并移除。
     RECALL_SCOPE_FORBIDDEN(30002, "无权访问指定数据集", 403),
+    MARKDOWN_LOCAL_ASSET_REQUIRES_CONTEXT(30010, "Markdown 包含本地图片，请选择图片文件夹或确认缺图上传", 400),
+    LOCAL_ABSOLUTE_PATH_REJECTED(30011, "不支持本地绝对图片路径", 400),
+    ASSET_FILENAME_COLLISION(30012, "图片文件名规范化后发生冲突", 400),
+    ASSET_PATH_COLLISION(30013, "资源路径规范化后发生冲突", 400),
+    IMAGE_CONTENT_MISMATCH(30014, "图片扩展名、MIME 与实际内容不一致", 400),
+    ASSET_FILE_SIZE_LIMIT_EXCEEDED(30016, "单张图片大小超过限制", 400),
+    ASSET_COUNT_LIMIT_EXCEEDED(30017, "图片数量超过限制", 400),
+    ASSET_BUNDLE_SIZE_LIMIT_EXCEEDED(30018, "Markdown 资源包总大小超过限制", 400),
+    ASSET_PATH_LENGTH_EXCEEDED(30019, "资源路径长度超过限制", 400),
+    ASSET_MISSING(30020, "文档存在未解决的本地图片", 409),
+    ASSET_PATH_OUTSIDE_ROOT(30021, "图片路径越出上传根目录", 400),
 
     // 系统错误 (50001-59999)
     UNKNOWN_ERROR(50001, "系统内部错误", 500),
-    CACHE_DELETE_FAILED(50002, "缓存删除失败", 500);
+    CACHE_DELETE_FAILED(50002, "缓存删除失败", 500),
+    DOCUMENT_FILE_CONFIG_UPDATE_FAILED(50003, "文档文件上传配置更新失败", 503),
+    ASSET_MANIFEST_UNAVAILABLE(50004, "Markdown 图片清单暂时不可用", 503);
 
     private final int code;
     private final String message;

@@ -10,8 +10,13 @@ import static org.mockito.Mockito.verify;
 
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
 import com.qingluo.link.components.oss.service.IOssService;
+import com.qingluo.link.model.dto.response.MarkdownAssetSummaryDTO;
+import com.qingluo.link.service.impl.document.DocumentUploadTempStorage.ManagedBundle;
+import com.qingluo.link.service.impl.document.markdown.MarkdownUploadBundle;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.DisplayName;
@@ -104,5 +109,47 @@ class DocumentUploadAsyncExecutorTest {
 
         verify(ossService).upload2PreviewUrl(eq(OssSavePlaceEnum.RAW), any(File.class), eq("text/plain"), eq("u/d/test.txt"));
         verify(statusWriter).markUploadSuccess(7L, "u/d/test.txt", true, 100L);
+    }
+
+    @Test
+    @DisplayName("Markdown 资源包先删除旧清单并最后上传 manifest")
+    void runUpload_markdownBundle_commitsManifestLast() {
+        List<String> operations = new ArrayList<>();
+        given(ossService.deleteFile(OssSavePlaceEnum.RAW, "base/manifest.json"))
+            .willAnswer(ignored -> {
+                operations.add("delete:base/manifest.json");
+                return true;
+            });
+        given(ossService.upload2PreviewUrl(eq(OssSavePlaceEnum.RAW), any(File.class), any(), any()))
+            .willAnswer(invocation -> {
+                String key = invocation.getArgument(3);
+                operations.add("upload:" + key);
+                return key;
+            });
+        MarkdownAssetSummaryDTO summary = new MarkdownAssetSummaryDTO();
+        MarkdownUploadBundle bundle = new MarkdownUploadBundle(
+            Path.of("/tmp/original.md"),
+            "base/source/original.md",
+            List.of(new MarkdownUploadBundle.ImageUpload(
+                Path.of("/tmp/image.png"), "base/images/image-a.png", "image/png")),
+            Path.of("/tmp/normalized.md"),
+            "base/source/normalized.md",
+            Path.of("/tmp/manifest.json"),
+            "base/manifest.json",
+            summary);
+        ManagedBundle managed = new ManagedBundle(
+            Path.of("/tmp/bundle"), Path.of("/tmp/original.md"), List.of());
+
+        asyncExecutor.runUpload(DocumentUploadAsyncExecutor.UploadTask.markdown(
+            7L, 100L, true, managed, bundle));
+
+        org.assertj.core.api.Assertions.assertThat(operations).containsExactly(
+            "delete:base/manifest.json",
+            "upload:base/source/original.md",
+            "upload:base/images/image-a.png",
+            "upload:base/source/normalized.md",
+            "upload:base/manifest.json");
+        verify(statusWriter).markUploadSuccess(7L, "base/source/normalized.md", true, 100L, false);
+        verify(tempStorage).deleteAll(managed);
     }
 }

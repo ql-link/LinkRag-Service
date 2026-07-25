@@ -34,7 +34,8 @@ public class CacheCompensationKafkaReceiver implements MQMsgReceiver {
 
     @KafkaListener(
             topics = CacheCompensationMQ.MQ_NAME,
-            groupId = "${tolink.cache-consistency.consumer.group-id:tolink-cache-evict}"
+            groupId = "${tolink.cache-consistency.consumer.group-id:tolink-cache-evict}",
+            containerFactory = "cacheCompensationKafkaListenerContainerFactory"
     )
     public void receive(ConsumerRecord<String, String> record) {
         receiveWithTrace(record.value(), KafkaTraceHeaders.traceId(record.headers()));

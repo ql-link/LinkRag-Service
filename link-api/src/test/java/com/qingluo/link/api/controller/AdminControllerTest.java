@@ -5,6 +5,7 @@ import com.qingluo.link.api.TestSecurityConfig;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.response.DocumentFileConfigDTO;
+import com.qingluo.link.service.AdminDocumentFileConfigService;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
 import java.util.Optional;
@@ -20,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -50,8 +52,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * </ul>
  *
  * <h2>安全说明</h2>
- * <p>由于 TestSecurityConfig 禁用了所有安全检查，401/403 测试在当前配置下无法验证。
- * 安全机制（@SaCheckLogin、@SaCheckRole）的正确性已在其他测试中得到验证。</p>
+ * <p>TestSecurityConfig 仅放行 Spring Security；Sa-Token MVC 注解拦截仍生效，
+ * 因此本类可以验证普通用户访问管理员配置接口返回 403。</p>
  *
  * @author Claude Code
  * @since 2026-04-14
@@ -89,6 +91,9 @@ class AdminControllerTest {
      */
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @MockBean
+    private AdminDocumentFileConfigService adminDocumentFileConfigService;
 
     /**
      * 管理员用户 ID
@@ -172,6 +177,19 @@ class AdminControllerTest {
         adminToken = StpUtil.getTokenValue();
         StpUtil.login(READONLY_USER_ID);
         userToken = StpUtil.getTokenValue();
+    }
+
+    @BeforeEach
+    void stubDocumentFileConfigService() {
+        given(adminDocumentFileConfigService.getCurrentConfig()).willReturn(
+            new DocumentFileConfigDTO(20_971_520L, java.util.List.of("md", "pdf"), null, null));
+        given(adminDocumentFileConfigService.updateConfig(
+            org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any()))
+            .willAnswer(invocation -> {
+                com.qingluo.link.model.dto.request.UpdateDocumentFileConfigRequest request = invocation.getArgument(1);
+                return new DocumentFileConfigDTO(
+                    request.getMaxSizeBytes(), request.getAllowedSuffixes(), ADMIN_USER_ID, java.time.LocalDateTime.now());
+            });
     }
 
     /**
@@ -312,6 +330,38 @@ class AdminControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
             .andExpect(status().isMethodNotAllowed());
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("管理员完整更新文档文件配置")
+    void Should_UpdateDocumentFileConfig_When_AdminPutsCompleteValue() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/document-file-config")
+                .header("satoken", adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"maxSizeBytes":10485760,"allowedSuffixes":["pdf"]}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.maxSizeBytes").value(10485760))
+            .andExpect(jsonPath("$.data.allowedSuffixes[0]").value("pdf"))
+            .andExpect(jsonPath("$.data.updatedBy").value(ADMIN_USER_ID));
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("普通用户不能更新文档文件配置")
+    void Should_ReturnForbidden_When_NormalUserUpdatesDocumentFileConfig() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/document-file-config")
+                .header("satoken", userToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"maxSizeBytes":10485760,"allowedSuffixes":["pdf"]}
+                    """))
+            .andExpect(status().isForbidden());
+
+        verify(adminDocumentFileConfigService, never()).updateConfig(
+            org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

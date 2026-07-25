@@ -5,8 +5,8 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:local}
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 20MB
+      max-file-size: ${DOCUMENT_FILE_HARD_MAX_SIZE:100MB}
+      max-request-size: ${DOCUMENT_FILE_HARD_MAX_REQUEST_SIZE:101MB}
 
 server:
   port: 8080
@@ -47,7 +47,42 @@ management:
 # CDC 依赖 Kafka，仅当 tolink.mq.vender=kafka 时才真正生效；开启时必须配置 cdc.source-topic。
 tolink:
   cache-consistency:
+    enabled: false
+    null-cache-ttl-seconds: 60
+    ttl-jitter-seconds: 300
+    load-wait-ms: 50
+    load-lock-ttl-ms: 5000
+    fence-ttl-seconds: 2592000
     cdc:
       enabled: false
+      mappings-enabled: false
+      consumer-targets-ready: false
+      database: ${DB_NAME:tolink_rag_db}
       # source-topic: tolink.canal.binlog   # 开启时必填：Canal 投递 binlog 的 Kafka topic
       # group-id: tolink-cdc-bridge          # 可选，默认 tolink-cdc-bridge
+  business-cache:
+    enabled: true
+    dataset-parse-config-ttl: 7d
+    user-profile-ttl: 1d
+    blog-published-index-ttl: 1d
+    blog-published-index-capacity: 100
+  llm-runtime-cache:
+    enabled: false
+    cdc-mapping-enabled: false
+    consumer-targets-ready: false
+  document-file:
+    max-size-bytes: ${TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES:20971520}
+    hard-max-size-bytes: ${TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES:104857600}
+    allowed-suffixes: ${TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES:md,markdown,pdf,docx,txt}
+    markdown-assets-enabled: ${TOLINK_MARKDOWN_ASSETS_ENABLED:true}
+    markdown-asset-max-bytes: ${TOLINK_MARKDOWN_ASSET_MAX_BYTES:20971520}
+    markdown-asset-max-count: ${TOLINK_MARKDOWN_ASSET_MAX_COUNT:200}
+    markdown-inventory-max-count: ${TOLINK_MARKDOWN_INVENTORY_MAX_COUNT:5000}
+    markdown-bundle-max-bytes: ${TOLINK_MARKDOWN_BUNDLE_MAX_BYTES:83886080}
+    markdown-asset-path-max-length: ${TOLINK_MARKDOWN_ASSET_PATH_MAX_LENGTH:512}
+    markdown-document-path-max-length: ${TOLINK_MARKDOWN_DOCUMENT_PATH_MAX_LENGTH:255}
+    zip-max-compressed-bytes: ${TOLINK_ZIP_MAX_COMPRESSED_BYTES:104857600}
+    zip-max-entries: ${TOLINK_ZIP_MAX_ENTRIES:5000}
+    zip-max-expanded-bytes: ${TOLINK_ZIP_MAX_EXPANDED_BYTES:524288000}
+    zip-max-ratio: ${TOLINK_ZIP_MAX_RATIO:100}
+    zip-max-depth: ${TOLINK_ZIP_MAX_DEPTH:20}

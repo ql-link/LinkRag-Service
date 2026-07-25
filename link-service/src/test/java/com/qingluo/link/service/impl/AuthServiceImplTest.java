@@ -20,6 +20,7 @@ import com.qingluo.link.model.enums.UserRole;
 import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.UserLoginEventRecorder;
 import com.qingluo.link.service.oss.UploadResult;
+import com.qingluo.link.service.cache.UserProfileCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,11 +56,18 @@ class AuthServiceImplTest {
     @Mock
     private UserLoginEventRecorder userLoginEventRecorder;
 
+    @Mock
+    private UserProfileCache userProfileCache;
+
     @InjectMocks
     private AuthServiceImpl authService;
 
     @BeforeEach
     void setUpSaToken() {
+        lenient().when(userProfileCache.get(anyLong(), any())).thenAnswer(invocation -> {
+            java.util.function.Supplier<UserProfileDTO> loader = invocation.getArgument(1);
+            return loader.get();
+        });
         SaManager.setConfig(new SaTokenConfig()
             .setTokenName("satoken")
             .setTimeout(3600)

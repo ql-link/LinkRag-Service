@@ -23,6 +23,7 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 - `parse_task` 使用扁平 JSON，通过 `document_parse_file_id` 与共享数据库记录关联。
 - `parse_task` 对 PDF 文件可透传数据集级 `pdf_config.pdf_parser_backend` 为 `pdf_parser_backend`；Java 只在配置非空且值合法时写入，不在 MQ 层补默认值。
 - `parse_task` 含 `is_retry` + `previous_task_id`：重试复用上一轮 Markdown 坐标做阶段恢复，发送前完整性校验缺字段不发。端到端终态权威源为 `document_parse_pipeline.pipeline_status`（大写），Java 解析结果查询以 DB 为准（原 `document_parsed_log.task_status` 已删）。
+- Markdown v1 不扩展 `parse_task` 消息模型：`source_object_key` 指向 RAW 中的 `source/normalized.md`，Python 由现有 user/dataset/original_file/source 字段限定图片读取范围。manifest 不可用或存在未确认的图片问题时不投递；手动并发提交用最新任务指针 CAS 保证只发送一次。
 - `document_delete`（删除通知，Java -> Python）：删除事务 afterCommit **真实投递**（回滚不发），`QUEUE` 点对点；按删除范围分流——删数据集传 `dataset_id`、删文件传 `original_file_id`，`delete_type` 判别，发送前完整性校验缺字段不发。生产侧**尽力发**：`DocumentDeleteNotifier` 对发送失败/发送器缺失仅告警留痕并吞掉、不外抛、不影响已提交的删除，无 DLQ、无对账兜底；幂等由 Python 按 id 删天然保证（payload 不带去重/追踪字段）。
 - Python 负责解析终态持久化；Java 不再消费 `tolink.rag.parse_result`，前端终态展示通过 `parse-results` 查询接口读取 DB。
 - MQ trace 只走传输 header，不改 Java/Python 共享消息体：`MQSend` 适配层通过 `link-observability` 的 `TraceHeaders` 把当前 MDC 的 `trace_id` 自动写入 `X-Trace-Id`；Kafka 消费入口（如 `ChatTurnKafkaReceiver`、`UsageReportKafkaReceiver`、`CacheCompensationKafkaReceiver`）读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并用 `TraceContext.start(...)` 恢复 MDC，缺失或非法时自建 trace，`finally` 清理。
@@ -48,19 +49,22 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 ## CDC 桥接生产端（缓存补偿）
 
 - `tolink.cache.evict` 的生产端骨架：`CdcBridgeKafkaReceiver`（监听 Canal 原始 topic `tolink.canal.binlog`）→ `CdcBridgeService`（映射展开）→ `MQSend` 投递 `CacheCompensationMQ`。
-- 当前 `CdcCacheEvictMapping` 为空，现有业务表不会产生补偿消息；`CacheEvictTarget` 也没有业务 target。发布新版本前需排空旧消息。
-- 专用容器工厂 `cdcBridgeKafkaListenerContainerFactory`（`CdcBridgeKafkaConfig`）：坏消息（IllegalArgumentException/DeserializationException）判不可重试立即 recover；其余退避重试（最多 3 次）耗尽 recover；recover = 告警 + `CdcBridgeMetrics` 指标 + 跳过，不引入 DLQ。
+- 当前 target 为 `dataset_parse_config`、`user_profile`、`published_blog_index`、`llm_runtime_config`。表映射为：`dataset_parse_config.dataset_id`（含 old image）→ Java/Python 共享的原始快照缓存；`sys_user.id` → 用户资料；`blog_post` / `blog_asset` → 全局发布索引；`llm_model_config` INSERT/UPDATE 取当前行 `id`、DELETE 取 old image `id` → Python LLM 运行配置。`sys_user` 仅变更 `last_login_at` / `last_login_time` / `updated_at` 时忽略。
+- bridge 校验 `database`，只处理 `tolink.cache-consistency.cdc.database`；路由只能使用当前行、old image 或声明式全局常量，禁止查询 Redis 辅助索引或数据库。
+- CDC bridge 使用 `MQSend.sendConfirmed` 等待 Kafka broker 确认 `tolink.cache.evict` 投递，普通业务消息仍使用原异步 `send`；producer 失败因此会回到源 consumer 重试。专用容器工厂 `cdcBridgeKafkaListenerContainerFactory`（`CdcBridgeKafkaConfig`）：坏消息判不可重试，其余错误退避重试；包含首次消费在内最多投递 3 次，永久错误或重试耗尽后由 `DeadLetterPublishingRecoverer` 发布到 `<CDC source topic>.DLT`。
+- 补偿消费者使用 `cacheCompensationKafkaListenerContainerFactory`：坏载荷、未知 target 和删除耗尽在最多 3 次投递后发布到 `tolink.cache.evict.DLT`；未知 target、消费失败和 DLT 分别记录指标。DLT 使用 broker 确认，发送失败继续抛错；标准 dead-letter headers 保留源 topic/partition/offset 和异常信息，运维修复后把原 payload 重发到源 topic。
 - 装配：消费者 `CdcBridgeKafkaReceiver` 与容器工厂 `CdcBridgeKafkaConfig` **共用同一 `@ConditionalOnExpression` 条件**（抽为常量 `CdcBridgeKafkaConfig.CDC_BRIDGE_CONDITION`）——vender=kafka 且 `tolink.cache-consistency.cdc.enabled=true`（默认 false）二者皆满足才装载。两者口径一致，杜绝 vender=kafka 但 CDC 关闭时仍创建空转容器工厂的“半开”状态；CDC 未部署环境零报错。开关在 `application.yml` 已显式声明 `cdc.enabled: false`。
-- 隐式假设：桥接按 `table` 名分流、**不校验 `database`**，依赖 Canal 实例只订阅业务库目标表（见 brief 3.1）。多库部署若出现同名表需在 Canal 侧隔离订阅范围。
+- 数据库镜像业务缓存还受 `mappings-enabled`、`consumer-targets-ready`、database/source topic 等 readiness 门禁；LLM runtime target 另受 `tolink.llm-runtime-cache.*` 三个独立开关控制，不依赖 business-cache。发布顺序为补偿消费者 → CDC/mapping → 各类读缓存。
 
 ### 新增一张缓存补偿表的步骤
 
-按 route_id 能否从变更行直接取到，改动量递增（理想情况只改第 1～2 步）：
+新增缓存补偿映射必须满足 route_id 可从当前变更事件直接确定：
 
 1. **Canal 订阅该表**（运维侧）：在 Canal 实例订阅清单加入该表，否则桥接收不到其变更。
 2. **映射表加一行**（`CdcCacheEvictMapping` 的 `rules`）：`表名 → [(缓存目标, 取法)]`。
-   - route_id 就在变更行某字段：用 `direct("字段名")`（字段缺失会按坏消息抛出）。
-   - route_id 需跨表 / 查缓存换算：写解析取法 `row -> resolveXxx(row.get("外键"))`，查不到返回 `null` 即降级跳过（如 `llm_provider_model` 经厂商索引缓存换 `provider_type`）。
+   - route_id 在当前行或 old image：解析并去重所有受影响稳定 ID；字段缺失按坏消息进入 DLT。
+   - 全局缓存：显式返回固定 route `global`。
+   - 如果 route_id 需要跨表、查 Redis 索引或查数据库换算，不允许直接接入；应先改 binlog 事件字段或重新设计缓存 key。
    - 一张表删多类缓存：在该行挂多个 `MappingRule`，展开循环自然跑多遍。
 3. **若是全新缓存类型**（复用已有 `CacheEvictTarget` 可跳过本步）：
    - `CacheEvictTarget` 加枚举值（`code` 唯一）；
@@ -68,4 +72,4 @@ MQ 组件位于 `link-components/toLink-components-mq`，业务消息模型和�
 4. **补测试**：`CdcBridgeServiceTest` 加该表的展开用例；全新缓存类型在缓存路由/一致性测试补 key 断言。
 5. **同步文档**：本文件与 `docs/api/mq_contracts.md` 的映射清单。
 
-核心不变式：每张被监听表的 route_id 都应能由「本行字段 + 至多一次字典查询」确定。满足即进映射表走统一展开循环（**零分支、不改 `CdcBridgeService`**）；不满足才需写自定义解析取法。
+核心不变式：每张被监听表的 route_id 都必须由「当前行 + old image + 声明式全局范围」确定。索引冷、Redis 故障或厂商停用都不得让失效路由变成空结果。

@@ -18,6 +18,7 @@ import com.qingluo.link.model.dto.entity.ChatConversation;
 import com.qingluo.link.model.dto.entity.ChatMessage;
 import com.qingluo.link.model.dto.entity.Dataset;
 import com.qingluo.link.service.ChatService;
+import com.qingluo.link.service.LLMModelConfigValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatConversationMapper conversationMapper;
     private final ChatMessageMapper messageMapper;
     private final DatasetMapper datasetMapper;
+    private final LLMModelConfigValidator configValidator;
 
     @Override
     @Transactional
@@ -43,6 +45,9 @@ public class ChatServiceImpl implements ChatService {
      */
     public ConversationDTO createConversation(Long userId, CreateConversationRequest request) {
         assertOwnedDataset(userId, request.getDatasetId());
+        if (request.getLastConfigId() != null) {
+            configValidator.requireExecutable(userId, request.getLastConfigId(), "CHAT");
+        }
 
         ChatConversation conversation = new ChatConversation();
         conversation.setUserId(userId);

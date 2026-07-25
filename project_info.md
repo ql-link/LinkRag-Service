@@ -40,7 +40,7 @@ Python RAG 执行端负责文档解析、RAG 执行、LLM 调用和解析产物�
 - 数据集与知识文件管理
 - 原始文件上传、私有文件读取、解析任务提交
 - Java/Python 解析链路协作：MQ 任务投递、共享 DB 终态查询（前端轮询 `parse-results`，不再 SSE 推送）
-- Redis 通用基础设施和缓存补偿骨架（当前无数据库业务缓存 target/CDC 映射）
+- Redis 数据库镜像缓存、读保护、事务后首删与 CDC/MQ 补偿链
 - OSS 本地/MinIO 文件存储
 - 召回 session 签发（前端直连 Python 召回，Java 仅签发短期 token）
 - 博客内容管理（文章/封面/正文图片、公开端查询）
@@ -59,9 +59,9 @@ Python RAG 执行端负责文档解析、RAG 执行、LLM 调用和解析产物�
 
 ### 5.2 数据读取与 Redis 边界
 
-- 用户资料、角色、LLM 配置、系统厂商和预设直接读取 MySQL。
+- 用户资料与数据集解析配置可在 CDC readiness 就绪后读取数据库镜像缓存；角色、LLM 管理列表、系统厂商和默认关系直接读取 MySQL。
 - 文档上传配置直接读取 `DocumentFileProperties`。
-- Redis 通用客户端、一致性/读保护与 `tolink.cache.evict` 补偿骨架保留，但当前没有业务 target、key 路由或 CDC 表映射。
+- Redis 通用客户端、一致性/读保护与 `tolink.cache.evict` 补偿链已落地；数据集配置缓存使用 Java/Python 共享的原始快照，LLM runtime 使用 Python 专用 value 与 Java 失效 target。
 
 ### 5.3 OSS 链路
 

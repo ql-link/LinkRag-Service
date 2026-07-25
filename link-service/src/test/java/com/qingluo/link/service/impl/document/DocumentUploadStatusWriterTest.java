@@ -76,6 +76,20 @@ class DocumentUploadStatusWriterTest {
     }
 
     @Test
+    @DisplayName("Markdown 存在阻塞图片问题时上传成功但不自动解析")
+    void markUploadSuccess_blockingAssets_doesNotSubmitParse() {
+        given(properties.getInternalBaseUrl()).willReturn("http://localhost:8080");
+        given(documentOriginalFileMapper.update(any(), any())).willReturn(1);
+        given(documentOriginalFileMapper.selectById(7L)).willReturn(record(7L));
+        given(documentParseFileMapper.selectOne(any())).willReturn(null);
+
+        statusWriter.markUploadSuccess(7L, "base/source/normalized.md", true, 100L, true);
+
+        verify(documentParseFileMapper).insert(any());
+        verify(documentParseTaskService, never()).submitAutoParseAfterUpload(any(), any());
+    }
+
+    @Test
     @DisplayName("S16 守卫更新命中 0 行（已被超时置 failed）→ 孤儿，不投递解析、不建聚合")
     void markUploadSuccess_missGuard_isOrphan_noParse() {
         given(properties.getInternalBaseUrl()).willReturn("http://localhost:8080");

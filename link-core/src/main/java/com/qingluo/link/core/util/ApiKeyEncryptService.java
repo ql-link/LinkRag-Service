@@ -92,6 +92,16 @@ public class ApiKeyEncryptService {
                apiKey.substring(apiKey.length() - 4);
     }
 
+    /**
+     * 对数据库密文解密后再脱敏。直接截取密文既没有展示意义，也会不必要地暴露密文片段。
+     */
+    public String maskEncryptedApiKey(String encryptedApiKey) {
+        if (encryptedApiKey == null || encryptedApiKey.isBlank()) {
+            return "****";
+        }
+        return maskApiKey(decrypt(encryptedApiKey));
+    }
+
     private byte[] hexToBytes(String hex) {
         if (hex == null || hex.length() % 2 != 0) {
             throw new IllegalArgumentException("Invalid hex string");

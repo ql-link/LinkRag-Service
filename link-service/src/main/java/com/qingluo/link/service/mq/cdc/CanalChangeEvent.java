@@ -11,7 +11,7 @@ import java.util.Map;
  *
  * <p>仅声明 CDC 桥接需要的字段：表名、操作类型、变更行集。Canal flatMessage 的 data 为多行数组、
  * 字段值统一为 String；DELETE 时 data 为被删行（before image）。其余 flatMessage 字段
- * （old / sql / mysqlType 等）桥接不读，故不声明。</p>
+ * old 与 data 按行下标对齐，UPDATE 时 old 保存变化列的 before image。</p>
  */
 @Data
 public class CanalChangeEvent {
@@ -32,4 +32,7 @@ public class CanalChangeEvent {
 
     /** 变更行集：每行是 列名→值（值为 String）。 */
     private List<Map<String, String>> data;
+
+    /** UPDATE 变化列的 before image，与 data 按下标对齐。 */
+    private List<Map<String, String>> old;
 }

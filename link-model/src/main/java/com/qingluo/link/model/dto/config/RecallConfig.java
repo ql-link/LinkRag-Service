@@ -11,7 +11,7 @@ import javax.validation.constraints.Min;
 import lombok.Data;
 
 /**
- * 召回检索配置（14 项），字段名与 Python {@code RecallConfig} 对齐。
+ * 召回检索配置，字段名与 Python {@code RecallConfig} 对齐。
  *
  * <p>正整数、非负分数/权重、枚举值与 Python Pydantic validator 对齐。
  */
@@ -21,6 +21,9 @@ import lombok.Data;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(description = "召回检索配置")
 public class RecallConfig {
+
+    @Schema(description = "是否启用模型重排；启用时数据集必须绑定RERANK配置", example = "false")
+    private Boolean enableRerank;
 
     @Min(value = 1, message = "recall_result_limit 必须为正整数")
     @Schema(description = "召回结果上限", example = "20")
