@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:mysql://${DB_HOST:100.86.10.52}:${DB_PORT:3306}/${DB_NAME:tolink_rag_db}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectTimeout=3000&socketTimeout=5000
+    url: jdbc:mysql://${DB_HOST:tolink-mysql}:${DB_PORT:3306}/${DB_NAME:tolink_rag_db}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectTimeout=3000&socketTimeout=5000
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -18,7 +18,7 @@ spring:
       time-between-eviction-runs-millis: 30000
       min-evictable-idle-time-millis: 300000
   redis:
-    host: ${REDIS_HOST:100.86.10.52}
+    host: ${REDIS_HOST:tolink-redis}
     port: ${REDIS_PORT:6379}
     password: ${REDIS_PASSWORD}
     database: ${REDIS_DB:0}
@@ -67,7 +67,7 @@ tolink:
     file-root-path: ${user.home}/.tolink/oss
     public-base-url: /tolink-public
     minio:
-      endpoint: ${MINIO_ENDPOINT:http://100.86.10.52:9000}
+      endpoint: ${MINIO_ENDPOINT:http://tolink-minio:9000}
       raw-bucket-name: ${MINIO_RAW_BUCKET:tolink-rag-raw}
       private-bucket-name: ${MINIO_PRIVATE_BUCKET:tolink-rag-docs}
       public-bucket-name: ${MINIO_PUBLIC_BUCKET:tolink-public}
