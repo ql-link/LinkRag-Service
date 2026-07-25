@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.service.config.DocumentFileProperties;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
@@ -33,10 +33,13 @@ public class DocumentFileConfigReadiness {
 
     public String fingerprint() {
         try {
-            byte[] canonical = objectMapper.writeValueAsBytes(Map.of(
-                "maxSizeBytes", properties.getMaxSizeBytes(),
-                "hardMaxSizeBytes", properties.getHardMaxSizeBytes(),
-                "allowedSuffixes", List.copyOf(properties.getAllowedSuffixes()).stream().sorted().toList()));
+            LinkedHashMap<String, Object> defaults = new LinkedHashMap<>();
+            defaults.put("maxSizeBytes", properties.getMaxSizeBytes());
+            defaults.put("hardMaxSizeBytes", properties.getHardMaxSizeBytes());
+            defaults.put(
+                "allowedSuffixes",
+                List.copyOf(properties.getAllowedSuffixes()).stream().sorted().toList());
+            byte[] canonical = objectMapper.writeValueAsBytes(defaults);
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical));
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Cannot serialize document defaults", ex);
