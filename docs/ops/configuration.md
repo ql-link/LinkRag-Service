@@ -342,6 +342,11 @@ The following profiles are active: local
 开发服务器使用 `application-dev.yml`，生产环境使用 `application-prod.yml`。两者可安全提交，
 账号和密钥由 `config/` 下对应的 local 文件注入。
 
+`application-dev.yml` 的可提交默认值固定指向 Primary 开发环境：数据库
+`100.86.10.52:13306/tolink_rag_dev`，MinIO bucket 为 `tolink-dev-raw`、
+`tolink-dev-docs` 和 `tolink-dev-public`。`application-dev-local.yml` 只覆盖账号、密码、
+JWT 与 API Key，不应再依赖旧容器环境变量修正数据库名或 bucket 名。
+
 ### 部署步骤
 
 ```bash
