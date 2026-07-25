@@ -218,7 +218,7 @@ Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或�
 | `LOG_LEVEL` | 应用日志级别（`application.yml` 已接 `${LOG_LEVEL:info}`，对 `com.qingluo.link` 生效） | 否 | `info` | `debug`（本地排查） |
 | `SQL_LOG_LEVEL` | Mapper SQL 日志级别（SLF4J） | 否 | `info` | `debug`（排查）/ `info`（生产） |
 | `LOG_PATH` | JSON Lines 日志输出目录（`logback-spring.xml` 按天文件夹滚动、保留 7 天；Docker 部署挂载到宿主） | 否 | `logs` | `/app/logs` |
-| `OBSERVABILITY_LOKI_BASE_URL` | Java 管理端日志查询代理访问 Loki 的内网地址；不应暴露给前端或公网 | 否 | `http://localhost:3100` | `http://100.86.10.52:3100` |
+| `OBSERVABILITY_LOKI_BASE_URL` | Java 管理端日志查询代理访问 Loki 的内网地址；不应暴露给前端或公网 | 否 | `http://localhost:3100` | `http://tolink-loki:3100` |
 
 **链路追踪（trace_id）**：`link-observability` 提供 `TraceIdFilter` / `TraceContext` / `MdcTaskDecorator` / `TraceHeaders`。`TraceIdFilter` 为每个 HTTP 请求建立 `trace_id` 写入 MDC（优先复用上游 `X-Trace-Id` 头，缺失或非法则新建，并回写响应头）；异步线程池经 `MdcTaskDecorator` 透传。MQ 生产侧由 `MQSend` 适配层把当前 MDC `trace_id` 写入 `X-Trace-Id` header；Kafka 消费入口读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复 MDC，缺失或非法时自建。日志输出为 JSON Lines，Java 顶层字段包括 `time` / `level` / `service` / `host` / `pid` / `trace_id` / `logger_name` / `message` / `exception`。
 
@@ -238,7 +238,7 @@ Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或�
 |------|------|----------|--------|
 | `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致） | 是 | 空 |
 | `RECALL_SESSION_JWT_EXP_SECONDS` | session token 有效期（秒），Python 强制校验 `exp` | 否 | `30` |
-| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python RAG 流式问答地址（公网/网关），用于拼接响应 `streamUrl = base + /api/v1/rag/stream`（LINK-138：Python 端点由 `/api/v1/recall/stream` 改名） | 否 | `http://localhost:8000` |
+| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python RAG 流式问答地址（公网/网关），用于拼接响应 `streamUrl = base + /api/v1/rag/stream`（LINK-138：Python 端点由 `/api/v1/recall/stream` 改名） | 否 | 本地 `http://localhost:8000`；生产 `https://linkrag.cn` |
 
 > `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空时直接 fail-fast，因此启用本服务必须配置一个非空 session 密钥。
 >

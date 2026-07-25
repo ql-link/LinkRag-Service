@@ -53,7 +53,7 @@ docker compose -f deploy/docker-compose.observability.yml up -d
 curl http://localhost:3100/ready
 ```
 
-Java 后端的管理端日志模块通过 `OBSERVABILITY_LOKI_BASE_URL` 访问 Loki。`deploy/docker-compose.yml` 默认设置为 `http://host.docker.internal:3100`，用于业务容器访问宿主机映射出的 Loki 端口；如果 Java 服务和 Loki 在同一 Docker 网络，可覆盖为 `http://tolink-loki:3100`；如果 Java 服务直接跑在宿主机，可使用 `http://localhost:3100`。该地址只给 Java 后端使用，不应让前端直接访问 Loki。
+Java 后端的管理端日志模块通过 `OBSERVABILITY_LOKI_BASE_URL` 访问 Loki。生产 Compose 默认使用同一 Docker 网络中的 `http://tolink-loki:3100`；本机单机验证可覆盖为 `http://host.docker.internal:3100`，Java 服务直接跑在宿主机时可使用 `http://localhost:3100`。该地址只给 Java 后端使用，不应让前端直接访问 Loki。
 
 默认挂载路径：
 
@@ -91,7 +91,7 @@ docker compose -f deploy/docker-compose.observability.yml up -d
 curl http://localhost:3100/ready
 ```
 
-Java 后端的管理端日志模块通过 `OBSERVABILITY_LOKI_BASE_URL` 访问 Loki。`deploy/docker-compose.yml` 默认设置为 `http://${HOST_VPN_IP:-100.86.10.52}:3100`，用于云服务器业务容器访问主机服务器上的 Loki；本机单机验证可覆盖为 `http://host.docker.internal:3100`，如果 Java 服务和 Loki 在同一 Docker 网络，可覆盖为 `http://tolink-loki:3100`；如果 Java 服务直接跑在宿主机，可使用 `http://localhost:3100`。该地址只给 Java 后端使用，不应让前端直接访问 Loki。
+Java 后端的管理端日志模块通过 `OBSERVABILITY_LOKI_BASE_URL` 访问 Loki。生产环境的 Java 与 Loki 都位于云服务器 `tolink-app-net`，默认使用 `http://tolink-loki:3100`；本机单机验证可覆盖为 `http://host.docker.internal:3100`，Java 服务直接跑在宿主机时可使用 `http://localhost:3100`。该地址只给 Java 后端使用，不应让前端直接访问 Loki。
 
 默认挂载路径：
 

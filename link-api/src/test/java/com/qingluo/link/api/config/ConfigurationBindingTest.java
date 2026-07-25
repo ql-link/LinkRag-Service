@@ -26,7 +26,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5</p>
  */
-@SpringBootTest(properties = "tolink.mq.vender=none")
+@SpringBootTest(properties = {
+        "tolink.mq.vender=none",
+        "LLM_SECRET=test-only-secret",
+        "spring.task.scheduling.enabled=false"
+})
 @ActiveProfiles("local")
 @DisplayName("ConfigurationProperties 绑定测试")
 class ConfigurationBindingTest {
@@ -67,9 +71,9 @@ class ConfigurationBindingTest {
     }
 
     @Test
-    @DisplayName("OssProperties: serviceType 绑定为 local")
+    @DisplayName("OssProperties: serviceType 绑定为 minio")
     void ossServiceType() {
-        assertThat(ossProperties.getServiceType()).isEqualTo("local");
+        assertThat(ossProperties.getServiceType()).isEqualTo("minio");
     }
 
     @Test
