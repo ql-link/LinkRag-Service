@@ -14,8 +14,8 @@ pipeline {
         SERVICE_SECRET_CONFIG_FILE = '/opt/tolink/toLink-Service/config/application-prod-local.yml'
         SERVICE_SECRET_CONFIG_NAME = 'application-prod-local.yml'
         HOST_VPN_IP = '100.86.10.52'
-        RECALL_SESSION_STREAM_BASE_URL = 'http://117.72.214.40:8000'
-        OBSERVABILITY_LOKI_BASE_URL = 'http://100.86.10.52:3100'
+        RECALL_SESSION_STREAM_BASE_URL = 'https://linkrag.cn'
+        OBSERVABILITY_LOKI_BASE_URL = 'http://tolink-loki:3100'
     }
 
     stages {
