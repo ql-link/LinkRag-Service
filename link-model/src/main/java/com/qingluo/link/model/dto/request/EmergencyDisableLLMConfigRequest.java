@@ -10,6 +10,4 @@ public class EmergencyDisableLLMConfigRequest {
     @Schema(description = "USER所有者确认保留数据集绑定并接受执行失败", example = "true")
     private Boolean confirmed;
 
-    @Schema(description = "SYSTEM当前默认被停用时的同能力替代配置ID")
-    private Long replacementConfigId;
 }

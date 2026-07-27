@@ -6,18 +6,15 @@ import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
-import com.qingluo.link.mapper.LLMCapabilityDefaultMapper;
 import com.qingluo.link.mapper.LLMModelConfigMapper;
 import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
-import com.qingluo.link.model.dto.entity.LLMCapabilityDefault;
 import com.qingluo.link.model.dto.entity.LLMModelConfig;
 import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.AdminPlatformConfigSaveRequest;
 import com.qingluo.link.model.dto.request.SetupProviderRequest;
 import com.qingluo.link.model.dto.response.AdminPlatformConfigSaveResult;
-import com.qingluo.link.model.dto.response.CapabilityDefaultDTO;
 import com.qingluo.link.model.dto.response.ExecutableLLMConfigDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.LLMConfigMutationMode;
@@ -56,7 +53,6 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
     private static final String LINKRAG_PROVIDER_TYPE = "linkrag";
 
     private final LLMModelConfigMapper configMapper;
-    private final LLMCapabilityDefaultMapper defaultMapper;
     private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final ProviderModelMapper providerModelMapper;
     private final SystemProviderMapper systemProviderMapper;
@@ -160,14 +156,10 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
     @Transactional
     public AdminPlatformConfigSaveResult saveSystemConfig(
         Long configId, AdminPlatformConfigSaveRequest request) {
-        if (Boolean.TRUE.equals(request.getSetAsDefault())
-            && Boolean.TRUE.equals(request.getClearDefault())) {
-            throw new BusinessException(ErrorCode.LLM_DEFAULT_MUTATION_CONFLICT);
-        }
         LLMModelConfig existing = configId == null ? null : requireScopeConfig(configId, true, null);
         ProviderFacts facts = resolveProviderFacts(existing, request);
         if (existing != null && !Objects.equals(existing.getCapability(), facts.capability())) {
-            // 默认关系与数据集字段都带能力语义；允许原地改 capability 会让既有引用瞬间变成脏数据。
+            // 数据集字段带能力语义；允许原地改 capability 会让既有引用瞬间变成脏数据。
             throw new BusinessException(ErrorCode.LLM_CONFIG_CAPABILITY_MISMATCH,
                 "已有配置不能原地修改能力，请创建新的平台配置");
         }
@@ -199,24 +191,15 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
         }
         evictAfterCommit(config.getId());
 
-        String savedCapability = config.getCapability();
-        CapabilityDefaultDTO defaultDTO;
-        if (Boolean.TRUE.equals(request.getSetAsDefault())) {
-            defaultDTO = defaultService.setSystemDefault(savedCapability, config.getId());
-        } else if (Boolean.TRUE.equals(request.getClearDefault())) {
-            defaultDTO = defaultService.clearSystemDefaultForConfig(savedCapability, config.getId());
-        } else {
-            defaultDTO = currentSystemDefault(savedCapability);
-        }
         ExecutableLLMConfigDTO configDTO = toDTO(config, SYSTEM_OWNER_ID);
         configDTO.setEditable(true);
-        return new AdminPlatformConfigSaveResult(configDTO, defaultDTO);
+        return new AdminPlatformConfigSaveResult(configDTO);
     }
 
     @Override
     @Transactional
     public void changeActive(Long actorUserId, boolean admin, Long configId, boolean isActive,
-                             LLMConfigMutationMode mode, Long replacementConfigId, boolean confirmed) {
+                             LLMConfigMutationMode mode, boolean confirmed) {
         LLMModelConfig config = requireScopeConfig(configId, admin, actorUserId);
         if (Objects.equals(config.getIsActive(), isActive)) {
             return;
@@ -231,11 +214,8 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
 
         if (mode == LLMConfigMutationMode.STANDARD) {
             ensureNoDatasetReferences(configId);
-            if (defaultService.isSystemDefault(configId)) {
-                throw new BusinessException(ErrorCode.LLM_DEFAULT_REPLACEMENT_REQUIRED);
-            }
         } else {
-            prepareEmergencyDisable(config, admin, actorUserId, replacementConfigId, confirmed);
+            prepareEmergencyDisable(config, admin, actorUserId, confirmed);
         }
 
         if (LLMConfigScope.USER.name().equals(config.getScope())) {
@@ -254,9 +234,6 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
     public void deleteConfig(Long actorUserId, boolean admin, Long configId) {
         LLMModelConfig config = requireScopeConfig(configId, admin, actorUserId);
         ensureNoDatasetReferences(configId);
-        if (defaultService.isSystemDefault(configId)) {
-            throw new BusinessException(ErrorCode.LLM_DEFAULT_REPLACEMENT_REQUIRED);
-        }
         if (LLMConfigScope.USER.name().equals(config.getScope())) {
             defaultService.clearUserDefaultForConfig(actorUserId, configId);
         } else {
@@ -268,8 +245,8 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
             actorUserId, config.getScope(), configId, config.getCapability());
     }
 
-    private void prepareEmergencyDisable(LLMModelConfig config, boolean admin, Long actorUserId,
-                                         Long replacementConfigId, boolean confirmed) {
+    private void prepareEmergencyDisable(
+        LLMModelConfig config, boolean admin, Long actorUserId, boolean confirmed) {
         if (LLMConfigScope.USER.name().equals(config.getScope())) {
             if (admin || !confirmed || !Objects.equals(config.getOwnerUserId(), actorUserId)) {
                 throw new BusinessException(400, "紧急停用用户配置需要所有者明确确认", 400);
@@ -279,18 +256,6 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
         if (!admin) {
             throw new BusinessException(ErrorCode.LLM_CONFIG_FORBIDDEN);
         }
-        if (!defaultService.isSystemDefault(config.getId())) {
-            return;
-        }
-        if (replacementConfigId == null || replacementConfigId.equals(config.getId())) {
-            throw new BusinessException(ErrorCode.LLM_DEFAULT_REPLACEMENT_REQUIRED);
-        }
-        LLMModelConfig replacement = configValidator.requireExecutable(
-            SYSTEM_OWNER_ID, replacementConfigId, config.getCapability());
-        if (!LLMConfigScope.SYSTEM.name().equals(replacement.getScope())) {
-            throw new BusinessException(ErrorCode.LLM_CONFIG_FORBIDDEN);
-        }
-        defaultService.setSystemDefault(config.getCapability(), replacementConfigId);
     }
 
     private LLMModelConfig requireScopeConfig(Long configId, boolean admin, Long actorUserId) {
@@ -366,29 +331,6 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
             .eq(LLMModelConfig::getModelName, modelName)
             .eq(LLMModelConfig::getCapability, normalizeCapability(capability))
             .last("LIMIT 1"));
-    }
-
-    /**
-     * KEEP_CURRENT 只读取本次保存能力的当前平台默认快照。不能调用全能力默认解析，
-     * 否则其它能力的一条脏默认关系会让本次互不相关的配置保存失败。
-     */
-    private CapabilityDefaultDTO currentSystemDefault(String capability) {
-        LLMCapabilityDefault current = defaultMapper.selectOne(
-            new LambdaQueryWrapper<LLMCapabilityDefault>()
-                .eq(LLMCapabilityDefault::getScope, LLMConfigScope.SYSTEM.name())
-                .eq(LLMCapabilityDefault::getOwnerUserId, SYSTEM_OWNER_ID)
-                .eq(LLMCapabilityDefault::getCapability, capability)
-                .last("LIMIT 1"));
-        Long configId = current == null ? null : current.getConfigId();
-        if (configId != null) {
-            LLMModelConfig config = configValidator.requireExecutable(
-                SYSTEM_OWNER_ID, configId, capability);
-            if (!LLMConfigScope.SYSTEM.name().equals(config.getScope())
-                || !Long.valueOf(SYSTEM_OWNER_ID).equals(config.getOwnerUserId())) {
-                throw new BusinessException(ErrorCode.LLM_CONFIG_FORBIDDEN);
-            }
-        }
-        return new CapabilityDefaultDTO(capability, null, configId, configId);
     }
 
     private void ensureNoDatasetReferences(Long configId) {

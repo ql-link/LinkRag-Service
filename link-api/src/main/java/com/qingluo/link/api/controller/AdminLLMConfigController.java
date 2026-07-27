@@ -4,14 +4,11 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import com.qingluo.link.core.util.AuthContext;
 import com.qingluo.link.model.dto.request.AdminPlatformConfigSaveRequest;
 import com.qingluo.link.model.dto.request.EmergencyDisableLLMConfigRequest;
-import com.qingluo.link.model.dto.request.SetCapabilityDefaultRequest;
 import com.qingluo.link.model.dto.request.UpdateLLMConfigActiveRequest;
 import com.qingluo.link.model.dto.response.AdminPlatformConfigSaveResult;
-import com.qingluo.link.model.dto.response.CapabilityDefaultDTO;
 import com.qingluo.link.model.dto.response.ExecutableLLMConfigDTO;
 import com.qingluo.link.model.dto.response.Result;
 import com.qingluo.link.model.enums.LLMConfigMutationMode;
-import com.qingluo.link.service.LLMCapabilityDefaultService;
 import com.qingluo.link.service.LLMModelConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -34,11 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/admin/llm")
 @SaCheckRole("ADMIN")
 @RequiredArgsConstructor
-@Tag(name = "管理员LLM配置接口", description = "维护SYSTEM运行配置与平台能力默认关系")
+@Tag(name = "管理员LLM配置接口", description = "维护SYSTEM运行配置")
 public class AdminLLMConfigController {
 
     private final LLMModelConfigService configService;
-    private final LLMCapabilityDefaultService defaultService;
 
     @GetMapping("/configs")
     @Operation(summary = "查询平台LLM配置")
@@ -49,7 +45,7 @@ public class AdminLLMConfigController {
     }
 
     @PostMapping("/configs")
-    @Operation(summary = "创建平台LLM配置", description = "目录事实、运行配置和可选默认关系在一个业务事务中保存")
+    @Operation(summary = "创建平台LLM配置", description = "目录事实与运行配置在一个业务事务中保存")
     public Result<AdminPlatformConfigSaveResult> createConfig(
         @Valid @RequestBody AdminPlatformConfigSaveRequest request) {
         return Result.success(configService.saveSystemConfig(null, request));
@@ -69,40 +65,26 @@ public class AdminLLMConfigController {
         @Parameter(description = "全局配置ID") @PathVariable Long configId,
         @Valid @RequestBody UpdateLLMConfigActiveRequest request) {
         configService.changeActive(AuthContext.getLoginUserIdOrThrow(), true, configId,
-            request.getIsActive(), LLMConfigMutationMode.STANDARD, null, false);
+            request.getIsActive(), LLMConfigMutationMode.STANDARD, false);
         return Result.ok(null);
     }
 
     @PostMapping("/configs/{configId}/emergency-disable")
-    @Operation(summary = "紧急停用平台配置", description = "当前平台默认被停用时必须同事务指定同能力替代配置")
+    @Operation(summary = "紧急停用平台配置", description = "保留数据集绑定并停用平台配置")
     public Result<Void> emergencyDisable(
         @Parameter(description = "全局配置ID") @PathVariable Long configId,
         @Valid @RequestBody EmergencyDisableLLMConfigRequest request) {
         configService.changeActive(AuthContext.getLoginUserIdOrThrow(), true, configId, false,
-            LLMConfigMutationMode.EMERGENCY, request.getReplacementConfigId(), true);
+            LLMConfigMutationMode.EMERGENCY, true);
         return Result.ok(null);
     }
 
     @DeleteMapping("/configs/{configId}")
-    @Operation(summary = "删除平台配置", description = "平台默认或数据集仍引用时拒绝")
+    @Operation(summary = "删除平台配置", description = "数据集仍引用时拒绝")
     public Result<Void> deleteConfig(
         @Parameter(description = "全局配置ID") @PathVariable Long configId) {
         configService.deleteConfig(AuthContext.getLoginUserIdOrThrow(), true, configId);
         return Result.ok(null);
     }
 
-    @PutMapping("/defaults/{capability}")
-    @Operation(summary = "切换平台能力默认", description = "只切换独立默认指针，不改变旧配置状态或数据集绑定")
-    public Result<CapabilityDefaultDTO> setDefault(
-        @Parameter(description = "模型能力") @PathVariable String capability,
-        @Valid @RequestBody SetCapabilityDefaultRequest request) {
-        return Result.success(defaultService.setSystemDefault(capability, request.getConfigId()));
-    }
-
-    @DeleteMapping("/defaults/{capability}")
-    @Operation(summary = "清除平台能力默认", description = "清除后该能力保持未设置，不自动选择其他启用配置")
-    public Result<CapabilityDefaultDTO> clearDefault(
-        @Parameter(description = "模型能力") @PathVariable String capability) {
-        return Result.success(defaultService.clearSystemDefault(capability));
-    }
 }

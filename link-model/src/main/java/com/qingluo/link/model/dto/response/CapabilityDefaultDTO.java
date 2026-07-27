@@ -14,12 +14,6 @@ public class CapabilityDefaultDTO {
     @Schema(description = "模型能力", example = "CHAT")
     private String capability;
 
-    @Schema(description = "用户覆盖配置ID；未覆盖时为空")
-    private Long userDefaultConfigId;
-
-    @Schema(description = "平台默认配置ID；未配置时为空")
-    private Long systemDefaultConfigId;
-
-    @Schema(description = "当前有效配置ID；用户覆盖优先")
-    private Long effectiveConfigId;
+    @Schema(description = "用户默认配置ID；未设置时为空")
+    private Long configId;
 }

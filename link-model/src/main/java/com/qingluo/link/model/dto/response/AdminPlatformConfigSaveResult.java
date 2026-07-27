@@ -12,5 +12,4 @@ import lombok.NoArgsConstructor;
 public class AdminPlatformConfigSaveResult {
 
     private ExecutableLLMConfigDTO config;
-    private CapabilityDefaultDTO capabilityDefault;
 }

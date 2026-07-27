@@ -13,7 +13,6 @@ import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
-import com.qingluo.link.mapper.LLMCapabilityDefaultMapper;
 import com.qingluo.link.mapper.LLMModelConfigMapper;
 import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
@@ -23,7 +22,6 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.AdminPlatformConfigSaveRequest;
 import com.qingluo.link.model.dto.request.SetupProviderRequest;
 import com.qingluo.link.model.dto.response.AdminPlatformConfigSaveResult;
-import com.qingluo.link.model.dto.response.CapabilityDefaultDTO;
 import com.qingluo.link.model.dto.response.ExecutableLLMConfigDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.LLMConfigMutationMode;
@@ -45,7 +43,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class LLMModelConfigServiceImplTest {
 
     @Mock private LLMModelConfigMapper configMapper;
-    @Mock private LLMCapabilityDefaultMapper defaultMapper;
     @Mock private DatasetParseConfigMapper datasetParseConfigMapper;
     @Mock private ProviderModelMapper providerModelMapper;
     @Mock private SystemProviderMapper systemProviderMapper;
@@ -78,7 +75,6 @@ class LLMModelConfigServiceImplTest {
 
         assertThat(result).extracting(ExecutableLLMConfigDTO::getConfigId)
             .containsExactlyInAnyOrder(101L, 201L);
-        verify(defaultMapper, never()).selectList(any());
     }
 
     @Test
@@ -120,7 +116,7 @@ class LLMModelConfigServiceImplTest {
         given(datasetParseConfigMapper.countModelReferences(101L)).willReturn(1L);
 
         assertThatThrownBy(() -> service.changeActive(7L, false, 101L, false,
-            LLMConfigMutationMode.STANDARD, null, false))
+            LLMConfigMutationMode.STANDARD, false))
             .isInstanceOfSatisfying(BusinessException.class,
                 exception -> assertThat(exception.getCode()).isEqualTo(ErrorCode.LLM_CONFIG_IN_USE.getCode()));
 
@@ -136,7 +132,7 @@ class LLMModelConfigServiceImplTest {
         given(runtimeCacheReadiness.isEnabled()).willReturn(true);
 
         service.changeActive(7L, false, 101L, false,
-            LLMConfigMutationMode.EMERGENCY, null, true);
+            LLMConfigMutationMode.EMERGENCY, true);
 
         assertThat(existing.getIsActive()).isFalse();
         assertThat(existing.getSnapshotVersion()).isEqualTo(5L);
@@ -153,7 +149,7 @@ class LLMModelConfigServiceImplTest {
         given(configMapper.selectById(201L)).willReturn(existing);
 
         service.changeActive(7L, true, 201L, false,
-            LLMConfigMutationMode.STANDARD, null, false);
+            LLMConfigMutationMode.STANDARD, false);
 
         assertThat(existing.getIsActive()).isFalse();
         verify(defaultService).clearUserDefaultsForConfig(201L);
@@ -169,7 +165,7 @@ class LLMModelConfigServiceImplTest {
         given(runtimeCacheReadiness.isEnabled()).willReturn(false);
 
         service.changeActive(7L, false, 101L, true,
-            LLMConfigMutationMode.STANDARD, null, false);
+            LLMConfigMutationMode.STANDARD, false);
 
         assertThat(existing.getIsActive()).isTrue();
         assertThat(existing.getSnapshotVersion()).isEqualTo(2L);
@@ -178,7 +174,7 @@ class LLMModelConfigServiceImplTest {
     }
 
     @Test
-    void adminCanCreateConfigWithoutExistingDefaultAndKeepCurrentDefaultEmpty() {
+    void adminCanCreatePlatformConfigWithoutAnyDefaultMutation() {
         ProviderModel catalog = model(30L, 20L, "gpt-4o", "CHAT");
         SystemProvider provider = provider(20L, "openai");
         given(providerModelMapper.selectById(30L)).willReturn(catalog);
@@ -194,52 +190,11 @@ class LLMModelConfigServiceImplTest {
         AdminPlatformConfigSaveRequest request = new AdminPlatformConfigSaveRequest();
         request.setSourceProviderModelId(30L);
         request.setApiKey("platform-key");
-        request.setSetAsDefault(false);
         AdminPlatformConfigSaveResult result = service.saveSystemConfig(null, request);
 
         assertThat(result.getConfig().getConfigId()).isEqualTo(200L);
         assertThat(result.getConfig().getEditable()).isTrue();
-        assertThat(result.getCapabilityDefault().getEffectiveConfigId()).isNull();
-        verify(defaultService, never()).setSystemDefault(any(), anyLong());
         verify(defaultService, never()).listDefaults(anyLong());
-    }
-
-    @Test
-    void adminCanClearDefaultWhileUpdatingTheCurrentDefaultConfig() {
-        LLMModelConfig existing = config(200L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
-        existing.setProviderId(20L);
-        existing.setProviderType("openai");
-        existing.setModelName("gpt-4o");
-        existing.setSnapshotVersion(1L);
-        ProviderModel catalog = model(30L, 20L, "gpt-4o", "CHAT");
-        given(configMapper.selectById(200L)).willReturn(existing);
-        given(providerModelMapper.selectById(30L)).willReturn(catalog);
-        given(systemProviderMapper.selectById(20L)).willReturn(provider(20L, "openai"));
-        given(defaultService.clearSystemDefaultForConfig("CHAT", 200L))
-            .willReturn(new CapabilityDefaultDTO("CHAT", null, null, null));
-
-        AdminPlatformConfigSaveRequest request = new AdminPlatformConfigSaveRequest();
-        request.setSourceProviderModelId(30L);
-        request.setClearDefault(true);
-        AdminPlatformConfigSaveResult result = service.saveSystemConfig(200L, request);
-
-        assertThat(result.getCapabilityDefault().getSystemDefaultConfigId()).isNull();
-        verify(defaultService).clearSystemDefaultForConfig("CHAT", 200L);
-        verify(defaultService, never()).setSystemDefault(any(), anyLong());
-    }
-
-    @Test
-    void adminCannotSetAndClearDefaultInTheSameSave() {
-        AdminPlatformConfigSaveRequest request = new AdminPlatformConfigSaveRequest();
-        request.setSetAsDefault(true);
-        request.setClearDefault(true);
-
-        assertThatThrownBy(() -> service.saveSystemConfig(200L, request))
-            .isInstanceOfSatisfying(BusinessException.class,
-                exception -> assertThat(exception.getCode())
-                    .isEqualTo(ErrorCode.LLM_DEFAULT_MUTATION_CONFLICT.getCode()));
-        verify(defaultService, never()).setSystemDefault(any(), anyLong());
-        verify(defaultService, never()).clearSystemDefaultForConfig(any(), anyLong());
     }
 
     @Test
