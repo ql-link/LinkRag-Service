@@ -27,6 +27,7 @@
 - `LLM_CONFIG_CAPABILITY_MISMATCH(10023/400)`：配置能力与调用点要求不一致。
 - `LLM_DEFAULT_NOT_CONFIGURED(10024/409)`：USER 默认不存在且对应 SYSTEM 默认也未配置。
 - `LLM_DEFAULT_UPDATE_FAILED(10025/500)`：默认关系在事务内更新失败。
+- `LLM_DEFAULT_MUTATION_CONFLICT(10030/400)`：同一请求不能同时设置默认和清除默认。
 - `LLM_CONFIG_IN_USE(10026/409)`：配置仍被 `dataset_parse_config` 的任一模型字段引用，禁止删除。
 - `LLM_DEFAULT_REPLACEMENT_REQUIRED(10027/409)`：停用或删除当前 SYSTEM 默认前未指定同能力替代项。
 - `INVALID_DATASET_MODEL_BINDING(10028/400)`：数据集模型绑定或相关配置参数不合法；响应 `data.field` 指向失败字段。

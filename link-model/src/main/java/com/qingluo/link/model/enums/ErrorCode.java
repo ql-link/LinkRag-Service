@@ -45,6 +45,7 @@ public enum ErrorCode {
     LLM_DEFAULT_REPLACEMENT_REQUIRED(10027, "当前平台默认配置需要先指定替代项", 409),
     INVALID_DATASET_MODEL_BINDING(10028, "数据集模型绑定不合法", 400),
     DATASET_MODEL_BINDING_REQUIRED(10029, "数据集缺少必需的模型绑定", 409),
+    LLM_DEFAULT_MUTATION_CONFLICT(10030, "设置默认与清除默认不能同时执行", 400),
 
     // 用户/认证相关 (20001-29999)
     USER_NOT_FOUND(20001, "用户不存在", 404),

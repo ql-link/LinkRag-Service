@@ -15,6 +15,8 @@ public interface LLMCapabilityDefaultService {
 
     CapabilityDefaultDTO setSystemDefault(String capability, Long configId);
 
+    CapabilityDefaultDTO clearSystemDefaultForConfig(String capability, Long configId);
+
     boolean isSystemDefault(Long configId);
 
     void clearUserDefaultForConfig(Long userId, Long configId);

@@ -170,6 +170,44 @@ class LLMModelConfigServiceImplTest {
     }
 
     @Test
+    void adminCanClearDefaultWhileUpdatingTheCurrentDefaultConfig() {
+        LLMModelConfig existing = config(200L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
+        existing.setProviderId(20L);
+        existing.setProviderType("openai");
+        existing.setModelName("gpt-4o");
+        existing.setSnapshotVersion(1L);
+        ProviderModel catalog = model(30L, 20L, "gpt-4o", "CHAT");
+        given(configMapper.selectById(200L)).willReturn(existing);
+        given(providerModelMapper.selectById(30L)).willReturn(catalog);
+        given(systemProviderMapper.selectById(20L)).willReturn(provider(20L, "openai"));
+        given(defaultService.clearSystemDefaultForConfig("CHAT", 200L))
+            .willReturn(new CapabilityDefaultDTO("CHAT", null, null, null));
+
+        AdminPlatformConfigSaveRequest request = new AdminPlatformConfigSaveRequest();
+        request.setSourceProviderModelId(30L);
+        request.setClearDefault(true);
+        AdminPlatformConfigSaveResult result = service.saveSystemConfig(200L, request);
+
+        assertThat(result.getCapabilityDefault().getSystemDefaultConfigId()).isNull();
+        verify(defaultService).clearSystemDefaultForConfig("CHAT", 200L);
+        verify(defaultService, never()).setSystemDefault(any(), anyLong());
+    }
+
+    @Test
+    void adminCannotSetAndClearDefaultInTheSameSave() {
+        AdminPlatformConfigSaveRequest request = new AdminPlatformConfigSaveRequest();
+        request.setSetAsDefault(true);
+        request.setClearDefault(true);
+
+        assertThatThrownBy(() -> service.saveSystemConfig(200L, request))
+            .isInstanceOfSatisfying(BusinessException.class,
+                exception -> assertThat(exception.getCode())
+                    .isEqualTo(ErrorCode.LLM_DEFAULT_MUTATION_CONFLICT.getCode()));
+        verify(defaultService, never()).setSystemDefault(any(), anyLong());
+        verify(defaultService, never()).clearSystemDefaultForConfig(any(), anyLong());
+    }
+
+    @Test
     void adminCannotChangeCapabilityOfExistingGlobalConfig() {
         LLMModelConfig existing = config(200L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
         existing.setProviderId(20L);

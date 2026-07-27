@@ -85,6 +85,17 @@ class LLMCapabilityDefaultServiceImplTest {
     }
 
     @Test
+    void clearSystemDefaultOnlyDeletesTheMatchingConfigPointer() {
+        given(defaultMapper.selectOne(any())).willReturn(null);
+
+        CapabilityDefaultDTO result = service.clearSystemDefaultForConfig("chat", 100L);
+
+        assertThat(result.getSystemDefaultConfigId()).isNull();
+        assertThat(result.getEffectiveConfigId()).isNull();
+        verify(defaultMapper).delete(any());
+    }
+
+    @Test
     void requiredEffectiveDefaultFailsWhenNeitherPointerExists() {
         given(defaultMapper.selectOne(any())).willReturn(null);
 

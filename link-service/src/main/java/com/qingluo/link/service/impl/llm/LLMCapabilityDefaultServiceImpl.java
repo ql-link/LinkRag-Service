@@ -85,6 +85,22 @@ public class LLMCapabilityDefaultServiceImpl implements LLMCapabilityDefaultServ
     }
 
     @Override
+    @Transactional
+    public CapabilityDefaultDTO clearSystemDefaultForConfig(String capability, Long configId) {
+        String normalized = normalizeCapability(capability);
+        try {
+            defaultMapper.delete(new LambdaQueryWrapper<LLMCapabilityDefault>()
+                .eq(LLMCapabilityDefault::getScope, LLMConfigScope.SYSTEM.name())
+                .eq(LLMCapabilityDefault::getOwnerUserId, SYSTEM_OWNER_ID)
+                .eq(LLMCapabilityDefault::getCapability, normalized)
+                .eq(LLMCapabilityDefault::getConfigId, configId));
+        } catch (DataAccessException ex) {
+            throw new BusinessException(ErrorCode.LLM_DEFAULT_UPDATE_FAILED);
+        }
+        return resolve(SYSTEM_OWNER_ID, normalized, false);
+    }
+
+    @Override
     public boolean isSystemDefault(Long configId) {
         if (configId == null) {
             return false;

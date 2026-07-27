@@ -165,6 +165,10 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
     @Transactional
     public AdminPlatformConfigSaveResult saveSystemConfig(
         Long configId, AdminPlatformConfigSaveRequest request) {
+        if (Boolean.TRUE.equals(request.getSetAsDefault())
+            && Boolean.TRUE.equals(request.getClearDefault())) {
+            throw new BusinessException(ErrorCode.LLM_DEFAULT_MUTATION_CONFLICT);
+        }
         LLMModelConfig existing = configId == null ? null : requireScopeConfig(configId, true, null);
         ProviderFacts facts = resolveProviderFacts(existing, request);
         if (existing != null && !Objects.equals(existing.getCapability(), facts.capability())) {
@@ -201,9 +205,14 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
         evictAfterCommit(config.getId());
 
         String savedCapability = config.getCapability();
-        CapabilityDefaultDTO defaultDTO = Boolean.TRUE.equals(request.getSetAsDefault())
-            ? defaultService.setSystemDefault(savedCapability, config.getId())
-            : currentSystemDefault(savedCapability);
+        CapabilityDefaultDTO defaultDTO;
+        if (Boolean.TRUE.equals(request.getSetAsDefault())) {
+            defaultDTO = defaultService.setSystemDefault(savedCapability, config.getId());
+        } else if (Boolean.TRUE.equals(request.getClearDefault())) {
+            defaultDTO = defaultService.clearSystemDefaultForConfig(savedCapability, config.getId());
+        } else {
+            defaultDTO = currentSystemDefault(savedCapability);
+        }
         ExecutableLLMConfigDTO configDTO = toDTO(config, SYSTEM_OWNER_ID);
         configDTO.setEditable(true);
         return new AdminPlatformConfigSaveResult(configDTO, defaultDTO);

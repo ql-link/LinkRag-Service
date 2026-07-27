@@ -48,7 +48,7 @@
 | PATCH | `/api/v1/admin/model-sync-candidates/{id}/review` | 更新外部候选审核状态（`PENDING` / `REJECTED`） |
 | GET | `/api/v1/admin/llm/configs` | 查询全部 SYSTEM 可执行配置，可按能力和启用状态过滤 |
 | POST | `/api/v1/admin/llm/configs` | 原子创建 SYSTEM 配置，并可同时设为能力默认 |
-| PUT | `/api/v1/admin/llm/configs/{configId}` | 原子更新同一配置 ID；`setAsDefault=false` 保持当前默认关系 |
+| PUT | `/api/v1/admin/llm/configs/{configId}` | 原子更新同一配置 ID；`setAsDefault=true` 设为默认，`clearDefault=true` 清除当前配置持有的默认关系，两者均为 `false` 时保持不变 |
 | PATCH | `/api/v1/admin/llm/configs/{configId}/active` | 标准启停；Dataset 或 SYSTEM 默认引用受保护 |
 | POST | `/api/v1/admin/llm/configs/{configId}/emergency-disable` | 紧急停用；当前 SYSTEM 默认必须给出同能力替代 ID |
 | DELETE | `/api/v1/admin/llm/configs/{configId}` | 删除无 Dataset/default 引用的 SYSTEM 配置 |
@@ -135,7 +135,7 @@
 >
 > 精确配置校验固定顺序为：物理存在 → `is_active` → USER owner/SYSTEM 共享 → capability。配置不存在、停用、越权和能力不匹配分别返回 `10020/404`、`10021/409`、`10022/403`、`10023/400`，不回落默认配置或环境变量。
 >
-> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。`setAsDefault=true` 时配置与 SYSTEM 默认在一个事务内写入；默认写失败整单回滚。已存在配置不能原地改变 capability，避免默认关系和数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
+> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。`setAsDefault=true` 时配置与 SYSTEM 默认在一个事务内写入；`clearDefault=true` 仅清除仍指向本次 `configId` 的 SYSTEM 默认关系；两者不能同时为 `true`，均为 `false` 时保持默认关系不变。默认写入或清除失败时整单回滚。已存在配置不能原地改变 capability，避免默认关系和数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
 >
 > 用户 `setup-provider` 按 `(scope,owner_user_id,provider_id,model_name,capability)` upsert，刷新凭据复用原 `configId`，保留已有启用和默认状态。标准删除/停用保护 Dataset 引用；紧急停用保留绑定，使后续精确执行明确返回配置已停用。
 

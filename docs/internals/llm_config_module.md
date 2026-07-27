@@ -44,7 +44,7 @@
 - `sourceProviderModelId`：从正式目录复制运行快照；或
 - `catalogMutation`：在同一事务创建/更新目录项，再生成运行快照。
 
-两种事实来源二选一。API Key 加密存储且响应脱敏。`setAsDefault=true` 时配置保存与 SYSTEM 默认切换处于同一事务，默认写失败整单回滚。
+两种事实来源二选一。API Key 加密存储且响应脱敏。`setAsDefault=true` 时配置保存与 SYSTEM 默认切换处于同一事务；`clearDefault=true` 时只清除仍指向当前配置的 SYSTEM 默认关系；两者均为 `false` 时保持默认关系不变。默认关系写入或清除失败时整单回滚。
 
 平台配置可以在同一 capability 内刷新模型、协议、入口和密钥并递增 `snapshot_version`，但不能原地改变 capability；能力变化必须新建配置，避免旧默认关系或数据集绑定指向错误能力。
 
