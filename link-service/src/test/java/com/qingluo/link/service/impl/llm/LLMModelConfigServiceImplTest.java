@@ -62,6 +62,26 @@ class LLMModelConfigServiceImplTest {
     private LLMModelConfigServiceImpl service;
 
     @Test
+    void visibleConfigListIncludesAllSystemConfigsInsteadOfOnlyPlatformDefaults() {
+        LLMModelConfig user = config(101L, LLMConfigScope.USER, 7L, "CHAT", true);
+        user.setProviderId(20L);
+        user.setProviderType("openai");
+        user.setModelName("personal-chat");
+        LLMModelConfig system = config(201L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
+        system.setProviderId(20L);
+        system.setProviderType("openai");
+        system.setModelName("platform-chat");
+        given(configMapper.selectList(any())).willReturn(List.of(user), List.of(system));
+        given(systemProviderMapper.selectBatchIds(any())).willReturn(List.of(provider(20L, "openai")));
+
+        List<ExecutableLLMConfigDTO> result = service.listVisibleConfigs(7L, null, "CHAT", true);
+
+        assertThat(result).extracting(ExecutableLLMConfigDTO::getConfigId)
+            .containsExactlyInAnyOrder(101L, 201L);
+        verify(defaultMapper, never()).selectList(any());
+    }
+
+    @Test
     void setupProviderRefreshesCiphertextWithoutChangingConfigIdOrActiveState() {
         SystemProvider provider = provider(20L, "openai");
         ProviderModel catalog = model(30L, 20L, "gpt-4o", "CHAT");
@@ -124,6 +144,21 @@ class LLMModelConfigServiceImplTest {
         verify(defaultService).clearUserDefaultForConfig(7L, 101L);
         verify(configMapper).updateById(existing);
         verify(cacheConsistencyService).evict(CacheEvictTarget.LLM_RUNTIME_CONFIG, 101L);
+    }
+
+    @Test
+    void disablingSystemConfigClearsEveryUserDefaultPointingToIt() {
+        LLMModelConfig existing = config(201L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
+        existing.setSnapshotVersion(2L);
+        given(configMapper.selectById(201L)).willReturn(existing);
+
+        service.changeActive(7L, true, 201L, false,
+            LLMConfigMutationMode.STANDARD, null, false);
+
+        assertThat(existing.getIsActive()).isFalse();
+        verify(defaultService).clearUserDefaultsForConfig(201L);
+        verify(defaultService, never()).clearUserDefaultForConfig(anyLong(), anyLong());
+        verify(configMapper).updateById(existing);
     }
 
     @Test

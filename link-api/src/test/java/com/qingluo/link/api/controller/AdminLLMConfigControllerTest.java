@@ -59,4 +59,16 @@ class AdminLLMConfigControllerTest {
 
         verify(configService).saveSystemConfig(101L, request);
     }
+
+    @Test
+    void clearDefaultUsesTheDedicatedCapabilityCommand() {
+        CapabilityDefaultDTO cleared = new CapabilityDefaultDTO("CHAT", null, null, null);
+        given(defaultService.clearSystemDefault("CHAT")).willReturn(cleared);
+
+        Result<CapabilityDefaultDTO> result = controller.clearDefault("CHAT");
+
+        assertThat(result.getData().getSystemDefaultConfigId()).isNull();
+        verify(defaultService).clearSystemDefault("CHAT");
+        verifyNoMoreInteractions(configService, defaultService);
+    }
 }

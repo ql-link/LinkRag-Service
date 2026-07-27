@@ -98,4 +98,11 @@ public class AdminLLMConfigController {
         @Valid @RequestBody SetCapabilityDefaultRequest request) {
         return Result.success(defaultService.setSystemDefault(capability, request.getConfigId()));
     }
+
+    @DeleteMapping("/defaults/{capability}")
+    @Operation(summary = "清除平台能力默认", description = "清除后该能力保持未设置，不自动选择其他启用配置")
+    public Result<CapabilityDefaultDTO> clearDefault(
+        @Parameter(description = "模型能力") @PathVariable String capability) {
+        return Result.success(defaultService.clearSystemDefault(capability));
+    }
 }

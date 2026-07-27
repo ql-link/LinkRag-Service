@@ -53,6 +53,7 @@
 | POST | `/api/v1/admin/llm/configs/{configId}/emergency-disable` | 紧急停用；当前 SYSTEM 默认必须给出同能力替代 ID |
 | DELETE | `/api/v1/admin/llm/configs/{configId}` | 删除无 Dataset/default 引用的 SYSTEM 配置 |
 | PUT | `/api/v1/admin/llm/defaults/{capability}` | 切换 SYSTEM 能力默认，不改变旧配置状态或 Dataset 绑定 |
+| DELETE | `/api/v1/admin/llm/defaults/{capability}` | 清除 SYSTEM 能力默认；保持未设置且不自动选择其他启用配置 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
 
@@ -106,14 +107,14 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/llm/providers` | 可用厂商与模型能力（来源 `llm_provider_model`） |
-| GET | `/api/v1/llm/configs` | 当前用户 USER 配置 + 每种能力当前 SYSTEM 默认；支持 `providerType/capability/isActive` 过滤 |
+| GET | `/api/v1/llm/configs` | 当前用户 USER 配置 + 全部 SYSTEM 配置；支持 `providerType/capability/isActive` 过滤 |
 | POST | `/api/v1/llm/configs/setup-provider` | 按正式目录 upsert USER 运行快照；自然键相同复用 `configId` |
 | PATCH | `/api/v1/llm/configs/{configId}/active` | 按全局 ID 标准启停 USER 配置 |
 | POST | `/api/v1/llm/configs/{configId}/emergency-disable` | 所有者确认后紧急停用，保留 Dataset 绑定 |
 | DELETE | `/api/v1/llm/configs/{configId}` | 按全局 ID 删除 USER 配置；Dataset 引用时拒绝 |
 | GET | `/api/v1/llm/defaults` | 查询全部能力的用户覆盖、SYSTEM 默认和有效 `configId` |
 | GET | `/api/v1/llm/defaults/{capability}` | 查询单能力默认关系；完全未配置时返回 409 |
-| PUT | `/api/v1/llm/defaults/{capability}` | `{configId}` 设置当前用户同能力 USER 默认 |
+| PUT | `/api/v1/llm/defaults/{capability}` | `{configId}` 设置当前用户同能力默认，可指向本人 USER 或可见 SYSTEM 配置 |
 | DELETE | `/api/v1/llm/defaults/{capability}` | 清除用户覆盖，恢复跟随 SYSTEM 默认 |
 | GET | `/api/v1/llm/usage/summary` | 用量汇总 |
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
@@ -132,6 +133,8 @@
 > `by-model` 与 `trend` 为**全链路口径**（不按 stage 过滤，反映全部模型/总体趋势），与 `summary`/`daily`/`logs` 默认仅 `chat` 的口径不同——展示侧若需对齐，对 `summary` 传 `stage=all`。入参 `startDate`/`endDate` 同为 `yyyy-MM-dd`（含端）；均 `@SaCheckLogin` 且按登录用户隔离。
 >
 > `ExecutableLLMConfigDTO` 只以 `configId` 表示配置身份；`scope`（`SYSTEM` / `USER`）与 `editable` 仅用于展示和授权。响应不得再出现身份别名 `id`、`source`、`configSource` 或 `isSystemPreset`。默认选择使用独立的 `CapabilityDefaultDTO{capability,userDefaultConfigId,systemDefaultConfigId,effectiveConfigId}`，不混入配置 DTO。
+>
+> 默认关系只负责新操作的初始选择，不等于配置启用状态，也不覆盖已经显式保存的 `configId`。用户默认可指向本人 USER 配置或任意可见 SYSTEM 配置；清除用户默认表示跟随平台。平台默认可以明确清除，清除后保持未设置，不按列表首项兜底。
 >
 > 精确配置校验固定顺序为：物理存在 → `is_active` → USER owner/SYSTEM 共享 → capability。配置不存在、停用、越权和能力不匹配分别返回 `10020/404`、`10021/409`、`10022/403`、`10023/400`，不回落默认配置或环境变量。
 >

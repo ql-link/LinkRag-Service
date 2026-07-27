@@ -47,11 +47,7 @@ public class LLMCapabilityDefaultServiceImpl implements LLMCapabilityDefaultServ
     @Transactional
     public CapabilityDefaultDTO setUserDefault(Long userId, String capability, Long configId) {
         String normalized = normalizeCapability(capability);
-        LLMModelConfig config = configValidator.requireExecutable(userId, configId, normalized);
-        if (!LLMConfigScope.USER.name().equals(config.getScope())
-            || !userId.equals(config.getOwnerUserId())) {
-            throw new BusinessException(ErrorCode.LLM_CONFIG_FORBIDDEN);
-        }
+        configValidator.requireExecutable(userId, configId, normalized);
         upsert(LLMConfigScope.USER.name(), userId, normalized, configId);
         return resolve(userId, normalized, true);
     }
@@ -82,6 +78,21 @@ public class LLMCapabilityDefaultServiceImpl implements LLMCapabilityDefaultServ
             throw new BusinessException(ErrorCode.LLM_DEFAULT_UPDATE_FAILED);
         }
         return resolve(SYSTEM_OWNER_ID, normalized, true);
+    }
+
+    @Override
+    @Transactional
+    public CapabilityDefaultDTO clearSystemDefault(String capability) {
+        String normalized = normalizeCapability(capability);
+        try {
+            defaultMapper.delete(new LambdaQueryWrapper<LLMCapabilityDefault>()
+                .eq(LLMCapabilityDefault::getScope, LLMConfigScope.SYSTEM.name())
+                .eq(LLMCapabilityDefault::getOwnerUserId, SYSTEM_OWNER_ID)
+                .eq(LLMCapabilityDefault::getCapability, normalized));
+        } catch (DataAccessException ex) {
+            throw new BusinessException(ErrorCode.LLM_DEFAULT_UPDATE_FAILED);
+        }
+        return resolve(SYSTEM_OWNER_ID, normalized, false);
     }
 
     @Override
@@ -120,6 +131,14 @@ public class LLMCapabilityDefaultServiceImpl implements LLMCapabilityDefaultServ
             .eq(LLMCapabilityDefault::getConfigId, configId));
     }
 
+    @Override
+    @Transactional
+    public void clearUserDefaultsForConfig(Long configId) {
+        defaultMapper.delete(new LambdaQueryWrapper<LLMCapabilityDefault>()
+            .eq(LLMCapabilityDefault::getScope, LLMConfigScope.USER.name())
+            .eq(LLMCapabilityDefault::getConfigId, configId));
+    }
+
     private CapabilityDefaultDTO resolve(Long userId, String capability, boolean required) {
         LLMCapabilityDefault userDefault = userId == null || userId == SYSTEM_OWNER_ID
             ? null : find(LLMConfigScope.USER.name(), userId, capability);
@@ -137,11 +156,7 @@ public class LLMCapabilityDefaultServiceImpl implements LLMCapabilityDefaultServ
         }
 
         if (userDefaultConfigId != null) {
-            LLMModelConfig config = configValidator.requireExecutable(userId, userDefaultConfigId, capability);
-            if (!LLMConfigScope.USER.name().equals(config.getScope())
-                || !userId.equals(config.getOwnerUserId())) {
-                throw new BusinessException(ErrorCode.LLM_CONFIG_FORBIDDEN);
-            }
+            configValidator.requireExecutable(userId, userDefaultConfigId, capability);
         }
         if (systemConfigId != null) {
             LLMModelConfig config = configValidator.requireExecutable(SYSTEM_OWNER_ID, systemConfigId, capability);

@@ -61,9 +61,9 @@ SYSTEM 配置仅管理员可写、对所有用户可执行；USER 配置仅所�
 | `scope` | `SYSTEM` 平台兜底或 `USER` 用户覆盖 |
 | `owner_user_id` | SYSTEM 固定 `0`；USER 为真实用户 ID |
 | `capability` | 默认项所属能力 |
-| `config_id` | 引用同 scope/owner、同 capability、active 的 `llm_model_config.id` |
+| `config_id` | 引用同 capability、active 且对关系所有者可见的 `llm_model_config.id`；SYSTEM 默认只能引用 SYSTEM 配置，USER 默认可引用本人 USER 或共享 SYSTEM 配置 |
 
-唯一键 `uk_llm_capability_default_owner_cap(scope, owner_user_id, capability)` 保证每个所有者每种能力最多一个默认项。有效默认解析顺序是 USER 默认 → SYSTEM 默认。用户可以清除自己的默认覆盖；平台默认停用或删除前必须原子指定同能力替代项。默认关系不参与数据集已经固化的模型绑定。
+唯一键 `uk_llm_capability_default_owner_cap(scope, owner_user_id, capability)` 保证每个所有者每种能力最多一个默认项。有效默认解析顺序是 USER 默认 → SYSTEM 默认 → 未配置，不使用“首个启用配置”兜底。用户可以清除自己的默认覆盖以跟随平台；平台默认也可明确清除。停用或删除配置会清理指向它的 USER 默认，当前平台默认在标准停用或删除前需先清除或切换，紧急停用则必须原子指定同能力替代项。默认关系不参与数据集或会话已经固化的模型绑定。
 
 ### 厂商目录与运行快照
 

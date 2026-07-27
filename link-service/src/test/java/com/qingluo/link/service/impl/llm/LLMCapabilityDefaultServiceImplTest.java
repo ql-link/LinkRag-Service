@@ -55,6 +55,21 @@ class LLMCapabilityDefaultServiceImplTest {
     }
 
     @Test
+    void setUserDefaultAcceptsAVisibleSystemConfig() {
+        LLMModelConfig system = config(100L, LLMConfigScope.SYSTEM, 0L, "CHAT");
+        given(configValidator.requireExecutable(7L, 100L, "CHAT")).willReturn(system);
+        given(defaultMapper.selectOne(any()))
+            .willReturn(null, defaultRow(LLMConfigScope.USER, 7L, "CHAT", 100L), null);
+
+        CapabilityDefaultDTO result = service.setUserDefault(7L, "chat", 100L);
+
+        assertThat(result.getUserDefaultConfigId()).isEqualTo(100L);
+        assertThat(result.getSystemDefaultConfigId()).isNull();
+        assertThat(result.getEffectiveConfigId()).isEqualTo(100L);
+        verify(defaultMapper).insert(any(LLMCapabilityDefault.class));
+    }
+
+    @Test
     void userOverrideDoesNotHideAnInvalidSystemDefaultPointer() {
         LLMModelConfig user = config(101L, LLMConfigScope.USER, 7L, "CHAT");
         given(defaultMapper.selectOne(any())).willReturn(
@@ -92,6 +107,24 @@ class LLMCapabilityDefaultServiceImplTest {
 
         assertThat(result.getSystemDefaultConfigId()).isNull();
         assertThat(result.getEffectiveConfigId()).isNull();
+        verify(defaultMapper).delete(any());
+    }
+
+    @Test
+    void clearSystemDefaultByCapabilityLeavesItUnconfigured() {
+        given(defaultMapper.selectOne(any())).willReturn(null);
+
+        CapabilityDefaultDTO result = service.clearSystemDefault("chat");
+
+        assertThat(result.getSystemDefaultConfigId()).isNull();
+        assertThat(result.getEffectiveConfigId()).isNull();
+        verify(defaultMapper).delete(any());
+    }
+
+    @Test
+    void clearUserDefaultsForSystemConfigDeletesEveryUserPointerToIt() {
+        service.clearUserDefaultsForConfig(100L);
+
         verify(defaultMapper).delete(any());
     }
 

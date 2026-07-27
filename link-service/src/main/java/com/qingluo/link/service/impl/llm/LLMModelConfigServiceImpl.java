@@ -78,14 +78,9 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
                 .eq(LLMModelConfig::getScope, LLMConfigScope.USER.name())
                 .eq(LLMModelConfig::getOwnerUserId, userId)));
 
-        List<Long> systemDefaultIds = defaultMapper.selectList(
-            new LambdaQueryWrapper<LLMCapabilityDefault>()
-                .eq(LLMCapabilityDefault::getScope, LLMConfigScope.SYSTEM.name())
-                .eq(LLMCapabilityDefault::getOwnerUserId, SYSTEM_OWNER_ID))
-            .stream().map(LLMCapabilityDefault::getConfigId).distinct().toList();
-        if (!systemDefaultIds.isEmpty()) {
-            configs.addAll(configMapper.selectBatchIds(systemDefaultIds));
-        }
+        configs.addAll(configMapper.selectList(new LambdaQueryWrapper<LLMModelConfig>()
+            .eq(LLMModelConfig::getScope, LLMConfigScope.SYSTEM.name())
+            .eq(LLMModelConfig::getOwnerUserId, SYSTEM_OWNER_ID)));
 
         return toDTOs(configs.stream()
             .filter(config -> providerType == null || providerType.equals(config.getProviderType()))
@@ -245,6 +240,8 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
 
         if (LLMConfigScope.USER.name().equals(config.getScope())) {
             defaultService.clearUserDefaultForConfig(actorUserId, configId);
+        } else {
+            defaultService.clearUserDefaultsForConfig(configId);
         }
         config.setIsActive(false);
         config.setSnapshotVersion(nextVersion(config));
@@ -262,6 +259,8 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
         }
         if (LLMConfigScope.USER.name().equals(config.getScope())) {
             defaultService.clearUserDefaultForConfig(actorUserId, configId);
+        } else {
+            defaultService.clearUserDefaultsForConfig(configId);
         }
         configMapper.deleteById(configId);
         evictAfterCommit(configId);

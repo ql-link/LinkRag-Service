@@ -43,7 +43,7 @@ public class ConfigController {
 
     @GetMapping("/configs")
     @SaCheckLogin
-    @Operation(summary = "获取统一LLM配置列表", description = "返回当前用户配置和各能力当前平台默认配置，唯一身份字段为configId")
+    @Operation(summary = "获取统一LLM配置列表", description = "返回当前用户配置和全部平台配置，唯一身份字段为configId")
     public Result<List<ExecutableLLMConfigDTO>> getConfigs(
         @Parameter(description = "厂商类型") @RequestParam(required = false) String providerType,
         @Parameter(description = "模型能力") @RequestParam(required = false) String capability,
@@ -109,7 +109,7 @@ public class ConfigController {
 
     @PutMapping("/defaults/{capability}")
     @SaCheckLogin
-    @Operation(summary = "设置用户能力默认", description = "只能选择当前用户拥有、启用且能力匹配的USER配置")
+    @Operation(summary = "设置用户能力默认", description = "可选择当前用户可见、启用且能力匹配的个人或平台配置")
     public Result<CapabilityDefaultDTO> setDefault(
         @Parameter(description = "模型能力") @PathVariable String capability,
         @Valid @RequestBody SetCapabilityDefaultRequest request) {

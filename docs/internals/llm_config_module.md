@@ -31,11 +31,11 @@
 用户配置行为保持“添加模型、选择模型”两步，但数据职责分离：
 
 1. 用户从厂商/模型目录选择模型，提交 API Key，Java 写入或更新一条 `scope=USER` 的 `llm_model_config` 运行快照。
-2. 列表接口返回用户自己的配置和当前 SYSTEM 默认配置，身份始终为 `configId`。
-3. 用户通过 `PUT /api/v1/llm/defaults/{capability}` 设置默认，或 DELETE 清除覆盖。
-4. 有效默认解析固定为 USER 默认 → SYSTEM 默认；都不存在时返回 `LLM_DEFAULT_NOT_CONFIGURED(10024)`。
+2. 列表接口返回用户自己的配置和全部 SYSTEM 配置，身份始终为 `configId`。
+3. 用户通过 `PUT /api/v1/llm/defaults/{capability}` 把本人 USER 或可见 SYSTEM 配置设为用户默认，或 DELETE 清除覆盖并跟随平台。
+4. 有效默认解析固定为 USER 默认 → SYSTEM 默认；都不存在时返回 `LLM_DEFAULT_NOT_CONFIGURED(10024)`，不按配置列表首项兜底。
 
-默认关系不混入配置行。停用/删除 USER 配置时同步清除指向它的 USER 默认；不能因此修改平台默认或已经固化的数据集绑定。
+默认关系不混入配置行，也不覆盖会话等业务已经显式保存的 `configId`。停用/删除 USER 配置时清除所有者指针；停用/删除 SYSTEM 配置时清除所有用户指向它的 USER 指针。上述清理不能修改已经固化的数据集绑定。
 
 ## 管理端平台配置
 
@@ -48,7 +48,7 @@
 
 平台配置可以在同一 capability 内刷新模型、协议、入口和密钥并递增 `snapshot_version`，但不能原地改变 capability；能力变化必须新建配置，避免旧默认关系或数据集绑定指向错误能力。
 
-停用/删除当前 SYSTEM 默认必须同时提供同能力替代项；替代关系和配置状态原子提交。紧急停用允许保留引用，但后续预检与执行必须因 `is_active=false` 拒绝该配置。
+平台默认通过独立 PUT/DELETE 接口设置或清除。标准停用/删除当前 SYSTEM 默认前必须先清除或切换默认；紧急停用必须同时提供同能力替代项，替代关系和配置状态原子提交。紧急停用允许保留数据集引用，但后续预检与执行必须因 `is_active=false` 拒绝该配置。
 
 ## 精确执行校验
 

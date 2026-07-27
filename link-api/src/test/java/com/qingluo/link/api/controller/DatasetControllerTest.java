@@ -2,6 +2,7 @@ package com.qingluo.link.api.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.qingluo.link.api.TestSecurityConfig;
+import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.mapper.SysUserMapper;
 import org.junit.jupiter.api.BeforeAll;
@@ -46,6 +47,9 @@ class DatasetControllerTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private ApiKeyEncryptService apiKeyEncryptService;
 
     private static final Long TEST_USER_ID = 99989L;
     private static final Long SPARSE_CONFIG_ID = 99891L;
@@ -93,7 +97,7 @@ class DatasetControllerTest {
                 id, scope, owner_user_id, provider_id, provider_type, api_key, api_base_url,
                 protocol, model_name, display_name, capability, is_active, snapshot_version
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, 1)
-            """, id, scope, ownerUserId, 1L, "aliyun", "encrypted-key",
+            """, id, scope, ownerUserId, 1L, "aliyun", apiKeyEncryptService.encrypt("test-api-key"),
             "https://example.com/embeddings", "openai", modelName, modelName, capability);
     }
 
