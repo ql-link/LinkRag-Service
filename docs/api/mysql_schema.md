@@ -85,7 +85,7 @@ SYSTEM 配置仅管理员可写、对所有用户可执行；USER 配置仅所�
 
 五个字段都只存 `configId`，没有 `source` 列。每个字段有独立索引，便于配置停用/删除前检查引用。SYSTEM 配置可供任意用户数据集绑定；USER 配置必须属于数据集所有者。召回 session 签发与 Python 实际执行前都重新校验已存绑定的存在、active、归属和能力，禁止失效配置继续运行。
 
-`chunking_config`、`enhancement_config`、`pdf_config`、`recall_config` 为 JSON；字段模型以 Python `src/core/dataset_config/models.py` 为准。`recall_config` 包含 `enable_rerank`，默认 `false`。唯一键 `uk_user_dataset(user_id, dataset_id)` 保证每个数据集一个配置行；`idx_dataset_parse_config_dataset(dataset_id)` 支撑按数据集读取。
+`chunking_config`、`enhancement_config`、`pdf_config`、`recall_config` 为 JSON；字段模型以 Python `src/core/dataset_config/models.py` 为准。`recall_config` 包含 `enable_rerank`，默认 `false`；多路召回固定使用 weighted score，仅保存三路权重，不再保存 `recall_fusion_strategy`。历史 JSON 中的旧策略字段读取时忽略，并在下一次保存时清除。唯一键 `uk_user_dataset(user_id, dataset_id)` 保证每个数据集一个配置行；`idx_dataset_parse_config_dataset(dataset_id)` 支撑按数据集读取。
 
 ## 对话与用量
 

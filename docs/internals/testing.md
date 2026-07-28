@@ -40,7 +40,7 @@ mvn -pl link-service test
 - 用户资料类 multipart 上传接口在 `UserControllerTest` 用 local OSS 测试配置承接端到端回写断言；对应 Service 单测用 `OssApplicationService` mock 覆盖 OSS 返回值和数据库更新。资料与角色读取测试应直接断言 `SysUserMapper` 查询。
 - 全局最近文档等跨数据集查询应在 Controller/集成测试中覆盖当前用户权限隔离、稳定排序、分页和空列表返回。
 - 管理端用户统计看板测试：`AdminUserStatisticsServiceImplTest` 使用固定 `Clock` 覆盖 7/30/90 天、上海时区半开边界、趋势补零、日/周期去重和零基数环比；`UserLoginEventRecorderImplTest` 覆盖事件写入及失败不影响认证；`AuthServiceImplTest` 断言登录/注册成功记录事件、失败登录不记录；`AdminControllerTest` 使用 H2 真实聚合 SQL 覆盖 USER+ADMIN 规模、重复登录去重、响应无身份信息和非法范围 400。
-- 数据集解析/检索配置测试：`DatasetParseConfigControllerTest` 覆盖 GET/PUT 往返、创建数据集固化稀疏/稠密 `configId`、两者不可重绑、CHAT/VISION/RERANK 条件必需与可替换/清空、`enable_rerank`、字段级错误详情及配置参数边界；`DatasetParseConfigServiceImplTest` 覆盖无行默认、写入归一化和 Mapper insert/update；`DatasetModelBindingValidatorTest` 覆盖五类能力、存在/active/归属/能力固定错误优先级，`DatasetControllerTest` 覆盖创建时统一配置绑定落库。
+- 数据集解析/检索配置测试：`DatasetParseConfigControllerTest` 覆盖 GET/PUT 往返、创建数据集固化稀疏/稠密 `configId`、两者不可重绑、CHAT/VISION/RERANK 条件必需与可替换/清空、`enable_rerank`、固定 weighted score 三路权重、历史 `recall_fusion_strategy` 字段忽略且不再落库、字段级错误详情及配置参数边界；`DatasetParseConfigServiceImplTest` 覆盖无行默认、写入归一化和 Mapper insert/update；`DatasetModelBindingValidatorTest` 覆盖五类能力、存在/active/归属/能力固定错误优先级，`DatasetControllerTest` 覆盖创建时统一配置绑定落库。
 - 缓存一致性变更必须分别测试读/回填故障的可用性降级、业务写提交后首次失效失败不改变请求结果，以及 CDC/MQ 补偿删除失败的强失败与 DLT 投递，不能用读路径降级掩盖写路径一致性问题。
 - 缓存一致性组件改造优先在 `link-service/src/test/java/com/qingluo/link/service/cache/CacheConsistencyServiceTest.java` 承接，至少覆盖：事务提交后首删、事务回滚不删、无事务立即删、首删失败不改请求结果、补偿第二删强失败语义，以及同事务多次触发下的 key 去重结果。
 - Redis 读保护在 `toLink-components-redis` 测试中覆盖命中、并发 miss 单次回源、读写异常精确指标、空值短 TTL 和 fence 变化跳过旧值回填；key 路由测试必须断言无人工版本段。
