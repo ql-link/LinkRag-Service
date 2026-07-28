@@ -13,7 +13,7 @@ import lombok.Data;
 /**
  * 召回检索配置，字段名与 Python {@code RecallConfig} 对齐。
  *
- * <p>正整数、非负分数/权重、枚举值与 Python Pydantic validator 对齐。
+ * <p>正整数、非负分数/权重与 Python Pydantic validator 对齐。多路召回固定使用 weighted score。
  */
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -55,9 +55,6 @@ public class RecallConfig {
     @Schema(description = "启用的召回来源", example = "[\"bm25\",\"sparse\",\"dense\"]",
         allowableValues = {"bm25", "sparse", "dense"})
     private List<String> recallEnabledSources;
-
-    @Schema(description = "多路召回融合策略", example = "rrf", allowableValues = {"rrf", "weighted_score"})
-    private String recallFusionStrategy;
 
     @DecimalMin(value = "0.0", message = "fusion_bm25_weight 必须不小于 0")
     @Schema(description = "BM25 融合权重", example = "1.0")

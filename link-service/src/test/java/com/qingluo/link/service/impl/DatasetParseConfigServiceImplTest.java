@@ -201,7 +201,6 @@ class DatasetParseConfigServiceImplTest {
         recall.setDenseTopK(12);
         recall.setDenseScoreThreshold(0.2);
         recall.setRecallEnabledSources(java.util.List.of(" DENSE ", "", "bm25", "dense"));
-        recall.setRecallFusionStrategy(" Weighted_Score ");
         recall.setFusionBm25Weight(1.0);
         recall.setFusionSparseWeight(0.8);
         recall.setFusionDenseWeight(1.2);
@@ -214,11 +213,9 @@ class DatasetParseConfigServiceImplTest {
         ArgumentCaptor<DatasetParseConfig> captor = ArgumentCaptor.forClass(DatasetParseConfig.class);
         verify(datasetParseConfigMapper).insert(captor.capture());
         assertThat(captor.getValue().getRecallConfig().getRecallEnabledSources()).containsExactly("dense", "bm25");
-        assertThat(captor.getValue().getRecallConfig().getRecallFusionStrategy()).isEqualTo("weighted_score");
         assertThat(captor.getValue().getRecallConfig().getBm25TopK()).isEqualTo(30);
         assertThat(captor.getValue().getRecallConfig().getFusionDenseWeight()).isEqualTo(1.2);
         assertThat(resp.getRecall().getRecallEnabledSources()).containsExactly("dense", "bm25");
-        assertThat(resp.getRecall().getRecallFusionStrategy()).isEqualTo("weighted_score");
         assertThat(resp.getRecall().getRerankTopN()).isEqualTo(3);
         assertThat(resp.getRecall().getRecallStrict()).isTrue();
     }
@@ -295,25 +292,6 @@ class DatasetParseConfigServiceImplTest {
         assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("fusion_dense_weight");
-
-        verify(datasetParseConfigMapper, never()).insert(any());
-        verify(datasetParseConfigMapper, never()).updateById(any());
-    }
-
-    @Test
-    @DisplayName("Should_RejectRecallFusionStrategy_When_Unknown")
-    void Should_RejectRecallFusionStrategy_When_Unknown() {
-        given(datasetService.detail(anyLong(), anyLong())).willReturn(null);
-        given(datasetParseConfigMapper.selectOne(any())).willReturn(null);
-
-        UpdateDatasetParseConfigRequest req = new UpdateDatasetParseConfigRequest();
-        RecallConfig recall = new RecallConfig();
-        recall.setRecallFusionStrategy("unknown");
-        req.setRecall(recall);
-
-        assertThatThrownBy(() -> service.updateConfig(1L, 10L, req))
-            .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("recall_fusion_strategy");
 
         verify(datasetParseConfigMapper, never()).insert(any());
         verify(datasetParseConfigMapper, never()).updateById(any());
