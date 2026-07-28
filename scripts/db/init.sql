@@ -139,11 +139,11 @@ CREATE TABLE IF NOT EXISTS llm_model_config (
     INDEX idx_llm_model_config_owner_capability (scope, owner_user_id, capability, is_active)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000 COMMENT '统一 LLM 可执行配置表';
 
--- 2.3 LLM 能力默认关系表（默认选择与配置可执行状态解耦）
+-- 2.3 用户 LLM 能力默认关系表（默认选择与配置可执行状态解耦）
 CREATE TABLE IF NOT EXISTS llm_capability_default (
     id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '默认关系唯一标识',
-    scope               VARCHAR(16)     NOT NULL COMMENT '默认范围：SYSTEM 平台默认, USER 用户覆盖',
-    owner_user_id       BIGINT UNSIGNED NOT NULL COMMENT '默认关系所有者：SYSTEM 固定为 0，USER 为真实用户 ID',
+    scope               VARCHAR(16)     NOT NULL COMMENT '兼容范围字段，当前业务固定为 USER',
+    owner_user_id       BIGINT UNSIGNED NOT NULL COMMENT '默认关系所属用户 ID',
     capability          VARCHAR(32)     NOT NULL COMMENT '默认能力：CHAT/EMBEDDING/SPARSE_EMBEDDING/VISION/RERANK/ASR',
     config_id           BIGINT UNSIGNED NOT NULL COMMENT '统一 LLM 可执行配置 ID',
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS llm_capability_default (
 
     UNIQUE KEY uk_llm_capability_default_owner_cap (scope, owner_user_id, capability),
     INDEX idx_llm_capability_default_config (config_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000 COMMENT 'LLM 能力默认关系表';
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000 COMMENT '用户 LLM 能力默认关系表';
 
 
 -- 4. 数据集表

@@ -24,9 +24,6 @@ public class AdminPlatformConfigSaveRequest {
     @Size(max = 512, message = "API Key长度不能超过512")
     private String apiKey;
 
-    @Schema(description = "是否在同一事务设为该能力的SYSTEM默认", example = "false")
-    private Boolean setAsDefault = false;
-
     @Data
     @Schema(description = "模型目录原子变更")
     public static class CatalogMutation {

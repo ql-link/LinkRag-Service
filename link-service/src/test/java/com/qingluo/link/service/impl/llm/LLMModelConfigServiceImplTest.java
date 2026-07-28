@@ -13,7 +13,6 @@ import com.qingluo.link.components.redis.service.CacheEvictTarget;
 import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.core.util.ApiKeyEncryptService;
 import com.qingluo.link.mapper.DatasetParseConfigMapper;
-import com.qingluo.link.mapper.LLMCapabilityDefaultMapper;
 import com.qingluo.link.mapper.LLMModelConfigMapper;
 import com.qingluo.link.mapper.ProviderModelMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
@@ -23,7 +22,6 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.AdminPlatformConfigSaveRequest;
 import com.qingluo.link.model.dto.request.SetupProviderRequest;
 import com.qingluo.link.model.dto.response.AdminPlatformConfigSaveResult;
-import com.qingluo.link.model.dto.response.CapabilityDefaultDTO;
 import com.qingluo.link.model.dto.response.ExecutableLLMConfigDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.LLMConfigMutationMode;
@@ -45,7 +43,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class LLMModelConfigServiceImplTest {
 
     @Mock private LLMModelConfigMapper configMapper;
-    @Mock private LLMCapabilityDefaultMapper defaultMapper;
     @Mock private DatasetParseConfigMapper datasetParseConfigMapper;
     @Mock private ProviderModelMapper providerModelMapper;
     @Mock private SystemProviderMapper systemProviderMapper;
@@ -60,6 +57,25 @@ class LLMModelConfigServiceImplTest {
 
     @InjectMocks
     private LLMModelConfigServiceImpl service;
+
+    @Test
+    void visibleConfigListIncludesAllSystemConfigsInsteadOfOnlyPlatformDefaults() {
+        LLMModelConfig user = config(101L, LLMConfigScope.USER, 7L, "CHAT", true);
+        user.setProviderId(20L);
+        user.setProviderType("openai");
+        user.setModelName("personal-chat");
+        LLMModelConfig system = config(201L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
+        system.setProviderId(20L);
+        system.setProviderType("openai");
+        system.setModelName("platform-chat");
+        given(configMapper.selectList(any())).willReturn(List.of(user), List.of(system));
+        given(systemProviderMapper.selectBatchIds(any())).willReturn(List.of(provider(20L, "openai")));
+
+        List<ExecutableLLMConfigDTO> result = service.listVisibleConfigs(7L, null, "CHAT", true);
+
+        assertThat(result).extracting(ExecutableLLMConfigDTO::getConfigId)
+            .containsExactlyInAnyOrder(101L, 201L);
+    }
 
     @Test
     void setupProviderRefreshesCiphertextWithoutChangingConfigIdOrActiveState() {
@@ -100,7 +116,7 @@ class LLMModelConfigServiceImplTest {
         given(datasetParseConfigMapper.countModelReferences(101L)).willReturn(1L);
 
         assertThatThrownBy(() -> service.changeActive(7L, false, 101L, false,
-            LLMConfigMutationMode.STANDARD, null, false))
+            LLMConfigMutationMode.STANDARD, false))
             .isInstanceOfSatisfying(BusinessException.class,
                 exception -> assertThat(exception.getCode()).isEqualTo(ErrorCode.LLM_CONFIG_IN_USE.getCode()));
 
@@ -116,7 +132,7 @@ class LLMModelConfigServiceImplTest {
         given(runtimeCacheReadiness.isEnabled()).willReturn(true);
 
         service.changeActive(7L, false, 101L, false,
-            LLMConfigMutationMode.EMERGENCY, null, true);
+            LLMConfigMutationMode.EMERGENCY, true);
 
         assertThat(existing.getIsActive()).isFalse();
         assertThat(existing.getSnapshotVersion()).isEqualTo(5L);
@@ -127,6 +143,21 @@ class LLMModelConfigServiceImplTest {
     }
 
     @Test
+    void disablingSystemConfigClearsEveryUserDefaultPointingToIt() {
+        LLMModelConfig existing = config(201L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
+        existing.setSnapshotVersion(2L);
+        given(configMapper.selectById(201L)).willReturn(existing);
+
+        service.changeActive(7L, true, 201L, false,
+            LLMConfigMutationMode.STANDARD, false);
+
+        assertThat(existing.getIsActive()).isFalse();
+        verify(defaultService).clearUserDefaultsForConfig(201L);
+        verify(defaultService, never()).clearUserDefaultForConfig(anyLong(), anyLong());
+        verify(configMapper).updateById(existing);
+    }
+
+    @Test
     void runtimeCacheNotReadySkipsFirstEvictionTarget() {
         LLMModelConfig existing = config(101L, LLMConfigScope.USER, 7L, "CHAT", false);
         existing.setSnapshotVersion(1L);
@@ -134,7 +165,7 @@ class LLMModelConfigServiceImplTest {
         given(runtimeCacheReadiness.isEnabled()).willReturn(false);
 
         service.changeActive(7L, false, 101L, true,
-            LLMConfigMutationMode.STANDARD, null, false);
+            LLMConfigMutationMode.STANDARD, false);
 
         assertThat(existing.getIsActive()).isTrue();
         assertThat(existing.getSnapshotVersion()).isEqualTo(2L);
@@ -143,7 +174,7 @@ class LLMModelConfigServiceImplTest {
     }
 
     @Test
-    void adminCanCreateConfigWithoutExistingDefaultAndKeepCurrentDefaultEmpty() {
+    void adminCanCreatePlatformConfigWithoutAnyDefaultMutation() {
         ProviderModel catalog = model(30L, 20L, "gpt-4o", "CHAT");
         SystemProvider provider = provider(20L, "openai");
         given(providerModelMapper.selectById(30L)).willReturn(catalog);
@@ -159,13 +190,10 @@ class LLMModelConfigServiceImplTest {
         AdminPlatformConfigSaveRequest request = new AdminPlatformConfigSaveRequest();
         request.setSourceProviderModelId(30L);
         request.setApiKey("platform-key");
-        request.setSetAsDefault(false);
         AdminPlatformConfigSaveResult result = service.saveSystemConfig(null, request);
 
         assertThat(result.getConfig().getConfigId()).isEqualTo(200L);
         assertThat(result.getConfig().getEditable()).isTrue();
-        assertThat(result.getCapabilityDefault().getEffectiveConfigId()).isNull();
-        verify(defaultService, never()).setSystemDefault(any(), anyLong());
         verify(defaultService, never()).listDefaults(anyLong());
     }
 

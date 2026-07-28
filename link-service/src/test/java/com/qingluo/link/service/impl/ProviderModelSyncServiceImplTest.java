@@ -9,6 +9,7 @@ import com.qingluo.link.model.dto.entity.ProviderModelSyncCandidate;
 import com.qingluo.link.model.dto.entity.ProviderModelSyncJob;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.PublishModelSyncCandidateRequest;
+import com.qingluo.link.model.dto.request.PublishModelSyncCandidatesRequest;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.ProviderModelService;
@@ -155,6 +156,45 @@ class ProviderModelSyncServiceImplTest {
         assertThat(candidate.getReviewStatus()).isEqualTo("PUBLISHED");
         assertThat(candidate.getMatchedProviderModelId()).isEqualTo(31L);
         verify(syncCandidateMapper).updateById(candidate);
+    }
+
+    @Test
+    @DisplayName("批量发布候选：同一模型所选能力在一次事务调用中全部发布")
+    void publishCandidates_publishesSelectedCapabilities() {
+        ProviderModelSyncCandidate chat = candidate(20L, "CHAT", "openai", "/chat/completions");
+        ProviderModelSyncCandidate vision = candidate(21L, "VISION", "doubao_vision", "/vision");
+        given(syncCandidateMapper.selectById(20L)).willReturn(chat);
+        given(syncCandidateMapper.selectById(21L)).willReturn(vision);
+        given(providerModelService.addModelCapability(5L, "model-new", "Model New", "CHAT", "openai",
+                "/chat/completions")).willReturn(model(31L, "model-new", "CHAT"));
+        given(providerModelService.addModelCapability(5L, "model-new", "Model New", "VISION", "doubao_vision",
+                "/vision")).willReturn(model(32L, "model-new", "VISION"));
+
+        PublishModelSyncCandidatesRequest request = new PublishModelSyncCandidatesRequest();
+        request.setCandidateIds(List.of(20L, 21L));
+        request.setModelName("model-new");
+        request.setDisplayName("Model New");
+
+        List<ProviderModel> result = service.publishCandidates(request);
+
+        assertThat(result).extracting(ProviderModel::getCapability).containsExactly("CHAT", "VISION");
+        assertThat(chat.getReviewStatus()).isEqualTo("PUBLISHED");
+        assertThat(vision.getReviewStatus()).isEqualTo("PUBLISHED");
+        verify(syncCandidateMapper, times(2)).updateById(any(ProviderModelSyncCandidate.class));
+    }
+
+    private ProviderModelSyncCandidate candidate(Long id, String capability, String protocol, String apiBaseUrl) {
+        ProviderModelSyncCandidate candidate = new ProviderModelSyncCandidate();
+        candidate.setId(id);
+        candidate.setProviderId(5L);
+        candidate.setSyncSource("MODELS_DEV");
+        candidate.setExternalModelId("external/model-new");
+        candidate.setModelName("model-new");
+        candidate.setDisplayName("Model New");
+        candidate.setInferredCapability(capability);
+        candidate.setInferredProtocol(protocol);
+        candidate.setInferredApiBaseUrl(apiBaseUrl);
+        return candidate;
     }
 
     @Test

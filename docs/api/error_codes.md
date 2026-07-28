@@ -25,10 +25,7 @@
 - `LLM_CONFIG_INACTIVE(10021/409)`：配置存在但已停用。
 - `LLM_CONFIG_FORBIDDEN(10022/403)`：USER 配置不属于当前用户；SYSTEM 配置对所有用户可见。
 - `LLM_CONFIG_CAPABILITY_MISMATCH(10023/400)`：配置能力与调用点要求不一致。
-- `LLM_DEFAULT_NOT_CONFIGURED(10024/409)`：USER 默认不存在且对应 SYSTEM 默认也未配置。
-- `LLM_DEFAULT_UPDATE_FAILED(10025/500)`：默认关系在事务内更新失败。
 - `LLM_CONFIG_IN_USE(10026/409)`：配置仍被 `dataset_parse_config` 的任一模型字段引用，禁止删除。
-- `LLM_DEFAULT_REPLACEMENT_REQUIRED(10027/409)`：停用或删除当前 SYSTEM 默认前未指定同能力替代项。
 - `INVALID_DATASET_MODEL_BINDING(10028/400)`：数据集模型绑定或相关配置参数不合法；响应 `data.field` 指向失败字段。
 - `DATASET_MODEL_BINDING_REQUIRED(10029/409)`：启用增强或重排能力时缺少对应 CHAT / VISION / RERANK 配置。
 

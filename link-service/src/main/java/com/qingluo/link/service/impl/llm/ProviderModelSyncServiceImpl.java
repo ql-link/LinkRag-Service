@@ -13,6 +13,7 @@ import com.qingluo.link.model.dto.entity.ProviderModelSyncCandidate;
 import com.qingluo.link.model.dto.entity.ProviderModelSyncJob;
 import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.PublishModelSyncCandidateRequest;
+import com.qingluo.link.model.dto.request.PublishModelSyncCandidatesRequest;
 import com.qingluo.link.model.dto.response.PageResult;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.LLMCapabilityService;
@@ -27,6 +28,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -136,11 +138,49 @@ public class ProviderModelSyncServiceImpl implements ProviderModelSyncService {
     @Transactional
     public ProviderModel publishCandidate(Long candidateId, PublishModelSyncCandidateRequest request) {
         ProviderModelSyncCandidate candidate = requireCandidate(candidateId);
-        String modelName = firstText(request.getModelName(), candidate.getModelName());
-        String displayName = request.getDisplayName() != null ? request.getDisplayName() : candidate.getDisplayName();
-        String capability = firstText(request.getCapability(), candidate.getInferredCapability());
-        String protocol = firstText(request.getProtocol(), candidate.getInferredProtocol());
-        String apiBaseUrl = firstText(request.getApiBaseUrl(), candidate.getInferredApiBaseUrl());
+        return publishCandidate(candidate, request.getModelName(), request.getDisplayName(), request.getCapability(),
+                request.getProtocol(), request.getApiBaseUrl());
+    }
+
+    @Override
+    @Transactional
+    public List<ProviderModel> publishCandidates(PublishModelSyncCandidatesRequest request) {
+        if (request == null || request.getCandidateIds() == null || request.getCandidateIds().isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_MODEL_CAPABILITY, "请至少选择一个待发布能力");
+        }
+        List<Long> candidateIds = new ArrayList<>(new LinkedHashSet<>(request.getCandidateIds()));
+        List<ProviderModelSyncCandidate> candidates = candidateIds.stream().map(this::requireCandidate).toList();
+        ProviderModelSyncCandidate first = candidates.get(0);
+        boolean mixedModels = candidates.stream().anyMatch(candidate ->
+                !Objects.equals(first.getProviderId(), candidate.getProviderId())
+                        || !Objects.equals(first.getSyncSource(), candidate.getSyncSource())
+                        || !Objects.equals(first.getExternalModelId(), candidate.getExternalModelId())
+                        || !Objects.equals(first.getModelName(), candidate.getModelName()));
+        if (mixedModels) {
+            throw new BusinessException(ErrorCode.INVALID_MODEL_CAPABILITY, "只能批量发布同一外部模型的能力");
+        }
+        long capabilityCount = candidates.stream()
+                .map(ProviderModelSyncCandidate::getInferredCapability)
+                .distinct()
+                .count();
+        if (capabilityCount != candidates.size()) {
+            throw new BusinessException(ErrorCode.INVALID_MODEL_CAPABILITY, "同一能力不能重复发布");
+        }
+
+        return candidates.stream()
+                .map(candidate -> publishCandidate(candidate, request.getModelName(), request.getDisplayName(),
+                        null, null, null))
+                .toList();
+    }
+
+    private ProviderModel publishCandidate(ProviderModelSyncCandidate candidate, String requestedModelName,
+                                           String requestedDisplayName, String requestedCapability,
+                                           String requestedProtocol, String requestedApiBaseUrl) {
+        String modelName = firstText(requestedModelName, candidate.getModelName());
+        String displayName = requestedDisplayName != null ? requestedDisplayName : candidate.getDisplayName();
+        String capability = firstText(requestedCapability, candidate.getInferredCapability());
+        String protocol = firstText(requestedProtocol, candidate.getInferredProtocol());
+        String apiBaseUrl = firstText(requestedApiBaseUrl, candidate.getInferredApiBaseUrl());
 
         ProviderModel model = providerModelService.addModelCapability(candidate.getProviderId(), modelName,
                 displayName, capability, protocol, apiBaseUrl);
