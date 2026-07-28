@@ -4,6 +4,7 @@ import com.qingluo.link.model.dto.entity.ProviderModel;
 import com.qingluo.link.model.dto.entity.ProviderModelSyncCandidate;
 import com.qingluo.link.model.dto.entity.ProviderModelSyncJob;
 import com.qingluo.link.model.dto.request.PublishModelSyncCandidateRequest;
+import com.qingluo.link.model.dto.request.PublishModelSyncCandidatesRequest;
 import com.qingluo.link.model.dto.response.PageResult;
 
 /**
@@ -31,6 +32,11 @@ public interface ProviderModelSyncService {
      * 将候选发布到正式模型目录。
      */
     ProviderModel publishCandidate(Long candidateId, PublishModelSyncCandidateRequest request);
+
+    /**
+     * 在同一事务中发布同一外部模型的多个能力候选。
+     */
+    java.util.List<ProviderModel> publishCandidates(PublishModelSyncCandidatesRequest request);
 
     /**
      * 更新候选审核状态。

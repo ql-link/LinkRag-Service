@@ -34,6 +34,7 @@
 | POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol` / `iconUrl` / `iconObjectKey`；直接创建为启用状态要求已有上架模型，否则返回 `10019`） |
 | POST | `/api/v1/admin/providers/icon` | 上传厂商图标到公开 OSS，返回图标 URL 与 object key |
 | PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，支持更新/清空 `iconUrl` / `iconObjectKey`；更新为启用状态要求已有上架模型，否则返回 `10019` |
+| PUT | `/api/v1/admin/providers/order` | 按从上到下的完整厂商 ID 列表原子重排优先级；请求体为 `{ "providerIds": [1, 2, 3] }` |
 | DELETE | `/api/v1/admin/providers/{id}` | 删除系统厂商 |
 | PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数）；启用要求已有上架模型，否则返回 `10019` |
 | GET | `/api/v1/admin/provider-models` | 管理端模型能力目录分页（可按 `providerId` / `capability` / `isActive` 过滤，含下架项） |
@@ -45,6 +46,7 @@
 | GET | `/api/v1/admin/model-sync-jobs` | 外部模型目录刷新任务分页，支持 `providerId` / `syncSource` / `status` 过滤 |
 | GET | `/api/v1/admin/model-sync-candidates` | 外部模型候选分页，支持 `providerId` / `jobId` / `reviewStatus` / `capability` 过滤 |
 | POST | `/api/v1/admin/model-sync-candidates/{id}/publish` | 将外部候选发布到正式 `llm_provider_model`，请求体可覆盖模型名/展示名/能力/协议/入口 |
+| POST | `/api/v1/admin/model-sync-candidates/publish` | 原子发布同一外部模型勾选的多个能力候选；请求体为 `{ "candidateIds": [101, 102], "modelName": "...", "displayName": "..." }`，各能力沿用各自候选的协议和调用入口 |
 | PATCH | `/api/v1/admin/model-sync-candidates/{id}/review` | 更新外部候选审核状态（`PENDING` / `REJECTED`） |
 | GET | `/api/v1/admin/llm/configs` | 查询全部 SYSTEM 可执行配置，可按能力和启用状态过滤 |
 | POST | `/api/v1/admin/llm/configs` | 原子创建 SYSTEM 配置；同一能力可创建多条配置 |

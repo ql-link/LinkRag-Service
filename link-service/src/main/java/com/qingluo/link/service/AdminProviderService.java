@@ -4,6 +4,7 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderRequest;
 import com.qingluo.link.model.dto.response.PageResult;
+import java.util.List;
 
 /**
  * 管理员系统厂商管理服务接口
@@ -24,6 +25,11 @@ public interface AdminProviderService {
      * 更新厂商
      */
     void updateProvider(Long id, UpdateProviderRequest request);
+
+    /**
+     * 按传入的完整 ID 顺序重排厂商优先级。
+     */
+    void reorderProviders(List<Long> providerIds);
 
     /**
      * 删除厂商

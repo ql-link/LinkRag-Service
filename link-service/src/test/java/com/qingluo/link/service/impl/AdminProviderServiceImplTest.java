@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -168,6 +169,53 @@ class AdminProviderServiceImplTest {
 
         assertThatThrownBy(() -> adminProviderService.updateProvider(99L, request))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    // ---- reorderProviders ----
+
+    @Test
+    @DisplayName("Should_ReassignPriorities_When_ReorderProviders")
+    void Should_ReassignPriorities_When_ReorderProviders() {
+        SystemProvider first = buildProvider(1L, "openai", true);
+        SystemProvider second = buildProvider(2L, "anthropic", true);
+        SystemProvider third = buildProvider(3L, "google", true);
+        given(systemProviderMapper.selectList(null)).willReturn(List.of(first, second, third));
+
+        adminProviderService.reorderProviders(List.of(3L, 1L, 2L));
+
+        ArgumentCaptor<SystemProvider> captor = ArgumentCaptor.forClass(SystemProvider.class);
+        verify(systemProviderMapper, times(3)).updateById(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(SystemProvider::getId, SystemProvider::getPriority)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(3L, 30),
+                        org.assertj.core.groups.Tuple.tuple(1L, 20),
+                        org.assertj.core.groups.Tuple.tuple(2L, 10));
+    }
+
+    @Test
+    @DisplayName("Should_RejectReorder_When_ProviderIdsAreIncomplete")
+    void Should_RejectReorder_When_ProviderIdsAreIncomplete() {
+        SystemProvider first = buildProvider(1L, "openai", true);
+        SystemProvider second = buildProvider(2L, "anthropic", true);
+        given(systemProviderMapper.selectList(null)).willReturn(List.of(first, second));
+
+        assertThatThrownBy(() -> adminProviderService.reorderProviders(List.of(1L)))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getHttpStatus()).isEqualTo(400));
+
+        verify(systemProviderMapper, never()).updateById(any(SystemProvider.class));
+    }
+
+    @Test
+    @DisplayName("Should_RejectReorder_When_ProviderIdsContainDuplicates")
+    void Should_RejectReorder_When_ProviderIdsContainDuplicates() {
+        assertThatThrownBy(() -> adminProviderService.reorderProviders(List.of(1L, 1L)))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getHttpStatus()).isEqualTo(400));
+
+        verify(systemProviderMapper, never()).selectList(any());
+        verify(systemProviderMapper, never()).updateById(any(SystemProvider.class));
     }
 
     // ---- deleteProvider ----

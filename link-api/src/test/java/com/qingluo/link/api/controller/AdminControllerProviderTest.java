@@ -7,7 +7,9 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.response.UserProfileDTO;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.mapper.SystemProviderMapper;
+import java.util.List;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -33,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>创建厂商 {@code POST /api/v1/admin/providers}</li>
  *   <li>获取厂商列表 {@code GET /api/v1/admin/providers}</li>
  *   <li>更新厂商 {@code PATCH /api/v1/admin/providers/{id}}</li>
+ *   <li>重排厂商 {@code PUT /api/v1/admin/providers/order}</li>
  *   <li>切换启用状态 {@code PATCH /api/v1/admin/providers/{id}/active}</li>
  *   <li>删除厂商 {@code DELETE /api/v1/admin/providers/{id}}</li>
  * </ul>
@@ -234,6 +237,26 @@ class AdminControllerProviderTest {
             .andExpect(jsonPath("$.data.items[?(@.providerType=='google')].iconObjectKey").isNotEmpty());
     }
 
+    @Test
+    @Order(4)
+    @DisplayName("重排厂商 - PUT /api/v1/admin/providers/order")
+    void Should_ReorderProviders_When_AllProviderIdsProvided() throws Exception {
+        List<Long> providerIds = systemProviderMapper.selectList(null).stream()
+                .map(SystemProvider::getId)
+                .toList();
+        String idsJson = providerIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+
+        mockMvc.perform(put("/api/v1/admin/providers/order")
+                .header("satoken", adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"providerIds\":[" + idsJson + "]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200));
+
+        Assertions.assertEquals(providerIds.size() * 10,
+                systemProviderMapper.selectById(providerIds.get(0)).getPriority());
+    }
+
     /**
      * 测试用例 3：更新厂商
      *
@@ -254,7 +277,7 @@ class AdminControllerProviderTest {
      * </ul>
      */
     @Test
-    @Order(4)
+    @Order(5)
     @DisplayName("更新厂商 - PATCH /api/v1/admin/providers/{id}")
     void Should_UpdateProvider_When_DataValid() throws Exception {
         String requestJson = "{\"providerName\":\"Google AI Updated\",\"priority\":90}";
@@ -283,7 +306,7 @@ class AdminControllerProviderTest {
      * <p>isActive: true → false（禁用该厂商）</p>
      */
     @Test
-    @Order(5)
+    @Order(6)
     @DisplayName("切换厂商启用状态 - PATCH /api/v1/admin/providers/{id}/active")
     void Should_ToggleProviderActive_When_DataValid() throws Exception {
         mockMvc.perform(patch("/api/v1/admin/providers/" + TEST_PROVIDER_ID + "/active")
@@ -309,7 +332,7 @@ class AdminControllerProviderTest {
      * <p>根据实现可能是物理删除或逻辑删除（is_deleted 标志）</p>
      */
     @Test
-    @Order(6)
+    @Order(7)
     @DisplayName("删除厂商 - DELETE /api/v1/admin/providers/{id}")
     void Should_DeleteProvider_When_DataValid() throws Exception {
         mockMvc.perform(delete("/api/v1/admin/providers/" + TEST_PROVIDER_ID)

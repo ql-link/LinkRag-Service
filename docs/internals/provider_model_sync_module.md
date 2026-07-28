@@ -60,6 +60,13 @@
 - 发布成功后候选状态变为 `PUBLISHED`。
 - 正式目录仍由管理端启停控制。
 
+管理端按 `(provider_id, source, external_model_id)` 将能力候选聚合成一个模型展示项。`POST /api/v1/admin/model-sync-candidates/publish` 接收同一模型下勾选的多个候选 ID，并在同一事务内逐能力发布：
+
+- 候选表仍按模型能力分行，不修改表结构，以保留各能力独立的协议、调用入口和审核状态。
+- 批量请求只允许同一厂商、来源和外部模型，重复能力或混合模型会拒绝。
+- 模型名和展示名可统一覆盖；能力、协议和调用入口取各候选自身的推断值。
+- 任一能力发布失败时整个批次回滚，避免部分能力成功。
+
 `PATCH /api/v1/admin/model-sync-candidates/{id}/review` 用于把候选置为 `PENDING` 或 `REJECTED`。
 
 ## 修改注意事项
