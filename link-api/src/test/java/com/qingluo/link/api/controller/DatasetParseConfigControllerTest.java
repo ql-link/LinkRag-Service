@@ -365,20 +365,19 @@ class DatasetParseConfigControllerTest {
             + "\"sparse_top_k\":10,\"sparse_score_threshold\":0.1,"
             + "\"dense_top_k\":12,\"dense_score_threshold\":0.2,"
             + "\"recall_enabled_sources\":[\" DENSE \",\"\",\"bm25\",\"dense\"],"
-            + "\"recall_fusion_strategy\":\" Weighted_Score \","
             + "\"fusion_bm25_weight\":1.0,\"fusion_sparse_weight\":0.8,\"fusion_dense_weight\":1.2,"
             + "\"rerank_top_n\":3,\"recall_strict\":true}}");
 
         String recall = column("recall_config", d1);
         assertThat(recall).contains("dense").contains("bm25").doesNotContain(" DENSE ");
-        assertThat(recall).contains("weighted_score").contains("fusion_bm25_weight");
+        assertThat(recall).contains("fusion_bm25_weight").doesNotContain("recall_fusion_strategy");
         mockMvc.perform(get("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.recall.bm25_top_k").value(30))
             .andExpect(jsonPath("$.data.recall.recall_enabled_sources[0]").value("dense"))
             .andExpect(jsonPath("$.data.recall.recall_enabled_sources[1]").value("bm25"))
             .andExpect(jsonPath("$.data.recall.recall_enabled_sources[2]").doesNotExist())
-            .andExpect(jsonPath("$.data.recall.recall_fusion_strategy").value("weighted_score"))
+            .andExpect(jsonPath("$.data.recall.recall_fusion_strategy").doesNotExist())
             .andExpect(jsonPath("$.data.recall.fusion_dense_weight").value(1.2))
             .andExpect(jsonPath("$.data.recall.rerank_top_n").value(3))
             .andExpect(jsonPath("$.data.recall.recall_strict").value(true));
@@ -407,14 +406,15 @@ class DatasetParseConfigControllerTest {
     }
 
     @Test
-    @DisplayName("recall_fusion_strategy 未知值被拒绝")
-    void Should_Reject_When_RecallFusionStrategyUnknown() throws Exception {
+    @DisplayName("历史 recall_fusion_strategy 字段被忽略且不再落库")
+    void Should_Ignore_When_LegacyRecallFusionStrategyProvided() throws Exception {
         mockMvc.perform(put("/api/v1/datasets/{id}/parse-config", d1).header("satoken", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(withBindings("{\"recall\":{\"recall_fusion_strategy\":\"unknown\"}}")))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.message", containsString("recall_fusion_strategy")));
-        assertThat(configCount(d1)).isZero();
+                .content(withBindings("{\"recall\":{\"recall_fusion_strategy\":\"rrf\"}}")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.recall.recall_fusion_strategy").doesNotExist());
+        assertThat(configCount(d1)).isOne();
+        assertThat(column("recall_config", d1)).doesNotContain("recall_fusion_strategy");
     }
 
     @Test
