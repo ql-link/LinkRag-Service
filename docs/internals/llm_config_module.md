@@ -21,7 +21,7 @@
 | `llm_system_provider` | 厂商目录与表单模板，不是运行配置 |
 | `llm_provider_model` | 正式模型能力目录，可复制为运行快照 |
 | `llm_model_config` | SYSTEM/USER 共用的可执行配置；`id` 是全局 `configId` |
-| `llm_capability_default` | SYSTEM 平台兜底与 USER 默认覆盖 |
+| `llm_capability_default` | USER 能力默认，可指向个人或平台配置 |
 | `dataset_parse_config` | 数据集五类稳定配置绑定及解析/召回参数 |
 
 旧 `llm_system_preset`、`llm_user_config` 已删除。`scope` 只控制权限和展示，三端不再使用 `source + id` 联合定位。
@@ -31,11 +31,11 @@
 用户配置行为保持“添加模型、选择模型”两步，但数据职责分离：
 
 1. 用户从厂商/模型目录选择模型，提交 API Key，Java 写入或更新一条 `scope=USER` 的 `llm_model_config` 运行快照。
-2. 列表接口返回用户自己的配置和当前 SYSTEM 默认配置，身份始终为 `configId`。
-3. 用户通过 `PUT /api/v1/llm/defaults/{capability}` 设置默认，或 DELETE 清除覆盖。
-4. 有效默认解析固定为 USER 默认 → SYSTEM 默认；都不存在时返回 `LLM_DEFAULT_NOT_CONFIGURED(10024)`。
+2. 列表接口返回用户自己的配置和全部 SYSTEM 配置，身份始终为 `configId`。
+3. 用户通过 `PUT /api/v1/llm/defaults/{capability}` 把本人 USER 或可见 SYSTEM 配置设为用户默认，或通过 DELETE 清除默认。
+4. 默认不存在时返回 `{capability, configId: null}`；不按 SYSTEM 配置或列表首项兜底。
 
-默认关系不混入配置行。停用/删除 USER 配置时同步清除指向它的 USER 默认；不能因此修改平台默认或已经固化的数据集绑定。
+默认关系不混入配置行，也不覆盖会话等业务已经显式保存的 `configId`。停用/删除 USER 配置时清除所有者指针；停用/删除 SYSTEM 配置时清除所有用户指向它的 USER 指针。上述清理不能修改已经固化的数据集绑定。
 
 ## 管理端平台配置
 
@@ -44,11 +44,11 @@
 - `sourceProviderModelId`：从正式目录复制运行快照；或
 - `catalogMutation`：在同一事务创建/更新目录项，再生成运行快照。
 
-两种事实来源二选一。API Key 加密存储且响应脱敏。`setAsDefault=true` 时配置保存与 SYSTEM 默认切换处于同一事务，默认写失败整单回滚。
+两种事实来源二选一。API Key 加密存储且响应脱敏。管理端保存只处理目录事实与 SYSTEM 运行配置，不接收默认设置指令。
 
-平台配置可以在同一 capability 内刷新模型、协议、入口和密钥并递增 `snapshot_version`，但不能原地改变 capability；能力变化必须新建配置，避免旧默认关系或数据集绑定指向错误能力。
+平台配置可以在同一 capability 内刷新模型、协议、入口和密钥并递增 `snapshot_version`，同一能力可以存在多条配置供用户选择；但不能原地改变 capability，能力变化必须新建配置，避免数据集绑定指向错误能力。
 
-停用/删除当前 SYSTEM 默认必须同时提供同能力替代项；替代关系和配置状态原子提交。紧急停用允许保留引用，但后续预检与执行必须因 `is_active=false` 拒绝该配置。
+管理端不维护平台默认，也没有平台默认 PUT/DELETE 接口。标准停用/删除仍保护数据集引用；紧急停用允许保留数据集引用，但后续预检与执行必须因 `is_active=false` 拒绝该配置。停用或删除 SYSTEM 配置时批量清理用户指向它的默认关系。
 
 ## 精确执行校验
 

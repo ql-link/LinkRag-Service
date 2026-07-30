@@ -1,18 +1,14 @@
 package com.qingluo.link.service.impl.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
-import com.qingluo.link.core.exception.BusinessException;
 import com.qingluo.link.mapper.LLMCapabilityDefaultMapper;
 import com.qingluo.link.model.dto.entity.LLMCapabilityDefault;
 import com.qingluo.link.model.dto.entity.LLMModelConfig;
 import com.qingluo.link.model.dto.response.CapabilityDefaultDTO;
-import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.model.enums.LLMConfigScope;
 import com.qingluo.link.service.LLMCapabilityService;
 import com.qingluo.link.service.LLMModelConfigValidator;
@@ -21,7 +17,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class LLMCapabilityDefaultServiceImplTest {
@@ -37,75 +32,56 @@ class LLMCapabilityDefaultServiceImplTest {
     private LLMCapabilityDefaultServiceImpl service;
 
     @Test
-    void setUserDefaultCreatesUniqueOverrideAndReturnsItAsEffective() {
+    void setUserDefaultCreatesOneUserPointer() {
         LLMModelConfig config = config(101L, LLMConfigScope.USER, 7L, "CHAT");
-        LLMModelConfig system = config(100L, LLMConfigScope.SYSTEM, 0L, "CHAT");
         given(configValidator.requireExecutable(7L, 101L, "CHAT")).willReturn(config);
-        given(configValidator.requireExecutable(0L, 100L, "CHAT")).willReturn(system);
         given(defaultMapper.selectOne(any()))
-            .willReturn(null, defaultRow(LLMConfigScope.USER, 7L, "CHAT", 101L),
-                defaultRow(LLMConfigScope.SYSTEM, 0L, "CHAT", 100L));
+            .willReturn(null, defaultRow(7L, "CHAT", 101L));
 
         CapabilityDefaultDTO result = service.setUserDefault(7L, "chat", 101L);
 
-        assertThat(result.getUserDefaultConfigId()).isEqualTo(101L);
-        assertThat(result.getSystemDefaultConfigId()).isEqualTo(100L);
-        assertThat(result.getEffectiveConfigId()).isEqualTo(101L);
+        assertThat(result.getConfigId()).isEqualTo(101L);
         verify(defaultMapper).insert(any(LLMCapabilityDefault.class));
     }
 
     @Test
-    void userOverrideDoesNotHideAnInvalidSystemDefaultPointer() {
-        LLMModelConfig user = config(101L, LLMConfigScope.USER, 7L, "CHAT");
-        given(defaultMapper.selectOne(any())).willReturn(
-            defaultRow(LLMConfigScope.USER, 7L, "CHAT", 101L),
-            defaultRow(LLMConfigScope.SYSTEM, 0L, "CHAT", 100L));
-        given(configValidator.requireExecutable(7L, 101L, "CHAT")).willReturn(user);
-        given(configValidator.requireExecutable(0L, 100L, "CHAT"))
-            .willThrow(new BusinessException(ErrorCode.LLM_CONFIG_INACTIVE));
+    void setUserDefaultAcceptsAVisibleSystemConfig() {
+        LLMModelConfig system = config(100L, LLMConfigScope.SYSTEM, 0L, "CHAT");
+        given(configValidator.requireExecutable(7L, 100L, "CHAT")).willReturn(system);
+        given(defaultMapper.selectOne(any()))
+            .willReturn(null, defaultRow(7L, "CHAT", 100L));
 
-        assertThatThrownBy(() -> service.getEffectiveDefault(7L, "CHAT"))
-            .isInstanceOfSatisfying(BusinessException.class,
-                exception -> assertThat(exception.getCode())
-                    .isEqualTo(ErrorCode.LLM_CONFIG_INACTIVE.getCode()));
+        CapabilityDefaultDTO result = service.setUserDefault(7L, "chat", 100L);
+
+        assertThat(result.getConfigId()).isEqualTo(100L);
+        verify(defaultMapper).insert(any(LLMCapabilityDefault.class));
     }
 
     @Test
-    void clearUserDefaultFallsBackToSystemWithoutChangingConfigState() {
-        LLMModelConfig system = config(100L, LLMConfigScope.SYSTEM, 0L, "CHAT");
-        given(defaultMapper.selectOne(any()))
-            .willReturn(null, defaultRow(LLMConfigScope.SYSTEM, 0L, "CHAT", 100L));
-        given(configValidator.requireExecutable(0L, 100L, "CHAT")).willReturn(system);
+    void clearUserDefaultLeavesCapabilityUnconfiguredWithoutSystemFallback() {
+        given(defaultMapper.selectOne(any())).willReturn(null);
 
         CapabilityDefaultDTO result = service.clearUserDefault(7L, "CHAT");
 
-        assertThat(result.getUserDefaultConfigId()).isNull();
-        assertThat(result.getEffectiveConfigId()).isEqualTo(100L);
+        assertThat(result.getConfigId()).isNull();
         verify(defaultMapper).delete(any());
     }
 
     @Test
-    void requiredEffectiveDefaultFailsWhenNeitherPointerExists() {
+    void missingUserDefaultIsReturnedAsUnconfigured() {
         given(defaultMapper.selectOne(any())).willReturn(null);
 
-        assertThatThrownBy(() -> service.getEffectiveDefault(7L, "CHAT"))
-            .isInstanceOfSatisfying(BusinessException.class,
-                exception -> assertThat(exception.getCode())
-                    .isEqualTo(ErrorCode.LLM_DEFAULT_NOT_CONFIGURED.getCode()));
+        CapabilityDefaultDTO result = service.getDefault(7L, "CHAT");
+
+        assertThat(result.getCapability()).isEqualTo("CHAT");
+        assertThat(result.getConfigId()).isNull();
     }
 
     @Test
-    void systemDefaultWriteFailureUsesStableDomainError() {
-        LLMModelConfig system = config(100L, LLMConfigScope.SYSTEM, 0L, "CHAT");
-        given(configValidator.requireExecutable(0L, 100L, "CHAT")).willReturn(system);
-        given(defaultMapper.selectOne(any())).willReturn(null);
-        doThrow(new DataIntegrityViolationException("duplicate"))
-            .when(defaultMapper).insert(any(LLMCapabilityDefault.class));
+    void clearUserDefaultsForSystemConfigDeletesEveryUserPointerToIt() {
+        service.clearUserDefaultsForConfig(100L);
 
-        assertThatThrownBy(() -> service.setSystemDefault("CHAT", 100L))
-            .isInstanceOfSatisfying(BusinessException.class,
-                exception -> assertThat(exception.getCode())
-                    .isEqualTo(ErrorCode.LLM_DEFAULT_UPDATE_FAILED.getCode()));
+        verify(defaultMapper).delete(any());
     }
 
     private LLMModelConfig config(Long id, LLMConfigScope scope, Long ownerId, String capability) {
@@ -118,10 +94,9 @@ class LLMCapabilityDefaultServiceImplTest {
         return config;
     }
 
-    private LLMCapabilityDefault defaultRow(
-        LLMConfigScope scope, Long ownerId, String capability, Long configId) {
+    private LLMCapabilityDefault defaultRow(Long ownerId, String capability, Long configId) {
         LLMCapabilityDefault row = new LLMCapabilityDefault();
-        row.setScope(scope.name());
+        row.setScope(LLMConfigScope.USER.name());
         row.setOwnerUserId(ownerId);
         row.setCapability(capability);
         row.setConfigId(configId);

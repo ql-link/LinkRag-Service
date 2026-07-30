@@ -171,14 +171,12 @@ class ConfigControllerTest {
                 .content(requestJson))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
-            .andExpect(jsonPath("$.data.userDefaultConfigId").value(configId))
-            .andExpect(jsonPath("$.data.effectiveConfigId").value(configId));
+            .andExpect(jsonPath("$.data.configId").value(configId));
 
         mockMvc.perform(get("/api/v1/llm/defaults/CHAT")
                 .header("satoken", token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.userDefaultConfigId").value(configId))
-            .andExpect(jsonPath("$.data.effectiveConfigId").value(configId));
+            .andExpect(jsonPath("$.data.configId").value(configId));
     }
 
     @Test
@@ -188,8 +186,7 @@ class ConfigControllerTest {
         mockMvc.perform(delete("/api/v1/llm/defaults/CHAT")
                 .header("satoken", token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.userDefaultConfigId").doesNotExist())
-            .andExpect(jsonPath("$.data.effectiveConfigId").doesNotExist());
+            .andExpect(jsonPath("$.data.configId").doesNotExist());
     }
 
     @Test

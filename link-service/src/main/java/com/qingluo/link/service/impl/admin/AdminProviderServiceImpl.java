@@ -18,7 +18,12 @@ import com.qingluo.link.service.AdminProviderService;
 import com.qingluo.link.service.LLMProtocolService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * 管理端厂商配置服务实现，负责厂商配置的增删改查与启停控制。
@@ -112,6 +117,37 @@ public class AdminProviderServiceImpl implements AdminProviderService {
         }
 
         systemProviderMapper.updateById(provider);
+    }
+
+    @Override
+    @Transactional
+    public void reorderProviders(List<Long> providerIds) {
+        if (providerIds == null || providerIds.isEmpty()) {
+            throw new BusinessException(400, "厂商排序不能为空", 400);
+        }
+
+        Set<Long> requestedIds = new HashSet<>(providerIds);
+        if (requestedIds.size() != providerIds.size()) {
+            throw new BusinessException(400, "厂商排序不能包含重复 ID", 400);
+        }
+
+        List<SystemProvider> existingProviders = systemProviderMapper.selectList(null);
+        Set<Long> existingIds = new HashSet<>(existingProviders.stream().map(SystemProvider::getId).toList());
+        if (!requestedIds.equals(existingIds)) {
+            throw new BusinessException(400, "厂商排序必须包含全部有效厂商", 400);
+        }
+
+        int priority = providerIds.size() * 10;
+        for (Long providerId : providerIds) {
+            SystemProvider update = new SystemProvider();
+            update.setId(providerId);
+            update.setPriority(priority);
+            systemProviderMapper.updateById(update);
+            priority -= 10;
+        }
+
+        AuditLog.event("PROVIDER_REORDER", "operatorId={}, providerIds={}",
+                AuthContext.getCurrentUserId(), providerIds);
     }
 
     @Override

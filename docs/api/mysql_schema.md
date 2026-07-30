@@ -13,7 +13,7 @@
 | `llm_provider_model_sync_job` | `ProviderModelSyncJob` | 外部模型目录同步任务，不参与运行 |
 | `llm_provider_model_sync_candidate` | `ProviderModelSyncCandidate` | 待审核的外部模型候选，不参与运行 |
 | `llm_model_config` | `LLMModelConfig` | SYSTEM/USER 共用的可执行配置与全局 `configId` |
-| `llm_capability_default` | `LLMCapabilityDefault` | 按 scope、owner、capability 维护默认选择 |
+| `llm_capability_default` | `LLMCapabilityDefault` | 按用户、capability 维护默认选择 |
 | `dataset_parse_config` | `DatasetParseConfig` | 数据集五类模型绑定与四类解析/召回 JSON 配置 |
 | `dataset` | `Dataset` | 数据集 |
 | `chat_conversation` | `ChatConversation` | 对话及最后使用的全局配置 ID |
@@ -58,12 +58,12 @@ SYSTEM 配置仅管理员可写、对所有用户可执行；USER 配置仅所�
 
 | 列 | 约束与语义 |
 | --- | --- |
-| `scope` | `SYSTEM` 平台兜底或 `USER` 用户覆盖 |
-| `owner_user_id` | SYSTEM 固定 `0`；USER 为真实用户 ID |
+| `scope` | 兼容存量表结构；当前业务只写入并读取 `USER` |
+| `owner_user_id` | 用户 ID；历史 `SYSTEM/0` 记录不再参与解析 |
 | `capability` | 默认项所属能力 |
-| `config_id` | 引用同 scope/owner、同 capability、active 的 `llm_model_config.id` |
+| `config_id` | 引用同 capability、active 且对用户可见的 `llm_model_config.id`；可指向本人 USER 或共享 SYSTEM 配置 |
 
-唯一键 `uk_llm_capability_default_owner_cap(scope, owner_user_id, capability)` 保证每个所有者每种能力最多一个默认项。有效默认解析顺序是 USER 默认 → SYSTEM 默认。用户可以清除自己的默认覆盖；平台默认停用或删除前必须原子指定同能力替代项。默认关系不参与数据集已经固化的模型绑定。
+唯一键 `uk_llm_capability_default_owner_cap(scope, owner_user_id, capability)` 保证每个用户每种能力最多一个默认项。默认关系只有 USER 语义，不存在平台兜底；未设置或清除后返回 `configId=null`，不使用“首个启用配置”兜底。停用或删除配置会清理所有指向它的 USER 默认，但不修改数据集或会话已经固化的模型绑定。本次改造不修改表结构；历史 `scope=SYSTEM AND owner_user_id=0` 记录可按发布流程一次性清理，也可保留，由运行时忽略。
 
 ### 厂商目录与运行快照
 
@@ -85,7 +85,7 @@ SYSTEM 配置仅管理员可写、对所有用户可执行；USER 配置仅所�
 
 五个字段都只存 `configId`，没有 `source` 列。每个字段有独立索引，便于配置停用/删除前检查引用。SYSTEM 配置可供任意用户数据集绑定；USER 配置必须属于数据集所有者。召回 session 签发与 Python 实际执行前都重新校验已存绑定的存在、active、归属和能力，禁止失效配置继续运行。
 
-`chunking_config`、`enhancement_config`、`pdf_config`、`recall_config` 为 JSON；字段模型以 Python `src/core/dataset_config/models.py` 为准。`recall_config` 包含 `enable_rerank`，默认 `false`。唯一键 `uk_user_dataset(user_id, dataset_id)` 保证每个数据集一个配置行；`idx_dataset_parse_config_dataset(dataset_id)` 支撑按数据集读取。
+`chunking_config`、`enhancement_config`、`pdf_config`、`recall_config` 为 JSON；字段模型以 Python `src/core/dataset_config/models.py` 为准。`recall_config` 包含 `enable_rerank`，默认 `false`；多路召回固定使用 weighted score，仅保存三路权重，不再保存 `recall_fusion_strategy`。历史 JSON 中的旧策略字段读取时忽略，并在下一次保存时清除。唯一键 `uk_user_dataset(user_id, dataset_id)` 保证每个数据集一个配置行；`idx_dataset_parse_config_dataset(dataset_id)` 支撑按数据集读取。
 
 ## 对话与用量
 

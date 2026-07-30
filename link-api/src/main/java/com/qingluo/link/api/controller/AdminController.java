@@ -6,6 +6,8 @@ import com.qingluo.link.model.dto.entity.SystemProvider;
 import com.qingluo.link.model.dto.request.AddProviderModelRequest;
 import com.qingluo.link.model.dto.request.CreateProviderRequest;
 import com.qingluo.link.model.dto.request.PublishModelSyncCandidateRequest;
+import com.qingluo.link.model.dto.request.PublishModelSyncCandidatesRequest;
+import com.qingluo.link.model.dto.request.ReorderProvidersRequest;
 import com.qingluo.link.model.dto.request.SyncProviderModelsRequest;
 import com.qingluo.link.model.dto.request.UpdateModelSyncCandidateReviewRequest;
 import com.qingluo.link.model.dto.request.UpdateProviderModelRequest;
@@ -186,6 +188,13 @@ public class AdminController {
         return Result.success(null);
     }
 
+    @PutMapping("/providers/order")
+    @Operation(summary = "重排厂商", description = "按从上到下的完整厂商 ID 顺序原子更新优先级")
+    public Result<Void> reorderProviders(@RequestBody @Validated ReorderProvidersRequest request) {
+        adminProviderService.reorderProviders(request.getProviderIds());
+        return Result.success(null);
+    }
+
     /**
      * 删除厂商
      *
@@ -320,6 +329,13 @@ public class AdminController {
         PublishModelSyncCandidateRequest actualRequest =
                 request == null ? new PublishModelSyncCandidateRequest() : request;
         return Result.success(providerModelSyncService.publishCandidate(id, actualRequest));
+    }
+
+    @PostMapping("/model-sync-candidates/publish")
+    @Operation(summary = "批量发布外部模型能力", description = "将同一外部模型勾选的多个能力候选在一个事务中发布到正式目录")
+    public Result<List<ProviderModel>> publishProviderModelSyncCandidates(
+            @RequestBody @Validated PublishModelSyncCandidatesRequest request) {
+        return Result.success(providerModelSyncService.publishCandidates(request));
     }
 
     @PatchMapping("/model-sync-candidates/{id}/review")

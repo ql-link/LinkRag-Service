@@ -37,7 +37,6 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
     private static final boolean DEFAULT_RECALL_STRICT = false;
     private static final Set<String> ALLOWED_STAGE_TWO_ALGORITHMS = Set.of("noop", "semantic_depth_window");
     private static final Set<String> ALLOWED_RECALL_SOURCES = Set.of("bm25", "sparse", "dense");
-    private static final Set<String> ALLOWED_RECALL_FUSION_STRATEGIES = Set.of("rrf", "weighted_score");
 
     private final DatasetParseConfigMapper datasetParseConfigMapper;
     private final DatasetService datasetService;
@@ -174,10 +173,6 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         }
         RecallConfig normalized = copyRecall(source);
         normalized.setRecallEnabledSources(normalizeRecallSources(source.getRecallEnabledSources()));
-        normalized.setRecallFusionStrategy(normalizeEnum(
-            source.getRecallFusionStrategy(),
-            ALLOWED_RECALL_FUSION_STRATEGIES,
-            "recall_fusion_strategy 仅支持 rrf/weighted_score"));
         validatePositive("recall_result_limit", source.getRecallResultLimit());
         validatePositive("bm25_top_k", source.getBm25TopK());
         validatePositive("sparse_top_k", source.getSparseTopK());
@@ -312,7 +307,6 @@ public class DatasetParseConfigServiceImpl implements DatasetParseConfigService 
         copy.setDenseTopK(source.getDenseTopK());
         copy.setDenseScoreThreshold(source.getDenseScoreThreshold());
         copy.setRecallEnabledSources(source.getRecallEnabledSources());
-        copy.setRecallFusionStrategy(source.getRecallFusionStrategy());
         copy.setFusionBm25Weight(source.getFusionBm25Weight());
         copy.setFusionSparseWeight(source.getFusionSparseWeight());
         copy.setFusionDenseWeight(source.getFusionDenseWeight());

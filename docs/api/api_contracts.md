@@ -34,6 +34,7 @@
 | POST | `/api/v1/admin/providers` | 创建系统厂商（`CreateProviderRequest`，含 `defaultProtocol` / `iconUrl` / `iconObjectKey`；直接创建为启用状态要求已有上架模型，否则返回 `10019`） |
 | POST | `/api/v1/admin/providers/icon` | 上传厂商图标到公开 OSS，返回图标 URL 与 object key |
 | PATCH | `/api/v1/admin/providers/{id}` | 部分更新厂商字段，支持更新/清空 `iconUrl` / `iconObjectKey`；更新为启用状态要求已有上架模型，否则返回 `10019` |
+| PUT | `/api/v1/admin/providers/order` | 按从上到下的完整厂商 ID 列表原子重排优先级；请求体为 `{ "providerIds": [1, 2, 3] }` |
 | DELETE | `/api/v1/admin/providers/{id}` | 删除系统厂商 |
 | PATCH | `/api/v1/admin/providers/{id}/active` | 启用/禁用厂商（`isActive` 查询参数）；启用要求已有上架模型，否则返回 `10019` |
 | GET | `/api/v1/admin/provider-models` | 管理端模型能力目录分页（可按 `providerId` / `capability` / `isActive` 过滤，含下架项） |
@@ -45,14 +46,14 @@
 | GET | `/api/v1/admin/model-sync-jobs` | 外部模型目录刷新任务分页，支持 `providerId` / `syncSource` / `status` 过滤 |
 | GET | `/api/v1/admin/model-sync-candidates` | 外部模型候选分页，支持 `providerId` / `jobId` / `reviewStatus` / `capability` 过滤 |
 | POST | `/api/v1/admin/model-sync-candidates/{id}/publish` | 将外部候选发布到正式 `llm_provider_model`，请求体可覆盖模型名/展示名/能力/协议/入口 |
+| POST | `/api/v1/admin/model-sync-candidates/publish` | 原子发布同一外部模型勾选的多个能力候选；请求体为 `{ "candidateIds": [101, 102], "modelName": "...", "displayName": "..." }`，各能力沿用各自候选的协议和调用入口 |
 | PATCH | `/api/v1/admin/model-sync-candidates/{id}/review` | 更新外部候选审核状态（`PENDING` / `REJECTED`） |
 | GET | `/api/v1/admin/llm/configs` | 查询全部 SYSTEM 可执行配置，可按能力和启用状态过滤 |
-| POST | `/api/v1/admin/llm/configs` | 原子创建 SYSTEM 配置，并可同时设为能力默认 |
-| PUT | `/api/v1/admin/llm/configs/{configId}` | 原子更新同一配置 ID；`setAsDefault=false` 保持当前默认关系 |
-| PATCH | `/api/v1/admin/llm/configs/{configId}/active` | 标准启停；Dataset 或 SYSTEM 默认引用受保护 |
-| POST | `/api/v1/admin/llm/configs/{configId}/emergency-disable` | 紧急停用；当前 SYSTEM 默认必须给出同能力替代 ID |
-| DELETE | `/api/v1/admin/llm/configs/{configId}` | 删除无 Dataset/default 引用的 SYSTEM 配置 |
-| PUT | `/api/v1/admin/llm/defaults/{capability}` | 切换 SYSTEM 能力默认，不改变旧配置状态或 Dataset 绑定 |
+| POST | `/api/v1/admin/llm/configs` | 原子创建 SYSTEM 配置；同一能力可创建多条配置 |
+| PUT | `/api/v1/admin/llm/configs/{configId}` | 原子更新同一配置 ID，不处理默认关系 |
+| PATCH | `/api/v1/admin/llm/configs/{configId}/active` | 标准启停；Dataset 引用受保护 |
+| POST | `/api/v1/admin/llm/configs/{configId}/emergency-disable` | 紧急停用并保留已有 Dataset 绑定 |
+| DELETE | `/api/v1/admin/llm/configs/{configId}` | 删除无 Dataset 引用的 SYSTEM 配置 |
 
 `POST /api/v1/user/avatar` 使用 `multipart/form-data`，字段名为 `file`。后端按 OSS `avatar` 业务规则校验：仅允许 `jpg` / `jpeg` / `png` / `gif` / `webp`，最大 5MB，写入公开 OSS（MinIO 部署时为 public bucket），object key 形如 `avatar/{userId}/{uuid}.{suffix}`。上传成功后将公开访问地址写入 `sys_user.avatar_url`，响应为更新后的 `UserProfileDTO`。
 
@@ -106,15 +107,15 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/llm/providers` | 可用厂商与模型能力（来源 `llm_provider_model`） |
-| GET | `/api/v1/llm/configs` | 当前用户 USER 配置 + 每种能力当前 SYSTEM 默认；支持 `providerType/capability/isActive` 过滤 |
+| GET | `/api/v1/llm/configs` | 当前用户 USER 配置 + 全部 SYSTEM 配置；支持 `providerType/capability/isActive` 过滤 |
 | POST | `/api/v1/llm/configs/setup-provider` | 按正式目录 upsert USER 运行快照；自然键相同复用 `configId` |
 | PATCH | `/api/v1/llm/configs/{configId}/active` | 按全局 ID 标准启停 USER 配置 |
 | POST | `/api/v1/llm/configs/{configId}/emergency-disable` | 所有者确认后紧急停用，保留 Dataset 绑定 |
 | DELETE | `/api/v1/llm/configs/{configId}` | 按全局 ID 删除 USER 配置；Dataset 引用时拒绝 |
-| GET | `/api/v1/llm/defaults` | 查询全部能力的用户覆盖、SYSTEM 默认和有效 `configId` |
-| GET | `/api/v1/llm/defaults/{capability}` | 查询单能力默认关系；完全未配置时返回 409 |
-| PUT | `/api/v1/llm/defaults/{capability}` | `{configId}` 设置当前用户同能力 USER 默认 |
-| DELETE | `/api/v1/llm/defaults/{capability}` | 清除用户覆盖，恢复跟随 SYSTEM 默认 |
+| GET | `/api/v1/llm/defaults` | 查询全部能力的用户默认 `configId`；未设置的能力返回 `configId=null` |
+| GET | `/api/v1/llm/defaults/{capability}` | 查询单能力的用户默认；未设置时返回 `configId=null` |
+| PUT | `/api/v1/llm/defaults/{capability}` | `{configId}` 设置当前用户同能力默认，可指向本人 USER 或可见 SYSTEM 配置 |
+| DELETE | `/api/v1/llm/defaults/{capability}` | 清除用户默认；清除后保持未设置，不做隐式回退 |
 | GET | `/api/v1/llm/usage/summary` | 用量汇总 |
 | GET | `/api/v1/llm/usage/daily` | 日度用量 |
 | GET | `/api/v1/llm/usage/logs` | 用量明细 |
@@ -131,11 +132,13 @@
 >
 > `by-model` 与 `trend` 为**全链路口径**（不按 stage 过滤，反映全部模型/总体趋势），与 `summary`/`daily`/`logs` 默认仅 `chat` 的口径不同——展示侧若需对齐，对 `summary` 传 `stage=all`。入参 `startDate`/`endDate` 同为 `yyyy-MM-dd`（含端）；均 `@SaCheckLogin` 且按登录用户隔离。
 >
-> `ExecutableLLMConfigDTO` 只以 `configId` 表示配置身份；`scope`（`SYSTEM` / `USER`）与 `editable` 仅用于展示和授权。响应不得再出现身份别名 `id`、`source`、`configSource` 或 `isSystemPreset`。默认选择使用独立的 `CapabilityDefaultDTO{capability,userDefaultConfigId,systemDefaultConfigId,effectiveConfigId}`，不混入配置 DTO。
+> `ExecutableLLMConfigDTO` 只以 `configId` 表示配置身份；`scope`（`SYSTEM` / `USER`）与 `editable` 仅用于展示和授权。响应不得再出现身份别名 `id`、`source`、`configSource` 或 `isSystemPreset`。默认选择使用独立的 `CapabilityDefaultDTO{capability,configId}`，不混入配置 DTO。
+>
+> 默认关系只负责新操作的初始选择，不等于配置启用状态，也不覆盖已经显式保存的 `configId`。用户默认可指向本人 USER 配置或任意可见 SYSTEM 配置；清除后保持未设置，不按 SYSTEM 配置或列表首项兜底。管理端不维护平台能力默认。
 >
 > 精确配置校验固定顺序为：物理存在 → `is_active` → USER owner/SYSTEM 共享 → capability。配置不存在、停用、越权和能力不匹配分别返回 `10020/404`、`10021/409`、`10022/403`、`10023/400`，不回落默认配置或环境变量。
 >
-> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。`setAsDefault=true` 时配置与 SYSTEM 默认在一个事务内写入；默认写失败整单回滚。已存在配置不能原地改变 capability，避免默认关系和数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
+> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。请求不携带默认设置字段，响应 `AdminPlatformConfigSaveResult` 只返回保存后的 `config`。已存在配置不能原地改变 capability，避免数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
 >
 > 用户 `setup-provider` 按 `(scope,owner_user_id,provider_id,model_name,capability)` upsert，刷新凭据复用原 `configId`，保留已有启用和默认状态。标准删除/停用保护 Dataset 引用；紧急停用保留绑定，使后续精确执行明确返回配置已停用。
 

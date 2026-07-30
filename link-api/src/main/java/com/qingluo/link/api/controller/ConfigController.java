@@ -43,7 +43,7 @@ public class ConfigController {
 
     @GetMapping("/configs")
     @SaCheckLogin
-    @Operation(summary = "获取统一LLM配置列表", description = "返回当前用户配置和各能力当前平台默认配置，唯一身份字段为configId")
+    @Operation(summary = "获取统一LLM配置列表", description = "返回当前用户配置和全部平台配置，唯一身份字段为configId")
     public Result<List<ExecutableLLMConfigDTO>> getConfigs(
         @Parameter(description = "厂商类型") @RequestParam(required = false) String providerType,
         @Parameter(description = "模型能力") @RequestParam(required = false) String capability,
@@ -67,7 +67,7 @@ public class ConfigController {
         @Parameter(description = "全局配置ID") @PathVariable Long configId,
         @Valid @RequestBody UpdateLLMConfigActiveRequest request) {
         configService.changeActive(AuthContext.getLoginUserIdOrThrow(), false, configId,
-            request.getIsActive(), LLMConfigMutationMode.STANDARD, null, false);
+            request.getIsActive(), LLMConfigMutationMode.STANDARD, false);
         return Result.ok(null);
     }
 
@@ -78,7 +78,7 @@ public class ConfigController {
         @Parameter(description = "全局配置ID") @PathVariable Long configId,
         @Valid @RequestBody EmergencyDisableLLMConfigRequest request) {
         configService.changeActive(AuthContext.getLoginUserIdOrThrow(), false, configId, false,
-            LLMConfigMutationMode.EMERGENCY, null, Boolean.TRUE.equals(request.getConfirmed()));
+            LLMConfigMutationMode.EMERGENCY, Boolean.TRUE.equals(request.getConfirmed()));
         return Result.ok(null);
     }
 
@@ -93,7 +93,7 @@ public class ConfigController {
 
     @GetMapping("/defaults")
     @SaCheckLogin
-    @Operation(summary = "查询全部能力默认关系", description = "分别返回用户覆盖、平台默认和当前有效configId")
+    @Operation(summary = "查询全部用户能力默认", description = "每个能力返回用户设置的默认configId，未设置时为空")
     public Result<List<CapabilityDefaultDTO>> listDefaults() {
         return Result.success(defaultService.listDefaults(AuthContext.getLoginUserIdOrThrow()));
     }
@@ -103,13 +103,13 @@ public class ConfigController {
     @Operation(summary = "查询能力默认关系")
     public Result<CapabilityDefaultDTO> getDefault(
         @Parameter(description = "模型能力") @PathVariable String capability) {
-        return Result.success(defaultService.getEffectiveDefault(
+        return Result.success(defaultService.getDefault(
             AuthContext.getLoginUserIdOrThrow(), capability));
     }
 
     @PutMapping("/defaults/{capability}")
     @SaCheckLogin
-    @Operation(summary = "设置用户能力默认", description = "只能选择当前用户拥有、启用且能力匹配的USER配置")
+    @Operation(summary = "设置用户能力默认", description = "可选择当前用户可见、启用且能力匹配的个人或平台配置")
     public Result<CapabilityDefaultDTO> setDefault(
         @Parameter(description = "模型能力") @PathVariable String capability,
         @Valid @RequestBody SetCapabilityDefaultRequest request) {
@@ -119,7 +119,7 @@ public class ConfigController {
 
     @DeleteMapping("/defaults/{capability}")
     @SaCheckLogin
-    @Operation(summary = "清除用户能力默认", description = "清除覆盖后恢复跟随平台默认")
+    @Operation(summary = "清除用户能力默认", description = "清除后保持未设置，不自动选择平台配置")
     public Result<CapabilityDefaultDTO> clearDefault(
         @Parameter(description = "模型能力") @PathVariable String capability) {
         return Result.success(defaultService.clearUserDefault(

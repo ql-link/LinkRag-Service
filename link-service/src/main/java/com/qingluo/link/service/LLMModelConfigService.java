@@ -19,7 +19,7 @@ public interface LLMModelConfigService {
     AdminPlatformConfigSaveResult saveSystemConfig(Long configId, AdminPlatformConfigSaveRequest request);
 
     void changeActive(Long actorUserId, boolean admin, Long configId, boolean isActive,
-                      LLMConfigMutationMode mode, Long replacementConfigId, boolean confirmed);
+                      LLMConfigMutationMode mode, boolean confirmed);
 
     void deleteConfig(Long actorUserId, boolean admin, Long configId);
 }
