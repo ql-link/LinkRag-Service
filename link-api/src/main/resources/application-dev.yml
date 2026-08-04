@@ -33,7 +33,7 @@ spring:
         min-idle: 0
         max-wait: 1000ms
   rabbitmq:
-    host: ${RABBITMQ_HOST:tolink-dev-rabbitmq}
+    host: ${RABBITMQ_HOST:100.86.10.52}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}

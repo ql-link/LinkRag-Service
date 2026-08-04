@@ -21,7 +21,7 @@ toLink-Service 采用 **分层配置架构**，将配置按职责清晰分离：
 | 文件 | 路径 | 职责 | 适用场景 |
 |------|------|------|----------|
 | `application.yml` | `link-api/src/main/resources/` | 环境无关的公共基础配置 | 所有环境始终加载 |
-| `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + localhost Redis + local OSS + MQ none） | 本地开发，克隆即启动 |
+| `application-local.yml` | `link-api/src/main/resources/` | 本地开发配置（H2 + 开发环境依赖 + RabbitMQ） | 本地开发 |
 | `application-local-secrets.yml` | `config/` | 本机 local 账号、密码和密钥（Git/Docker 忽略） | local profile |
 | `application-dev.yml` | `link-api/src/main/resources/` | 开发服务器配置（环境变量引用，带开发默认容量） | 开发服务器 |
 | `application-dev-local.yml` | `config/` | 本机 dev 账号、密码和密钥（Git/Docker 忽略） | dev profile |
@@ -109,13 +109,16 @@ Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或�
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
-| `RABBITMQ_HOST` | RabbitMQ 主机 | 是 | profile 内 Compose DNS | `tolink-rabbitmq` |
+| `RABBITMQ_HOST` | RabbitMQ 主机 | 是 | local/dev：`100.86.10.52`；prod：`100.77.31.79` | `100.86.10.52` |
 | `RABBITMQ_PORT` | AMQP 端口 | 否 | `5672` | `5672` |
 | `RABBITMQ_USERNAME` | 独立应用用户 | 是 | 无 | `tolink_prod` |
 | `RABBITMQ_PASSWORD` | 应用密码 | 是 | 无 | `your-rabbitmq-password-here` |
 | `RABBITMQ_VHOST` | 环境隔离 vhost | 是 | profile 对应值 | `/tolink-prod` |
 
-RabbitMQ 管理端口不向公网开放；Prod 仅绑定服务器回环地址。Queue、DLX、DLT 由应用幂等声明。
+local 与 dev profile 共用开发 RabbitMQ 的 Tailscale AMQP 入口 `100.86.10.52:5672`；prod profile
+使用生产 RabbitMQ 的 Tailscale AMQP 入口 `100.77.31.79:5672`。服务器容器通过环境变量覆盖为
+Compose 内部 DNS，端口仍为 `5672`。管理端口不向公网开放，AMQP 端口也只绑定 Tailscale 地址。
+Queue、DLX、DLT 由应用幂等声明。
 
 ### 4.6 Kafka（回滚兼容）
 
