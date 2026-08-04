@@ -36,6 +36,16 @@ public class MQProperties {
     private String fanoutExchangeNamePrefix = "fanout_exchange_";
 
     /**
+     * Dead-letter queue suffix shared with the Python service.
+     */
+    private String rabbitmqDlqSuffix = ".DLT";
+
+    /**
+     * Whether the optional x-delayed-message plugin is available.
+     */
+    private boolean rabbitmqDelayedMessageEnabled = false;
+
+    /**
      * Whether Kafka topics should be declared by KafkaAdmin on startup.
      */
     private boolean kafkaAutoCreateTopics = true;
@@ -92,6 +102,22 @@ public class MQProperties {
 
     public void setFanoutExchangeNamePrefix(String fanoutExchangeNamePrefix) {
         this.fanoutExchangeNamePrefix = fanoutExchangeNamePrefix;
+    }
+
+    public String getRabbitmqDlqSuffix() {
+        return rabbitmqDlqSuffix;
+    }
+
+    public void setRabbitmqDlqSuffix(String rabbitmqDlqSuffix) {
+        this.rabbitmqDlqSuffix = rabbitmqDlqSuffix;
+    }
+
+    public boolean isRabbitmqDelayedMessageEnabled() {
+        return rabbitmqDelayedMessageEnabled;
+    }
+
+    public void setRabbitmqDelayedMessageEnabled(boolean rabbitmqDelayedMessageEnabled) {
+        this.rabbitmqDelayedMessageEnabled = rabbitmqDelayedMessageEnabled;
     }
 
     public boolean isKafkaAutoCreateTopics() {

@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Validates: Requirements 2.7, 6.5</p>
  */
-@SpringBootTest
+@SpringBootTest(properties = "tolink.mq.vender=none")
 @ActiveProfiles("local")
 class LocalProfileStartupTest {
 

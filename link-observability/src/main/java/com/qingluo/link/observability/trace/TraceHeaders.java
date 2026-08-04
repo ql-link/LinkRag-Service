@@ -50,6 +50,21 @@ public final class TraceHeaders {
         return headers;
     }
 
+    /** Extracts the first supported trace header from a transport header map. */
+    public static String traceId(Map<String, ?> headers) {
+        if (CollectionUtils.isEmpty(headers)) {
+            return null;
+        }
+        for (Map.Entry<String, ?> entry : headers.entrySet()) {
+            boolean traceHeader = TRACE_ID_HEADER_ALIASES.stream()
+                    .anyMatch(alias -> alias.equalsIgnoreCase(entry.getKey()));
+            if (traceHeader && entry.getValue() != null) {
+                return String.valueOf(entry.getValue());
+            }
+        }
+        return null;
+    }
+
     private static boolean hasTraceHeader(Map<String, String> headers) {
         return headers.keySet().stream()
                 .anyMatch(name -> TRACE_ID_HEADER_ALIASES.stream().anyMatch(alias -> alias.equalsIgnoreCase(name)));
