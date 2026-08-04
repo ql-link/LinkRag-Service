@@ -23,7 +23,8 @@ mvn -pl link-service test
 - 提交前使用 `mvn clean test`；删除或移动 Java 类后，干净构建可避免旧 `target/classes` 影响结果。
 - Profile 中可提交的非密钥默认值发生变更时，使用纯资源契约测试锁定目标环境；例如
   `DevProfileConfigurationTest` 必须确保 `application-dev.yml` 只指向 `tolink_rag_dev` 和
-  `tolink-dev-*` bucket，避免依赖旧容器环境变量掩盖配置漂移。
+  `tolink-dev-*` bucket，并确保 local/dev/prod 默认选择 RabbitMQ、关闭 Kafka listener 与
+  topic 自动创建，避免依赖旧容器环境变量掩盖配置漂移。
 
 ## 日志与可观测测试
 

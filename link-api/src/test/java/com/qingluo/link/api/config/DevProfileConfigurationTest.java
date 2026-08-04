@@ -30,6 +30,28 @@ class DevProfileConfigurationTest {
             .doesNotContain("tolink-test-");
     }
 
+    @Test
+    @DisplayName("local、dev、prod 默认只启用 RabbitMQ")
+    void profilesDefaultToRabbitMqWithKafkaDisabled()
+        throws IOException, URISyntaxException {
+        for (String profile : new String[]{"local", "dev", "prod"}) {
+            Path resource = Path.of(requireNonNull(
+                getClass().getClassLoader().getResource("application-" + profile + ".yml")
+            ).toURI());
+            String source = Files.readString(resource);
+
+            assertThat(source)
+                .contains("TOLINK_MQ_VENDER:rabbitMQ")
+                .contains("kafka-auto-create-topics: false")
+                .doesNotContain("KAFKA_LISTENER_AUTO_STARTUP:true");
+            if ("local".equals(profile)) {
+                assertThat(source).contains("auto-startup: false");
+            } else {
+                assertThat(source).contains("KAFKA_LISTENER_AUTO_STARTUP:false");
+            }
+        }
+    }
+
     private static <T> T requireNonNull(T value) {
         if (value == null) {
             throw new IllegalStateException("application-dev.yml not found");

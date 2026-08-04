@@ -55,7 +55,7 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:100.86.10.52:19092}
     listener:
-      auto-startup: ${KAFKA_LISTENER_AUTO_STARTUP:true}
+      auto-startup: ${KAFKA_LISTENER_AUTO_STARTUP:false}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -83,7 +83,7 @@ tolink:
     vender: ${TOLINK_MQ_VENDER:rabbitMQ}
     scan-base-packages:
       - com.qingluo
-    kafka-auto-create-topics: true
+    kafka-auto-create-topics: false
     kafka-topic-partitions: 1
     kafka-topic-replicas: 1
     rabbitmq-dlq-suffix: .DLT

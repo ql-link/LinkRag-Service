@@ -138,6 +138,10 @@ Queue、DLX、DLT 由应用幂等声明。
 | `TOLINK_MQ_VENDER` | MQ 供应商类型（历史属性名为 `vender`） | 否 | `rabbitMQ` | `rabbitMQ` / `kafka` / `none` |
 | `TOLINK_MQ_VENDOR` | `TOLINK_MQ_VENDER` 的兼容别名 | 否 | 空 | `rabbitMQ` |
 
+local、dev、prod 三个 profile 均默认使用 RabbitMQ，同时关闭 Kafka listener 自动启动和
+Kafka topic 自动创建。Kafka 参数只保留为显式回滚兼容；当前环境的密钥文件不应再保存
+Kafka 账号或密码。
+
 ### 4.8 MinIO（MINIO_*）
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
