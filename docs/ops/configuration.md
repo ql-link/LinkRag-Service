@@ -105,7 +105,19 @@ Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或�
 | `REDIS_PASSWORD` | Redis 密码 | 是（dev） | 无 | `your-redis-password-here` |
 | `REDIS_DB` | Redis 数据库编号 | 否 | `0` | `0` |
 
-### 4.5 Kafka（KAFKA_*）
+### 4.5 RabbitMQ（RABBITMQ_*，当前默认）
+
+| 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
+|------|------|----------|--------|--------|
+| `RABBITMQ_HOST` | RabbitMQ 主机 | 是 | profile 内 Compose DNS | `tolink-rabbitmq` |
+| `RABBITMQ_PORT` | AMQP 端口 | 否 | `5672` | `5672` |
+| `RABBITMQ_USERNAME` | 独立应用用户 | 是 | 无 | `tolink_prod` |
+| `RABBITMQ_PASSWORD` | 应用密码 | 是 | 无 | `your-rabbitmq-password-here` |
+| `RABBITMQ_VHOST` | 环境隔离 vhost | 是 | profile 对应值 | `/tolink-prod` |
+
+RabbitMQ 管理端口不向公网开放；Prod 仅绑定服务器回环地址。Queue、DLX、DLT 由应用幂等声明。
+
+### 4.6 Kafka（回滚兼容）
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
@@ -116,14 +128,14 @@ Docker 忽略；从仓库根目录启动服务即可自动生效。Jenkins 或�
 | `KAFKA_SASL_PASSWORD` | Kafka SASL 密码 | 是（dev） | 无 | `your-kafka-password-here` |
 | `KAFKA_LISTENER_AUTO_STARTUP` | Kafka Listener 是否自动启动 | 否 | `true` | `true` |
 
-### 4.6 MQ 组件
+### 4.7 MQ 组件
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|
-| `TOLINK_MQ_VENDER` | MQ 供应商类型（历史属性名为 `vender`） | 否 | `kafka` | `kafka` / `rabbitMQ` / `none` |
-| `TOLINK_MQ_VENDOR` | `TOLINK_MQ_VENDER` 的兼容别名 | 否 | 空 | `kafka` |
+| `TOLINK_MQ_VENDER` | MQ 供应商类型（历史属性名为 `vender`） | 否 | `rabbitMQ` | `rabbitMQ` / `kafka` / `none` |
+| `TOLINK_MQ_VENDOR` | `TOLINK_MQ_VENDER` 的兼容别名 | 否 | 空 | `rabbitMQ` |
 
-### 4.7 MinIO（MINIO_*）
+### 4.8 MinIO（MINIO_*）
 
 | 名称 | 用途 | 是否必需 | 默认值 | 示例值 |
 |------|------|----------|--------|--------|

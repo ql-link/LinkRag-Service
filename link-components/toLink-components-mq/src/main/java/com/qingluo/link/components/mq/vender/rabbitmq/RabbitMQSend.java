@@ -6,11 +6,13 @@ import com.qingluo.link.components.mq.MQSend;
 import com.qingluo.link.components.mq.constant.MQSendType;
 import com.qingluo.link.observability.trace.TraceHeaders;
 import org.springframework.amqp.core.MessagePostProcessor;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.util.Assert;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * RabbitMQ implementation hidden behind the business-facing MQSend contract.
@@ -30,14 +32,14 @@ public class RabbitMQSend implements MQSend {
         validate(abstractMQ);
         MessagePostProcessor headers = headersPostProcessor(abstractMQ);
         if (Objects.equals(MQSendType.BROADCAST, abstractMQ.getMQType())) {
-            rabbitTemplate.convertAndSend(
+            publishConfirmed(
                     mqProperties.getFanoutExchangeNamePrefix() + abstractMQ.getMQName(),
                     "",
                     abstractMQ.getMessage(),
                     headers);
             return;
         }
-        rabbitTemplate.convertAndSend("", abstractMQ.getMQName(), abstractMQ.getMessage(), headers);
+        publishConfirmed("", abstractMQ.getMQName(), abstractMQ.getMessage(), headers);
     }
 
     @Override
@@ -48,10 +50,12 @@ public class RabbitMQSend implements MQSend {
             send(abstractMQ);
             return;
         }
+        Assert.state(mqProperties.isRabbitmqDelayedMessageEnabled(),
+                "RabbitMQ delayed message plugin is not enabled");
         Assert.isTrue(!Objects.equals(MQSendType.BROADCAST, abstractMQ.getMQType()),
                 "delayed broadcast message is not supported");
 
-        rabbitTemplate.convertAndSend(
+        publishConfirmed(
                 mqProperties.getDelayedExchangeName(),
                 abstractMQ.getMQName(),
                 abstractMQ.getMessage(),
@@ -61,6 +65,37 @@ public class RabbitMQSend implements MQSend {
                     message.getMessageProperties().setDelay(Math.toIntExact(delay * 1000L));
                     return message;
                 });
+    }
+
+    @Override
+    public void sendConfirmed(AbstractMQ abstractMQ) {
+        send(abstractMQ);
+    }
+
+    private void publishConfirmed(
+            String exchange,
+            String routingKey,
+            String payload,
+            MessagePostProcessor postProcessor) {
+        CorrelationData correlationData = new CorrelationData();
+        rabbitTemplate.convertAndSend(exchange, routingKey, payload, postProcessor, correlationData);
+        try {
+            CorrelationData.Confirm confirm = correlationData.getFuture().get(10, TimeUnit.SECONDS);
+            if (confirm == null || !confirm.isAck()) {
+                String reason = confirm == null ? "missing confirm" : confirm.getReason();
+                throw new IllegalStateException("RabbitMQ broker rejected message: " + reason);
+            }
+            if (correlationData.getReturned() != null) {
+                throw new IllegalStateException("RabbitMQ returned unroutable message");
+            }
+        } catch (IllegalStateException ex) {
+            throw ex;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("RabbitMQ confirmed send failed", ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("RabbitMQ confirmed send failed", ex);
+        }
     }
 
     private void validate(AbstractMQ abstractMQ) {

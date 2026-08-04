@@ -17,8 +17,10 @@ import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.CustomExchange;
 import org.springframework.amqp.core.Declarable;
 import org.springframework.amqp.core.Declarables;
+import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -54,8 +56,11 @@ public class RabbitMQAutoConfiguration {
     @Bean
     public Declarables rabbitMQDeclarables(RabbitMQTopologyScanner scanner, MQProperties mqProperties) {
         List<Declarable> declarables = new ArrayList<>();
-        CustomExchange delayedExchange = delayedExchange(mqProperties.getDelayedExchangeName());
-        declarables.add(delayedExchange);
+        CustomExchange delayedExchange = null;
+        if (mqProperties.isRabbitmqDelayedMessageEnabled()) {
+            delayedExchange = delayedExchange(mqProperties.getDelayedExchangeName());
+            declarables.add(delayedExchange);
+        }
 
         List<AbstractMQ> messageModels = scanner.scan(mqProperties.getScanBasePackages());
         for (AbstractMQ messageModel : messageModels) {
@@ -63,7 +68,23 @@ public class RabbitMQAutoConfiguration {
                 log.warn("Skip MQ model [{}], MQ name or MQ type is blank", messageModel.getClass().getName());
                 continue;
             }
-            Queue queue = new Queue(messageModel.getMQName(), true);
+            String queueName = messageModel.getMQName();
+            String dlxName = queueName + ".DLX";
+            String dltName = queueName + mqProperties.getRabbitmqDlqSuffix();
+            DirectExchange deadLetterExchange = new DirectExchange(dlxName, true, false);
+            Queue deadLetterQueue = QueueBuilder.durable(dltName).build();
+            Binding deadLetterBinding = BindingBuilder.bind(deadLetterQueue)
+                    .to(deadLetterExchange)
+                    .with(queueName);
+            Map<String, Object> queueArguments = new HashMap<>();
+            queueArguments.put("x-dead-letter-exchange", dlxName);
+            queueArguments.put("x-dead-letter-routing-key", queueName);
+            Queue queue = QueueBuilder.durable(queueName)
+                    .withArguments(queueArguments)
+                    .build();
+            declarables.add(deadLetterExchange);
+            declarables.add(deadLetterQueue);
+            declarables.add(deadLetterBinding);
             declarables.add(queue);
 
             if (Objects.equals(MQSendType.BROADCAST, messageModel.getMQType())) {
@@ -75,13 +96,15 @@ public class RabbitMQAutoConfiguration {
                 log.info("Register RabbitMQ broadcast topology: queue={}, exchange={}",
                         messageModel.getMQName(), fanoutExchange.getName());
             } else {
-                Binding binding = BindingBuilder.bind(queue)
-                        .to(delayedExchange)
-                        .with(messageModel.getMQName())
-                        .noargs();
-                declarables.add(binding);
-                log.info("Register RabbitMQ queue topology: queue={}, delayedExchange={}",
-                        messageModel.getMQName(), delayedExchange.getName());
+                if (delayedExchange != null) {
+                    Binding binding = BindingBuilder.bind(queue)
+                            .to(delayedExchange)
+                            .with(messageModel.getMQName())
+                            .noargs();
+                    declarables.add(binding);
+                }
+                log.info("Register RabbitMQ queue topology: queue={}, dlx={}, dlt={}",
+                        queueName, dlxName, dltName);
             }
         }
         return new Declarables(declarables);

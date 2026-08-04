@@ -17,7 +17,7 @@ Python RAG 执行端负责文档解析、RAG 执行、LLM 调用和解析产物�
 | 鉴权 | sa-token |
 | 数据库 | MySQL，数据库名 `tolink_rag_db` |
 | 缓存 | Redis |
-| MQ | Kafka / RabbitMQ 组件抽象，当前配置默认 Kafka |
+| MQ | RabbitMQ / Kafka 组件抽象，当前配置默认 RabbitMQ |
 | OSS | 本地存储 / MinIO |
 | 测试 | JUnit、Mockito、SpringBootTest、MockMvc |
 

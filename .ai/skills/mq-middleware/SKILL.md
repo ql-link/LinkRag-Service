@@ -10,6 +10,12 @@ when_to_use: "当用户要求接入 Kafka/RabbitMQ、发送或订阅消息、新
 
 MQ 模块位于 `link-components/toLink-components-mq`，通过接口 + AutoConfiguration 实现多厂商（Kafka/RabbitMQ）切换。
 
+当前 RabbitMQ 约定：`RabbitMQAutoConfiguration` 为每个业务消息统一声明 durable Queue、
+`<queue>.DLX` 与 `<queue>.DLT`；普通发送走默认交换器。Python→Java 的消费入口由
+`link-service/.../mq/rabbitmq/*RabbitReceiver` 显式绑定并恢复 trace header。Java listener
+首次投递加 3 次本地重试，耗尽后 reject 且不 requeue，由 DLX 进入 `.DLT`。
+`x-delayed-message` 插件默认关闭，当前业务不得调用延迟发送。
+
 **强制同步要求**：凡涉及 MQ 模块操作（新增/修改/删除消息模型、消费者、Topic、厂商适配逻辑、配置项），完成代码修改后必须：
 
 1. 同步更新 `docs/api/mq_contracts.md` 中的消息清单与字段说明。
@@ -58,7 +64,7 @@ public class YourService {
         mqSend.send(message);
     }
 
-    // 延迟消息（仅 RabbitMQ 有效）
+    // 仅在运维显式安装并启用 x-delayed-message 插件后使用
     public void doDelayed() {
         mqSend.send(message, 30); // 30 秒后投递
     }
@@ -140,7 +146,8 @@ public class YourEventMQ implements AbstractMQ {
 
 ## 5. 实现消费者
 
-消费者实现 `XxxMQ.MQReceiver` 接口，由 `KafkaMQTopologyScanner` / `RabbitMQTopologyScanner` 自动发现并绑定：
+业务消费者实现 `XxxMQ.MQReceiver` 接口。Kafka/RabbitMQ 的传输入口分别负责把原始消息
+反序列化并调用该接口；`RabbitMQTopologyScanner` 只负责扫描消息模型和声明拓扑，不会自动注册 listener：
 
 ```java
 @Component
@@ -179,6 +186,8 @@ public class RawConsumer implements MQMsgReceiver {
 | `tolink.mq.kafkaTopicReplicas` | Kafka Topic 默认副本数 | `1` |
 | `tolink.mq.delayedExchangeName` | RabbitMQ 延迟交换机名称 | `delayExchange` |
 | `tolink.mq.fanoutExchangeNamePrefix` | RabbitMQ 广播交换机前缀 | `fanout_exchange_` |
+| `tolink.mq.rabbitmqDlqSuffix` | RabbitMQ 死信 Queue 后缀 | `.DLT` |
+| `tolink.mq.rabbitmqDelayedMessageEnabled` | 是否允许声明/使用可选延迟消息插件 | `false` |
 
 ## 7. 交付后同步
 

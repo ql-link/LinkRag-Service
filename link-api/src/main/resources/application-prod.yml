@@ -30,6 +30,26 @@ spring:
         max-idle: 8
         min-idle: 0
         max-wait: 1000ms
+  rabbitmq:
+    host: ${RABBITMQ_HOST:tolink-rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: ${RABBITMQ_VHOST:/tolink-prod}
+    connection-timeout: 5s
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        prefetch: ${RABBITMQ_PREFETCH:10}
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 4
+          initial-interval: 1s
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:100.86.10.52:9092}
     listener:
@@ -56,12 +76,14 @@ logging:
     com.qingluo.link.mapper: ${SQL_LOG_LEVEL:info}
 tolink:
   mq:
-    vender: kafka
+    vender: ${TOLINK_MQ_VENDER:rabbitMQ}
     scan-base-packages:
     - com.qingluo
     kafka-auto-create-topics: true
     kafka-topic-partitions: 1
     kafka-topic-replicas: 1
+    rabbitmq-dlq-suffix: .DLT
+    rabbitmq-delayed-message-enabled: false
   oss:
     service-type: ${OSS_SERVICE_TYPE:minio}
     file-root-path: ${user.home}/.tolink/oss
