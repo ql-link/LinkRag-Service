@@ -12,12 +12,12 @@ import lombok.Data;
 @Schema(description = "管理员平台配置原子保存请求")
 public class AdminPlatformConfigSaveRequest {
 
-    @Schema(description = "复制既有正式模型目录项的ID")
+    @Schema(description = "复制既有正式模型目录项的ID；只复制模型运行事实，平台配置厂商固定为LinkRag")
     @Positive(message = "模型目录项ID必须为正整数")
     private Long sourceProviderModelId;
 
     @Valid
-    @Schema(description = "需与平台配置同事务发布的模型目录事实")
+    @Schema(description = "需与平台配置同事务发布的源模型目录事实；平台配置厂商固定为LinkRag")
     private CatalogMutation catalogMutation;
 
     @Schema(description = "平台API Key；创建时必填，更新时为空表示保留原密钥")
@@ -28,7 +28,7 @@ public class AdminPlatformConfigSaveRequest {
     @Schema(description = "模型目录原子变更")
     public static class CatalogMutation {
 
-        @Schema(description = "厂商ID", example = "10000")
+        @Schema(description = "源模型所属厂商ID", example = "10000")
         @NotNull(message = "厂商ID不能为空")
         @Positive(message = "厂商ID必须为正整数")
         private Long providerId;

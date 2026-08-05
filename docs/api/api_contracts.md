@@ -138,7 +138,7 @@
 >
 > 精确配置校验固定顺序为：物理存在 → `is_active` → USER owner/SYSTEM 共享 → capability。配置不存在、停用、越权和能力不匹配分别返回 `10020/404`、`10021/409`、`10022/403`、`10023/400`，不回落默认配置或环境变量。
 >
-> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。请求不携带默认设置字段，响应 `AdminPlatformConfigSaveResult` 只返回保存后的 `config`。已存在配置不能原地改变 capability，避免数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
+> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。源目录只提供模型名、展示名、能力、协议和调用入口；所有 SYSTEM 平台配置的 `providerId/providerType` 固定为 LinkRag 厂商身份，不复制 DeepSeek、SiliconFlow 等源厂商身份。请求不携带默认设置字段，响应 `AdminPlatformConfigSaveResult` 只返回保存后的 `config`。已存在配置不能原地改变 capability，避免数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
 >
 > 用户 `setup-provider` 按 `(scope,owner_user_id,provider_id,model_name,capability)` upsert，刷新凭据复用原 `configId`，保留已有启用和默认状态。标准删除/停用保护 Dataset 引用；紧急停用保留绑定，使后续精确执行明确返回配置已停用。
 
