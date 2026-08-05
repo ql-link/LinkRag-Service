@@ -22,15 +22,18 @@
 
 上传限制按“Redis 管理员覆盖 → 实例最后有效快照 → 部署默认值”解析：
 
-- 部署默认值来自 `DocumentFileProperties`：`tolink.document-file.max-size-bytes`、`hard-max-size-bytes`、`allowed-suffixes`。
+- Python 解析器的真实能力是知识文件类型事实来源；Java 通过 `DocumentFileTypeContract` 镜像 `md, markdown, pdf, docx, html, htm`，TXT 和传统二进制 DOC 不属于契约。
+- 部署默认值来自 `DocumentFileProperties`：`tolink.document-file.max-size-bytes`、`hard-max-size-bytes`、`allowed-suffixes`。部署后缀只能是上述硬契约的非空子集；历史发布默认值 `md,markdown,pdf,docx,txt` 会自动迁移为完整新契约，其它含不支持后缀的自定义值失败关闭。
 - 管理员通过 `PUT /api/v1/admin/document-file-config` 完整替换 `maxSizeBytes` 和 `allowedSuffixes`；后端单次写入 `runtime:document-file:upload-config`，不设置 TTL。
 - `GET /api/v1/admin/document-file-config` 返回当前有效配置，以及管理员覆盖值的 `updatedBy` / `updatedAt`；使用部署默认值时二者为 `null`。
 - 历史 `PATCH` 不恢复，继续返回 405，避免部分字段更新造成跨实例中间态。
-- Redis key 缺失时直接使用部署默认值且不自动回填；Redis 故障或值损坏时，优先使用当前实例最近一次读到/写入的有效快照，否则使用部署默认值。
+- Redis key 缺失时直接使用部署默认值且不自动回填；Redis 故障或值损坏时，优先使用当前实例最近一次读到/写入的有效快照，否则使用部署默认值。旧快照只要包含 TXT/DOC 等契约外类型即视为损坏，不再对外生效，也不会自动覆写原值，便于运维审计后显式替换或删除。
 - 管理员写 Redis 失败时接口返回 `DOCUMENT_FILE_CONFIG_UPDATE_FAILED(50003/503)`，本实例也不提前更新内存快照。
 - 管理员可选后缀必须属于部署配置声明的全集；动态大小不得超过 `hard-max-size-bytes`。应用 multipart/网关上限必须不低于该硬上限。
 
 上传配置不存 MySQL，不参与 CDC/binlog 映射。多实例部署通过 `runtime:document-file:default-fingerprint` 检查部署默认值是否一致。
+
+上传同步校验和 `GET /api/v1/document-file-capabilities` 使用同一份当前有效后缀；历史文件提交手动解析时还会再次按硬契约校验，避免旧 TXT/DOC 记录进入 Python MQ。
 
 ## 上传异步化
 

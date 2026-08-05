@@ -17,6 +17,8 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -90,7 +92,8 @@ class DocumentFileControllerTest {
     @BeforeEach
     void setUp() {
         documentFileProperties.setMaxSizeBytes(20L * 1024 * 1024);
-        documentFileProperties.setAllowedSuffixes(new java.util.LinkedHashSet<>(List.of("md", "markdown", "pdf", "docx", "txt")));
+        documentFileProperties.setAllowedSuffixes(new java.util.LinkedHashSet<>(
+            List.of("md", "markdown", "pdf", "docx", "html", "htm")));
         jdbcTemplate.update("DELETE FROM document_parse_pipeline");
         jdbcTemplate.update("DELETE FROM document_parsed_log");
         jdbcTemplate.update("DELETE FROM document_parse_file");
@@ -209,6 +212,13 @@ class DocumentFileControllerTest {
             .andExpect(jsonPath("$.data.featureEnabled").value(true))
             .andExpect(jsonPath("$.data.matchModes[0]").value("FULL_PATH"))
             .andExpect(jsonPath("$.data.matchModes[1]").value("SHALLOW_BASENAME"))
+            .andExpect(jsonPath("$.data.document.allowedSuffixes.length()").value(6))
+            .andExpect(jsonPath("$.data.document.allowedSuffixes[0]").value("docx"))
+            .andExpect(jsonPath("$.data.document.allowedSuffixes[1]").value("htm"))
+            .andExpect(jsonPath("$.data.document.allowedSuffixes[2]").value("html"))
+            .andExpect(jsonPath("$.data.document.allowedSuffixes[3]").value("markdown"))
+            .andExpect(jsonPath("$.data.document.allowedSuffixes[4]").value("md"))
+            .andExpect(jsonPath("$.data.document.allowedSuffixes[5]").value("pdf"))
             .andExpect(jsonPath("$.data.image.extensions").isArray())
             .andExpect(jsonPath("$.data.zip.maxEntries").value(5000));
     }
@@ -252,6 +262,46 @@ class DocumentFileControllerTest {
             .andExpect(jsonPath("$.code").value(400));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"html", "htm"})
+    void Should_AcceptHtmlDocumentFileUpload_When_PythonParserSupportsSuffix(String suffix) throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "page." + suffix, "text/html", "<h1>ok</h1>".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(file)
+                .param("parseImmediately", "false")
+                .header("satoken", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.fileSuffix").value(suffix));
+
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ? AND file_suffix = ?",
+            Integer.class, datasetId, suffix);
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void Should_RejectTxtBeforeCreatingDocumentOrParseRecord() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "legacy.txt", MediaType.TEXT_PLAIN_VALUE, "unsupported".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
+                .file(file)
+                .param("parseImmediately", "true")
+                .header("satoken", token))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("当前文件格式暂不支持"));
+
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ?",
+            Integer.class, datasetId)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM document_parse_file",
+            Integer.class)).isZero();
+        assertThat(recordingMQSend.messages()).isEmpty();
+    }
+
     @Test
     void Should_AcceptDocumentFileUpload_When_FileNameContainsCommonBusinessCharacters() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
@@ -287,7 +337,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_ThrowException_When_OssUploadFails() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "failed.txt", MediaType.TEXT_PLAIN_VALUE, "hello".getBytes(StandardCharsets.UTF_8));
+            "file", "failed.pdf", MediaType.APPLICATION_PDF_VALUE, "hello".getBytes(StandardCharsets.UTF_8));
         // 异步上传走 File 重载；OSS 返回空 → 异步置 failed（同步执行器下请求返回前已完成）。
         willReturn("").given(ossService)
             .upload2PreviewUrl(any(), any(java.io.File.class), any(), anyString());
@@ -302,21 +352,21 @@ class DocumentFileControllerTest {
         Integer count = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
-                """, Integer.class, datasetId, userId, "failed.txt");
+                """, Integer.class, datasetId, userId, "failed.pdf");
         assertThat(count).isEqualTo(1);
 
         String uploadStatus = jdbcTemplate.queryForObject("""
                 SELECT upload_status FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
-                """, String.class, datasetId, userId, "failed.txt");
+                """, String.class, datasetId, userId, "failed.pdf");
         Boolean isUploadSuccess = jdbcTemplate.queryForObject("""
                 SELECT is_upload_success FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
-                """, Boolean.class, datasetId, userId, "failed.txt");
+                """, Boolean.class, datasetId, userId, "failed.pdf");
         String failureReason = jdbcTemplate.queryForObject("""
                 SELECT failure_reason FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
-                """, String.class, datasetId, userId, "failed.txt");
+                """, String.class, datasetId, userId, "failed.pdf");
         assertThat(uploadStatus).isEqualTo("failed");
         assertThat(isUploadSuccess).isFalse();
         assertThat(failureReason).isEqualTo("文件上传失败，请稍后重试");
@@ -326,7 +376,7 @@ class DocumentFileControllerTest {
     void Should_MarkUploadFailed_When_PoolRejectsTask() throws Exception {
         uploadExecutor.rejectNext();
         MockMultipartFile file = new MockMultipartFile(
-            "file", "rejected.txt", MediaType.TEXT_PLAIN_VALUE, "x".getBytes(StandardCharsets.UTF_8));
+            "file", "rejected.pdf", MediaType.APPLICATION_PDF_VALUE, "x".getBytes(StandardCharsets.UTF_8));
 
         // 上传接口仍立即返回 uploading；池满拒绝在 upload() 事务 afterCommit 触发，
         // 置 failed 必须以独立事务（REQUIRES_NEW）提交，否则记录会滞留 uploading。
@@ -339,11 +389,11 @@ class DocumentFileControllerTest {
         String uploadStatus = jdbcTemplate.queryForObject("""
                 SELECT upload_status FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
-                """, String.class, datasetId, userId, "rejected.txt");
+                """, String.class, datasetId, userId, "rejected.pdf");
         String failureReason = jdbcTemplate.queryForObject("""
                 SELECT failure_reason FROM document_original_file
                 WHERE dataset_id = ? AND user_id = ? AND original_filename = ?
-                """, String.class, datasetId, userId, "rejected.txt");
+                """, String.class, datasetId, userId, "rejected.pdf");
         assertThat(uploadStatus).isEqualTo("failed");
         assertThat(failureReason).isEqualTo("服务繁忙，请稍后重试");
     }
@@ -351,9 +401,9 @@ class DocumentFileControllerTest {
     @Test
     void Should_RejectDocumentFileUpload_When_PropertiesLimitMaxSize() throws Exception {
         documentFileProperties.setMaxSizeBytes(5L);
-        documentFileProperties.setAllowedSuffixes(new java.util.LinkedHashSet<>(List.of("txt")));
+        documentFileProperties.setAllowedSuffixes(new java.util.LinkedHashSet<>(List.of("pdf")));
         MockMultipartFile file = new MockMultipartFile(
-            "file", "too-large.txt", MediaType.TEXT_PLAIN_VALUE, "123456".getBytes(StandardCharsets.UTF_8));
+            "file", "too-large.pdf", MediaType.APPLICATION_PDF_VALUE, "123456".getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
@@ -379,7 +429,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_ListAndDeleteDocumentFile_When_FileBelongsToCurrentUser() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "note.txt", MediaType.TEXT_PLAIN_VALUE, "hello".getBytes(StandardCharsets.UTF_8));
+            "file", "note.pdf", MediaType.APPLICATION_PDF_VALUE, "hello".getBytes(StandardCharsets.UTF_8));
 
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
@@ -430,7 +480,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_AllowReuploadSameName_AfterSoftDelete() throws Exception {
         MockMultipartFile first = new MockMultipartFile(
-            "file", "dup.txt", MediaType.TEXT_PLAIN_VALUE, "hi".getBytes(StandardCharsets.UTF_8));
+            "file", "dup.pdf", MediaType.APPLICATION_PDF_VALUE, "hi".getBytes(StandardCharsets.UTF_8));
         MvcResult firstUpload = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(first)
                 .header("satoken", token))
@@ -446,7 +496,7 @@ class DocumentFileControllerTest {
 
         // 重传同名：经 @TableLogic 过滤死行 → 走 insert 新行，不被同名校验 / 唯一约束拦截
         MockMultipartFile again = new MockMultipartFile(
-            "file", "dup.txt", MediaType.TEXT_PLAIN_VALUE, "hi-again".getBytes(StandardCharsets.UTF_8));
+            "file", "dup.pdf", MediaType.APPLICATION_PDF_VALUE, "hi-again".getBytes(StandardCharsets.UTF_8));
         MvcResult reupload = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(again)
                 .header("satoken", token))
@@ -467,7 +517,7 @@ class DocumentFileControllerTest {
         // 物理仍有 2 行（旧死行保留，可追溯）
         Integer physical = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM document_original_file WHERE dataset_id = ? AND original_filename = ?",
-            Integer.class, datasetId, "dup.txt");
+            Integer.class, datasetId, "dup.pdf");
         assertThat(physical).isEqualTo(2);
     }
 
@@ -523,7 +573,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_Allow_ReuploadSameOriginalFilename_After_Delete() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "repeat.txt", MediaType.TEXT_PLAIN_VALUE, "first".getBytes(StandardCharsets.UTF_8));
+            "file", "repeat.pdf", MediaType.APPLICATION_PDF_VALUE, "first".getBytes(StandardCharsets.UTF_8));
 
         MvcResult firstUpload = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
@@ -537,7 +587,7 @@ class DocumentFileControllerTest {
             .andExpect(status().isOk());
 
         MockMultipartFile secondFile = new MockMultipartFile(
-            "file", "repeat.txt", MediaType.TEXT_PLAIN_VALUE, "second".getBytes(StandardCharsets.UTF_8));
+            "file", "repeat.pdf", MediaType.APPLICATION_PDF_VALUE, "second".getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(secondFile)
@@ -571,7 +621,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_DownloadOriginalFileThroughInternalEndpoint_When_ServiceTokenMatches() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "private.txt", MediaType.TEXT_PLAIN_VALUE, "secret-content".getBytes(StandardCharsets.UTF_8));
+            "file", "private.pdf", MediaType.APPLICATION_PDF_VALUE, "secret-content".getBytes(StandardCharsets.UTF_8));
 
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
@@ -622,7 +672,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_CreateParseTaskAndSendMqMessage_When_UserStartsParseAfterUpload() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "later.txt", MediaType.TEXT_PLAIN_VALUE, "parse later".getBytes(StandardCharsets.UTF_8));
+            "file", "later.pdf", MediaType.APPLICATION_PDF_VALUE, "parse later".getBytes(StandardCharsets.UTF_8));
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
             .file(file)
             .header("satoken", token))
@@ -646,7 +696,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_ReuseRunningParseTask_When_LatestPointerHasNoPythonLogYet() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "duplicate.txt", MediaType.TEXT_PLAIN_VALUE, "parse duplicate".getBytes(StandardCharsets.UTF_8));
+            "file", "duplicate.pdf", MediaType.APPLICATION_PDF_VALUE, "parse duplicate".getBytes(StandardCharsets.UTF_8));
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
                 .header("satoken", token))
@@ -674,7 +724,7 @@ class DocumentFileControllerTest {
     @Test
     void Should_RollbackLatestPointer_When_ParseTaskMqSendFails() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-            "file", "rollback.txt", MediaType.TEXT_PLAIN_VALUE, "parse rollback".getBytes(StandardCharsets.UTF_8));
+            "file", "rollback.pdf", MediaType.APPLICATION_PDF_VALUE, "parse rollback".getBytes(StandardCharsets.UTF_8));
         MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/datasets/{datasetId}/files", datasetId)
                 .file(file)
                 .header("satoken", token))
@@ -696,7 +746,7 @@ class DocumentFileControllerTest {
 
     @Test
     void Should_QueryLatestParseResult_When_PythonLogExists() throws Exception {
-        Long fileId = uploadPlainFile("result.txt", "parse result");
+        Long fileId = uploadPlainFile("result.pdf", "parse result");
         Long parseFileId = jdbcTemplate.queryForObject(
             "SELECT id FROM document_parse_file WHERE document_original_file_id = ?", Long.class, fileId);
         jdbcTemplate.update("UPDATE document_parse_file SET latest_parse_task_id = ? WHERE id = ?",

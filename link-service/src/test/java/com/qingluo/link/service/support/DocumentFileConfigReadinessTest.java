@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class DocumentFileConfigReadinessTest {
 
     @Test
-    void fingerprintUsesStableFieldAndSuffixOrder() {
+    void fingerprintUsesStableFieldOrderAndMigratesFormerDefaultSuffixes() {
         DocumentFileProperties properties = new DocumentFileProperties();
         properties.setAllowedSuffixes(
             new LinkedHashSet<>(List.of("txt", "pdf", "md", "docx", "markdown")));
@@ -19,7 +19,7 @@ class DocumentFileConfigReadinessTest {
             new DocumentFileConfigReadiness(null, properties, new ObjectMapper());
 
         assertEquals(
-            "941d534cd0926b55d21c652204e3bb11da05294228f0c9cc54cdd8cb262b6deb",
+            "342e32f6f6b653dead9989bf5e49535b3498e04a747b468b5985fde35ab54774",
             readiness.fingerprint());
     }
 }

@@ -50,7 +50,8 @@ tolink:
       - markdown
       - pdf
       - docx
-      - txt
+      - html
+      - htm
   cache-consistency:
     sync-delete-required: false
     cdc:
