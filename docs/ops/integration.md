@@ -28,7 +28,8 @@
 - **上传异步化**：上传接口立即返回 `uploadStatus=UPLOADING`，OSS 上传/终态回写在 Java 侧线程池异步完成；`parseImmediately=true` 的解析任务**只在 OSS 上传成功后**才投递（不会对尚未落 OSS 的文件触发解析）。Python 侧无需改动，仍以收到 `parse_task` 为准；前端需改为按 `uploadStatus` 轮询获取上传终态。
 - **Markdown 本地图片**：Web 将 ZIP 在浏览器解压为逐文档资源包，文件夹入口保留完整相对路径，单文件补图只提交所选文件夹直接子级。Java 把 original/normalized/images/manifest 按 `markdown-assets/v1/user-{userId}/dataset-{datasetId}/file-{fileId}/` 写入 RAW，manifest 最后提交，并把 Markdown 图片改写为无凭据的 `tolink-raw://raw/...`。`parse_task` 不增加字段，v1 `source_object_key` 指向 normalized.md；Python 必须用现有 source/user/dataset/file 坐标把图片限制在当前 fileId 的 `images/` 前缀，直接使用 RAW 存储权限读取。图片增强关闭时不得下载；单图读取/转换/Vision 失败可降级，增强模型缺失仍按现有任务失败语义处理。
 - **图片问题解析门禁**：Java 对缺失、歧义和不支持格式保留文件并返回 `assetSummary`，但不自动发解析 MQ。手动解析默认返回 409 和 summary，用户确认 `ignoreMissingAssets=true` 后才提交；manifest 缺失或损坏返回 503。并发确认请求通过最新任务指针 CAS 只发送一次，调用方可能收到同一 `taskId` 和 `alreadyRunning=true`。
-- **上传限制配置**：部署 `tolink.document-file.*` 提供默认值和硬上限；管理员可通过 Java 管理端 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入无 TTL Redis key。新上传在落库前读取当前有效值，Redis 故障时按实例最后有效快照/部署默认值降级。Python 解析端无需读取该 Redis key，仍只处理 Java 已接受并投递的文件。
+- **知识文件类型契约**：Python 实际解析能力是事实来源，三端基准为 `md, markdown, pdf, docx, html, htm`，不含 TXT 和传统二进制 DOC。Java 上传、通用 `document` OSS 规则、capability 和历史文件解析门禁共享该硬契约；Web 的直接文件、文件夹和 ZIP 入口必须统一读取 capability 的当前有效子集。
+- **上传限制配置**：部署 `tolink.document-file.*` 提供默认值和硬上限；管理员可通过 Java 管理端 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入无 TTL Redis key。新上传在落库前读取当前有效值，Redis 故障时按实例最后有效快照/部署默认值降级。Python 解析端无需读取该 Redis key，仍只处理 Java 已接受并投递的文件；含契约外后缀的旧 Redis 快照会失败关闭并回退，不会自动改写。
 - **多实例默认一致性**：所有 Java 实例必须使用相同的默认大小、硬上限和后缀全集；`runtime:document-file:default-fingerprint` 用于 readiness 检查。动态覆盖生效后不需要重启实例。
 - **缓存补偿是 Java 内部链路**：Canal → Java CDC bridge → `tolink.cache.evict` → Java 缓存删除，不要求 Python 消费。当前只覆盖数据集解析配置、用户资料和公开博客发布索引；文档解析结果、模型配置和用量不缓存。
 - 启用缓存补偿前先创建 `<CDC source topic>.DLT` 与 `tolink.cache.evict.DLT`；CDC/补偿永久失败或重试耗尽会由 Java broker 确认写入对应 DLT，DLT 写失败时源消费继续报错。

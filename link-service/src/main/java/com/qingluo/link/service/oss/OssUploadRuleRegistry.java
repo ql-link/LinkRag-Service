@@ -1,6 +1,7 @@
 package com.qingluo.link.service.oss;
 
 import com.qingluo.link.components.oss.enums.OssSavePlaceEnum;
+import com.qingluo.link.service.config.DocumentFileTypeContract;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -24,7 +25,7 @@ public class OssUploadRuleRegistry {
         allRules.put("providerIcon", new OssUploadRule(OssSavePlaceEnum.PUBLIC, IMAGE_SUFFIXES, DEFAULT_MAX_SIZE));
         allRules.put("chatImage", new OssUploadRule(OssSavePlaceEnum.PUBLIC, IMAGE_SUFFIXES, DEFAULT_MAX_SIZE));
         allRules.put("document", new OssUploadRule(
-            OssSavePlaceEnum.RAW, Set.of("pdf", "doc", "docx", "txt", "md"), 20 * 1024 * 1024L));
+            OssSavePlaceEnum.RAW, DocumentFileTypeContract.supportedSuffixes(), 20 * 1024 * 1024L));
         allRules.put("cert", new OssUploadRule(
             OssSavePlaceEnum.PRIVATE, Collections.singleton(ALL_SUFFIX_FLAG), DEFAULT_MAX_SIZE));
         allRules.put("feedback", new OssUploadRule(

@@ -182,7 +182,7 @@ Kafka 账号或密码。
 | `DOCUMENT_FILE_SERVICE_TOKEN` | 内部服务 Token | 否 | 空 | `your-service-token-here` |
 | `TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES` | 单文件上传大小上限（字节） | 否 | `20971520` | `10485760` |
 | `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES` | 管理员动态配置允许的硬上限（字节） | 否 | `104857600` | `104857600` |
-| `TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES` | 允许上传的后缀列表（Spring Boot 集合绑定格式） | 否 | `md,markdown,pdf,docx,txt` | `pdf,md` |
+| `TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES` | 允许上传的后缀列表（Python 解析硬契约的非空子集） | 否 | `md,markdown,pdf,docx,html,htm` | `pdf,md` |
 | `DOCUMENT_FILE_HARD_MAX_SIZE` | Spring multipart 单文件硬上限 | 否 | `100MB` | `100MB` |
 | `DOCUMENT_FILE_HARD_MAX_REQUEST_SIZE` | Spring multipart 请求硬上限 | 否 | `101MB` | `101MB` |
 | `TOLINK_MARKDOWN_ASSETS_ENABLED` | Markdown 配套图片资源包开关 | 否 | `true` | `true` |
@@ -198,9 +198,9 @@ Kafka 账号或密码。
 | `TOLINK_ZIP_MAX_RATIO` | ZIP 单条目最大压缩比 | 否 | `100` | `100` |
 | `TOLINK_ZIP_MAX_DEPTH` | ZIP 最大目录深度 | 否 | `20` | `20` |
 
-`DocumentFileProperties` 提供部署默认值和管理员可修改范围；管理员通过 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入 Redis `runtime:document-file:upload-config`，不设置 TTL。Redis key 缺失时使用部署默认值，故修改默认环境变量仍需重启所有实例。`DOCUMENT_FILE_HARD_MAX_SIZE`、网关 body 上限和反向代理上限必须不低于 `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES`。
+`DocumentFileProperties` 提供部署默认值和管理员可修改范围；管理员通过 `PUT /api/v1/admin/document-file-config` 把完整覆盖值写入 Redis `runtime:document-file:upload-config`，不设置 TTL。Python 解析能力是文件类型事实来源，Java 硬契约固定为 `md,markdown,pdf,docx,html,htm`：部署值只能取其非空子集。旧版原样默认值 `md,markdown,pdf,docx,txt` 会自动迁移为完整新契约；其它仍含 `txt`、`doc` 或未知后缀的自定义值会失败关闭，必须先修改环境变量。Redis key 缺失时使用部署默认值，故修改默认环境变量仍需重启所有实例。`DOCUMENT_FILE_HARD_MAX_SIZE`、网关 body 上限和反向代理上限必须不低于 `TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES`。
 
-多实例默认值由无 TTL key `runtime:document-file:default-fingerprint` 校验。受控修改部署默认值时，应先完成所有实例配置收敛，再删除该 fingerprint key，让新版本实例重新建立指纹；滚动过程中指纹不一致会令动态 PUT 返回 503，避免不同实例接受不同后缀/大小边界。不要删除 `runtime:document-file:upload-config`，除非明确要撤销管理员覆盖并回到部署默认值。
+多实例默认值由无 TTL key `runtime:document-file:default-fingerprint` 校验。升级本契约时先把所有实例的环境变量收敛到新集合并完成发布，再删除 fingerprint key，让新版本实例重新建立指纹；滚动过程中指纹不一致会令动态 PUT 返回 503，避免不同实例接受不同后缀/大小边界。旧 `runtime:document-file:upload-config` 只要包含契约外后缀就会被判为损坏并回退，但不会自动改写 Redis：确认不再需要覆盖时删除该 key，仍需动态限制时则在 fingerprint 恢复一致后通过管理端 PUT 写入新契约子集。
 
 ### 4.11 LLM（LLM_*）
 

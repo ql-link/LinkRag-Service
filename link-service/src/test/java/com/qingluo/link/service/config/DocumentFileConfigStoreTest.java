@@ -71,4 +71,21 @@ class DocumentFileConfigStoreTest {
             org.mockito.ArgumentMatchers.eq(DocumentFileConfigStore.CONFIG_KEY),
             org.mockito.ArgumentMatchers.any());
     }
+
+    @Test
+    void legacyRedisOverrideContainingTxt_fallsBackToParserContract() {
+        properties.setAllowedSuffixes(DocumentFileTypeContract.supportedSuffixes());
+        when(valueOperations.get(DocumentFileConfigStore.CONFIG_KEY)).thenReturn(java.util.Map.of(
+            "maxSizeBytes", 10L,
+            "allowedSuffixes", List.of("md", "pdf", "txt")));
+
+        DocumentFileConfigSnapshot result = store.resolve();
+
+        assertThat(result.getAllowedSuffixes())
+            .containsExactly("md", "markdown", "pdf", "docx", "html", "htm");
+        verify(metrics).fallback("corrupted");
+        verify(valueOperations, never()).set(
+            org.mockito.ArgumentMatchers.eq(DocumentFileConfigStore.CONFIG_KEY),
+            org.mockito.ArgumentMatchers.any());
+    }
 }
