@@ -17,7 +17,7 @@ LinkRag 的 Java 管理端——把用户、配置、文件与任务编排稳稳
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-Auth-1E90FF">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-Cache-DC382D?logo=redis&logoColor=white">
-  <img alt="Kafka" src="https://img.shields.io/badge/Kafka-MQ-231F20?logo=apachekafka&logoColor=white">
+  <img alt="RabbitMQ" src="https://img.shields.io/badge/RabbitMQ-MQ-FF6600?logo=rabbitmq&logoColor=white">
   <img alt="MinIO" src="https://img.shields.io/badge/MinIO-OSS-C72E49?logo=minio&logoColor=white">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 </p>
@@ -84,7 +84,7 @@ AI 对话是异步流式的，Python 一轮会发多条状态消息（开始生�
 
 **6. 加一种消息只写一个类，拓扑自动注册——消息队列抽象框架**
 
-消息系统一多，手工维护 topic 声明、绑定关系既繁琐又容易漏配；换 MQ 厂商更是牵一发动全身。LinkRag-Service 让每种消息只实现一个契约接口、回答三件事——队列叫什么、用队列还是广播、内容怎么序列化；应用启动时自动扫描所有实现类，把拓扑批量注册进 Kafka，零手工配置文件。发送和消费各有统一门面，Kafka 与 RabbitMQ 实现同一套接口，换厂商只换注入实现、业务代码不动。新增消息类型几乎零成本，拓扑不会漏配。
+消息系统一多，手工维护 Queue、DLX 与 DLT 容易漏配。LinkRag-Service 让每种消息实现统一契约，应用启动时扫描消息模型并向 RabbitMQ 幂等声明 durable Queue 与死信拓扑；发送和消费通过厂商适配层隔离，Kafka 适配器保留为回滚路径。新增消息类型时仍需为接收方向补充显式传输入口，避免扫描模型却没有消费者。
 
 <p align="center">
   <img alt="消息队列抽象框架：三方法消息契约 + 启动时自动扫描注册" src="./docs/assets/sketches/sketch-mq.png" width="680">
@@ -137,7 +137,7 @@ link-model         # Entity、请求 / 响应 DTO、枚举、统一响应模型
 | 鉴权 | Sa-Token |
 | 数据库 | MySQL 8（共享库 `tolink_rag_db`） |
 | 缓存 | Redis / Lettuce |
-| MQ | Kafka / RabbitMQ 组件抽象（默认 Kafka） |
+| MQ | RabbitMQ（默认）/ Kafka（回滚兼容）组件抽象 |
 | 文件 | 本地存储 / MinIO OSS 组件 |
 | 日志 | Logback + logstash-logback-encoder（JSON Lines） |
 | 可观测 | `link-observability`（trace_id / AccessLog / AuditLog） |
@@ -165,8 +165,8 @@ mysql -h <DB_HOST> -u root -p < scripts/db/seed_llm_providers.sql
 | --- | --- |
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD` | MySQL 连接 |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` / `REDIS_DB` | Redis 连接 |
-| `KAFKA_BOOTSTRAP_SERVERS` | Kafka 地址 |
-| `TOLINK_MQ_VENDER` | MQ 实现，默认 `kafka`；历史属性名保留 `vender` |
+| `RABBITMQ_HOST` / `RABBITMQ_PORT` / `RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` | RabbitMQ 连接与环境隔离 |
+| `TOLINK_MQ_VENDER` | MQ 实现，默认 `rabbitMQ`；历史属性名保留 `vender` |
 | `OSS_SERVICE_TYPE` / `OSS_FILE_ROOT_PATH` / `MINIO_*` / `ALIYUN_OSS_*` | OSS 实现与配置 |
 | `RECALL_SESSION_JWT_SECRET` / `RECALL_SESSION_STREAM_BASE_URL` | 前端直连 Python RAG 的 session 签发配置 |
 | `LLM_SECRET` | API Key 加密密钥，64 位十六进制字符串 |
@@ -187,7 +187,7 @@ cd deploy
 docker compose up -d
 ```
 
-服务通过环境变量对接外部 MySQL / Redis / Kafka / OSS，详见 [docs/ops/deployment.md](docs/ops/deployment.md)。
+服务通过环境变量对接外部 MySQL / Redis / RabbitMQ / OSS，详见 [docs/ops/deployment.md](docs/ops/deployment.md)。
 
 ## 深入文档
 

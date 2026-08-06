@@ -24,7 +24,8 @@ MQ 实现事实来源：
 - Topic/Queue 名称变更是破坏性变更。
 - 消息字段新增、删除、重命名、类型变化必须同步本文档和相关消费方。
 - Java/Python 双端共享的消息必须保持幂等字段和状态字段语义稳定。
-- 日志链路：跨端 trace 只走 MQ 传输 header，标准 header 为 `X-Trace-Id`；Java `MQSend` 适配层通过 `link-observability` 的 `TraceHeaders` 把当前 MDC 的 `trace_id` 自动写入 header，Java Kafka 消费入口会读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复到 MDC，缺失或非法时自建 trace。**trace header 不写入业务 payload，不改变消息字段契约**。
+- 日志链路：跨端 trace 只走 MQ 传输 header，标准 header 为 `X-Trace-Id`；Java `MQSend` 适配层通过 `link-observability` 的 `TraceHeaders` 把当前 MDC 的 `trace_id` 自动写入 header，Java Kafka/RabbitMQ 消费入口都会读取 `X-Trace-Id` / `x-trace-id` / `trace_id` / `trace-id` 并恢复到 MDC，缺失或非法时自建 trace。**trace header 不写入业务 payload，不改变消息字段契约**。
+- 当前部署使用 RabbitMQ：每个业务 Queue 同步声明 `<queue>.DLX` 和 `<queue>.DLT`，首次投递加 3 次本地重试后 reject，且 `default-requeue-rejected=false`，由 DLX 进入死信 Queue。Kafka 适配器仅保留回滚兼容。
 
 ## 已下线 topic
 
@@ -94,13 +95,13 @@ Markdown v1 资源包不增加 MQ 字段。其 `source_bucket` 仍为 RAW 桶，
 
 > **LINK-191 变更**：本载荷已**移除 `prompt_tokens` / `completion_tokens` / `total_tokens`**，对话 generate 用量改由统一 Token 用量消息 `tolink.rag.usage_report`（`stage='chat'`/`operation='generate'`）承接；本通道**只持久化对话内容、不再写 `llm_usage_log`**。`provider_type` / `latency_ms` 仍保留在载荷中（供追踪），但 `chat_message` 无对应列，不落库。
 
-Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）先从 Kafka header 恢复 `trace_id` 到 MDC，再在**单事务**内**按 `turn_id` upsert**：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态（`COMPLETED`/`FAILED`）`UPDATE` 同一行并补齐 answer/references/模型快照/错误字段，**不写 `llm_usage_log`**（generate 用量改走 usage_report 通道）。同时 `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`；若载荷带 `title`，仅在当前标题为空或仍为默认“新对话”时写入。三条必做约束：
+Java 消费（当前 `ChatTurnRabbitReceiver` → `ChatTurnConsumer` → `ChatTurnPersistenceService`）先从 AMQP header 恢复 `trace_id` 到 MDC，再在**单事务**内**按 `turn_id` upsert**：`GENERATING` 起点 `INSERT chat_message`（「生成中」行），终态（`COMPLETED`/`FAILED`）`UPDATE` 同一行并补齐 answer/references/模型快照/错误字段，**不写 `llm_usage_log`**（generate 用量改走 usage_report 通道）。同时 `UPDATE chat_conversation` 的 `last_config_id` / `last_model_name` / `updated_at`；若载荷带 `title`，仅在当前标题为空或仍为默认“新对话”时写入。三条必做约束：
 
 - **按 `turn_id` upsert + 幂等**：以 `(conversation_id, turn_id)` 定位同一轮的行（`chat_message.turn_id` 已建唯一索引 `uk_chat_message_turn_id`），同一 `turn_id` 多次到达（重发/重试）不重复插入。
 - **状态不回退**：终态写入后不再被迟到/重投的 `GENERATING` 覆盖；重复终态视为重投跳过。
 - **归属校验**：`conversation_id` 来自前端请求体、`user_id` 取自 token，Python 仅透传不校验；Java 按 `(conversation_id, turn_id)` 匹配并校验 `conversation` 属于该 `user_id`，不匹配直接丢弃并告警，防止跨会话/跨用户写入（`turn_id` 由客户端提供且唯一索引为全局）。
 
-`chat_message` 三个新列（`turn_id` / `error_code` / `error_message`）由 **Python migration 0023** 落库，Java 只读写行、不自行改共享库 DDL；本仓 `scripts/db/init.sql` 与 H2 `link-api/src/main/resources/schema.sql` 仅本地/测试用，与之保持字段名、索引一致。topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `ChatTurnMQ` 自动注册创建。
+`chat_message` 三个新列（`turn_id` / `error_code` / `error_message`）由 **Python migration 0023** 落库，Java 只读写行、不自行改共享库 DDL；本仓 `scripts/db/init.sql` 与 H2 `link-api/src/main/resources/schema.sql` 仅本地/测试用，与之保持字段名、索引一致。RabbitMQ Queue/DLX/DLT 由 `RabbitMQTopologyScanner` 扫描 `ChatTurnMQ` 后统一声明。
 
 ## 全链路用量上报字段（Python → Java）
 
@@ -124,7 +125,7 @@ Java 消费（`ChatTurnKafkaReceiver` → `ChatTurnConsumer` → `ChatTurnPersis
 
 > **LINK-191 变更**：`llm_usage_log` 瘦身后已无 `conversation_id` / `message_id` / `request_id` / `fallback_config_id` 列，本载荷亦移除 `conversation_id` / `request_id`（旧上游若仍发，Java 反序列化忽略、不报错）；generate 用量行因此**无法回溯到具体对话**（有意为之）。
 
-Java 消费链路：`UsageReportKafkaReceiver`（从 Kafka header 恢复 `trace_id`）→ `UsageReportConsumer` → `UsageReportPersistenceService`，每条上报 `INSERT llm_usage_log` 一行。
+Java 消费链路：当前为 `UsageReportRabbitReceiver`（从 AMQP header 恢复 `trace_id`）→ `UsageReportConsumer` → `UsageReportPersistenceService`，每条上报 `INSERT llm_usage_log` 一行；Kafka receiver 仅在回滚 vendor 下装配。
 
 可靠性边界：
 
@@ -133,7 +134,7 @@ Java 消费链路：`UsageReportKafkaReceiver`（从 Kafka header 恢复 `trace_
 - **幂等**：本通道默认 at-least-once、偶发重复可接受；未启用强去重以免与 Python 侧 schema 漂移，信封 `message_id` 仅用于排障追踪（不入库）。
 - **NULL 合法态**：仅 `latency_ms` 可缺省落 NULL；`config_id` 必须是正整数。
 
-topic 由 `KafkaMQTopologyScanner` 扫描实现 `AbstractMQ` 的 `UsageReportMQ` 自动注册创建。
+RabbitMQ Queue/DLX/DLT 由 `RabbitMQTopologyScanner` 扫描 `UsageReportMQ` 后统一声明。
 
 > 全链路口径一致性（LINK-191）：所有模型调用（含对话 generate）的 token 均经本通道上报、落同一张 `llm_usage_log`，按 `stage` / `operation` 统一聚账；`chat_turn` 通道不再写用量账本。
 

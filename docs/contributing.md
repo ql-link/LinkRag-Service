@@ -28,6 +28,7 @@
 - 全量 `mvn test`；单模块 `mvn -pl <module> test`
 - 规范见 [internals/testing.md](internals/testing.md)；写/补测试用 `auto-test`，跑全量用 `run-all-tests`
 - 对已启动服务做 curl 黑盒接口测试（含边界、直连库造数）用 `curl-api-test`
+- MQ 中间件迁移须同时覆盖拓扑声明、publisher confirm、消费者委托与 trace header 恢复，并在开发环境做真实 broker 黑盒验证
 
 ## 文档同步（机器强制）
 
@@ -49,6 +50,6 @@ python3 scripts/check_skills.py
 ## Skill 与项目结构
 
 - 改 / 增 skill 后跑 `check_skills.py`；skill 清单与治理见 [.ai/skills/README.md](../.ai/skills/README.md)
-- 修改跨端 MQ 消息、重试/DLT 或缓存补偿契约时使用 `mq-middleware` skill，并同步 `docs/api/mq_contracts.md` 与 `docs/internals/mq_module.md`
+- 修改跨端 MQ 消息、中间件选型、重试/DLT 或缓存补偿契约时使用 `mq-middleware` skill，并同步 `docs/api/mq_contracts.md` 与 `docs/internals/mq_module.md`
 - 当前主模块边界见 [internals/project_structure.md](internals/project_structure.md)；横向可观测能力独立在 `link-observability`，不要再把 trace/access/audit 新代码塞回 `link-core`
 - 非 docs 目录结构变动（新增模块、迁脚本等）同步 `AGENTS.md` 的结构树（`agents-tree-sync` skill）

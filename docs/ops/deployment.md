@@ -14,7 +14,7 @@ mvn spring-boot:run -pl link-api
 - Maven
 - MySQL 8
 - Redis
-- Kafka 或 RabbitMQ（默认配置使用 Kafka）
+- RabbitMQ（当前默认；Kafka 仅保留回滚兼容）
 - 本地 OSS 目录或 MinIO
 
 ## Jenkins 与容器配置注入
