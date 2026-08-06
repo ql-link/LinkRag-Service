@@ -39,8 +39,8 @@
 | `id` | 全局 `configId`，自增主键 |
 | `scope` | `SYSTEM` / `USER`，只用于权限与展示，不参与身份定位 |
 | `owner_user_id` | SYSTEM 固定为 `0`；USER 为真实用户 ID |
-| `provider_id` | 关联 `llm_system_provider.id` |
-| `provider_type` | 运行快照，Python 不回查厂商表推导 |
+| `provider_id` | 关联 `llm_system_provider.id`；SYSTEM 固定指向 LinkRag，USER 指向用户配置的真实厂商 |
+| `provider_type` | 运行快照，Python 不回查厂商表推导；SYSTEM 固定为 `linkrag` |
 | `model_name` / `display_name` | 真实调用名与可选展示名 |
 | `capability` | `CHAT` / `EMBEDDING` / `SPARSE_EMBEDDING` / `VISION` / `RERANK` / `ASR` |
 | `protocol` / `api_base_url` | 非空运行快照；执行端按协议和能力选 adapter，不用厂商默认值兜底 |
@@ -67,7 +67,7 @@ SYSTEM 配置仅管理员可写、对所有用户可执行；USER 配置仅所�
 
 ### 厂商目录与运行快照
 
-`llm_system_provider.default_protocol` 和厂商级 `api_base_url` 只作为管理端表单模板，不参与运行决策。`llm_provider_model` 以 `(provider_id, model_name, capability)` 为唯一目录事实；管理端可以从正式目录复制 `provider_type`、`model_name`、`display_name`、`capability`、`protocol`、`api_base_url` 到统一配置，也可以在一个事务内创建目录项并生成配置。Python 执行只读取 `llm_model_config` 快照。
+`llm_system_provider.default_protocol` 和厂商级 `api_base_url` 只作为管理端表单模板，不参与运行决策。`llm_provider_model` 以 `(provider_id, model_name, capability)` 为唯一目录事实；管理端可以从正式目录复制 `model_name`、`display_name`、`capability`、`protocol`、`api_base_url` 等模型运行事实，也可以在一个事务内创建目录项并生成配置。SYSTEM 配置不复制源目录厂商身份，其 `provider_id/provider_type` 始终归属 LinkRag；USER 配置仍归属用户选择的真实厂商。Python 执行只读取 `llm_model_config` 快照。
 
 外部模型同步任务和候选表只服务管理端审核流；候选发布后才进入正式目录。候选表与同步任务不要求 Python 运行端消费。
 
