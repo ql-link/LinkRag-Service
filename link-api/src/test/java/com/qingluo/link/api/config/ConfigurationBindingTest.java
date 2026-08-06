@@ -65,9 +65,10 @@ class ConfigurationBindingTest {
     }
 
     @Test
-    @DisplayName("DocumentFileProperties: allowedSuffixes 包含 pdf 和 md")
+    @DisplayName("DocumentFileProperties: allowedSuffixes 与 Python 解析契约一致")
     void documentFileAllowedSuffixes() {
-        assertThat(documentFileProperties.getAllowedSuffixes()).contains("pdf", "md");
+        assertThat(documentFileProperties.getAllowedSuffixes())
+            .containsExactly("md", "markdown", "pdf", "docx", "html", "htm");
     }
 
     @Test

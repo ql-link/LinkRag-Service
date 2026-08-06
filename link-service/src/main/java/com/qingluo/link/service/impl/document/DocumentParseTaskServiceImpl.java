@@ -23,6 +23,7 @@ import com.qingluo.link.model.dto.response.MarkdownAssetSummaryDTO;
 import com.qingluo.link.model.enums.ErrorCode;
 import com.qingluo.link.service.DocumentParseTaskService;
 import com.qingluo.link.service.constant.ParsePipelineStatus;
+import com.qingluo.link.service.config.DocumentFileTypeContract;
 import com.qingluo.link.service.impl.document.markdown.MarkdownAssetManifest;
 import com.qingluo.link.service.impl.document.markdown.MarkdownAssetManifestStore;
 import com.qingluo.link.service.impl.document.markdown.MarkdownAssetObjectKeys;
@@ -480,6 +481,9 @@ public class DocumentParseTaskServiceImpl implements DocumentParseTaskService {
         }
         if (!UPLOAD_SUCCESS.equals(file.getUploadStatus()) || !Boolean.TRUE.equals(file.getIsUploadSuccess())) {
             throw new BusinessException(400, "原文件尚未上传成功，不能解析", 400);
+        }
+        if (!DocumentFileTypeContract.isSupported(file.getFileSuffix())) {
+            throw new BusinessException(400, "当前文件格式暂不支持解析", 400);
         }
         return file;
     }

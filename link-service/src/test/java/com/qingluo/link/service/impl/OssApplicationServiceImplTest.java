@@ -105,6 +105,20 @@ class OssApplicationServiceImplTest {
             .hasMessageContaining("上传大小请限制在 5M 以内");
     }
 
+    @Test
+    void Should_AllowHtmlAndRejectTxtForDocumentBusinessType() {
+        MockMultipartFile html = new MockMultipartFile(
+            "file", "page.html", "text/html", "<h1>ok</h1>".getBytes());
+        MockMultipartFile txt = new MockMultipartFile(
+            "file", "legacy.txt", "text/plain", "unsupported".getBytes());
+
+        assertThat(service.upload("document", html)).endsWith(".html");
+        assertThat(ossService.lastSavePlace).isEqualTo(OssSavePlaceEnum.RAW);
+        assertThatThrownBy(() -> service.upload("document", txt))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("上传文件格式不支持");
+    }
+
     private static class RecordingOssService implements IOssService {
 
         private OssSavePlaceEnum lastSavePlace;

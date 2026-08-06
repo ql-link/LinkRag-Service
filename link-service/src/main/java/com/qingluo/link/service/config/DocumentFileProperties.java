@@ -1,7 +1,6 @@
 package com.qingluo.link.service.config;
 
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -10,8 +9,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "tolink.document-file")
 public class DocumentFileProperties {
 
-    private Set<String> allowedSuffixes =
-        new LinkedHashSet<>(List.of("md", "markdown", "pdf", "docx", "txt"));
+    private Set<String> allowedSuffixes = DocumentFileTypeContract.supportedSuffixes();
     private long maxSizeBytes = 20L * 1024 * 1024;
     private long hardMaxSizeBytes = 100L * 1024 * 1024;
     private String internalBaseUrl = "http://localhost:8080";
@@ -30,7 +28,7 @@ public class DocumentFileProperties {
     private int zipMaxDepth = 20;
 
     public Set<String> getAllowedSuffixes() {
-        return allowedSuffixes;
+        return DocumentFileTypeContract.resolveDeploymentSuffixes(allowedSuffixes);
     }
 
     public void setAllowedSuffixes(Set<String> allowedSuffixes) {

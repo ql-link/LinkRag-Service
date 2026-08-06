@@ -46,6 +46,8 @@
 
 两种事实来源二选一。API Key 加密存储且响应脱敏。管理端保存只处理目录事实与 SYSTEM 运行配置，不接收默认设置指令。
 
+源目录只提供 `model_name`、`display_name`、`capability`、`protocol`、`api_base_url` 等模型运行事实。所有 SYSTEM 平台配置的 `provider_id` 必须指向 `provider_type=linkrag` 的厂商记录，`provider_type` 快照固定为 `linkrag`；不得把 DeepSeek、SiliconFlow 等源目录厂商复制成平台配置厂商。这样用户侧按厂商展示时，全部平台配置始终聚合在 LinkRag 下。历史错误记录在管理端再次保存时会按此规则修正厂商身份。
+
 平台配置可以在同一 capability 内刷新模型、协议、入口和密钥并递增 `snapshot_version`，同一能力可以存在多条配置供用户选择；但不能原地改变 capability，能力变化必须新建配置，避免数据集绑定指向错误能力。
 
 管理端不维护平台默认，也没有平台默认 PUT/DELETE 接口。标准停用/删除仍保护数据集引用；紧急停用允许保留数据集引用，但后续预检与执行必须因 `is_active=false` 拒绝该配置。停用或删除 SYSTEM 配置时批量清理用户指向它的默认关系。

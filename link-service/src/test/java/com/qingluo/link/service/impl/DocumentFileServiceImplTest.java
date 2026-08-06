@@ -170,7 +170,7 @@ class DocumentFileServiceImplTest {
     void upload_rejectsUnsupportedSuffix() throws Exception {
         given(datasetMapper.selectOne(any())).willReturn(new Dataset());
         DocumentFileRuntimeConfig rc = mock(DocumentFileRuntimeConfig.class);
-        given(rc.getAllowedSuffixes()).willReturn(Set.of("txt"));
+        given(rc.getAllowedSuffixes()).willReturn(Set.of("pdf"));
         given(documentFileRuntimeConfigService.getCurrent()).willReturn(rc);
         MockMultipartFile exe = new MockMultipartFile("file", "bad.exe", "application/octet-stream", "x".getBytes());
 
@@ -184,15 +184,15 @@ class DocumentFileServiceImplTest {
     @Test
     @DisplayName("S3 常见业务文件名符号 → 允许上传并保留文件名")
     void upload_allowsCommonBusinessFilenameCharacters() throws Exception {
-        givenOwnedDatasetAndTxtAllowed();
+        givenOwnedDatasetAndPdfAllowed();
         MockMultipartFile file = new MockMultipartFile(
-            "file", "需求文档(第1版)#A+B=1&owner.txt", "text/plain", "hello".getBytes());
+            "file", "需求文档(第1版)#A+B=1&owner.pdf", "application/pdf", "hello".getBytes());
 
         DocumentFileDTO dto = documentFileService.upload(100L, 200L, file, false);
 
-        assertThat(dto.getOriginalFilename()).isEqualTo("需求文档(第1版)#A+B=1&owner.txt");
+        assertThat(dto.getOriginalFilename()).isEqualTo("需求文档(第1版)#A+B=1&owner.pdf");
         verify(recordWriter).prepareRecord(
-            100L, 200L, "需求文档(第1版)#A+B=1&owner.txt", "txt", 5L, "text/plain");
+            100L, 200L, "需求文档(第1版)#A+B=1&owner.pdf", "pdf", 5L, "application/pdf");
         verify(asyncExecutor).submit(any());
     }
 
@@ -215,7 +215,7 @@ class DocumentFileServiceImplTest {
     @Test
     @DisplayName("S4 校验通过 → 落 uploading 立即返回并提交异步任务")
     void upload_returnsUploadingAndSubmitsAsync() throws Exception {
-        givenOwnedDatasetAndTxtAllowed();
+        givenOwnedDatasetAndPdfAllowed();
         DocumentFileDTO dto = documentFileService.upload(100L, 200L, validFile(), true);
 
         assertThat(dto.getUploadStatus()).isEqualTo("UPLOADING");
@@ -227,7 +227,7 @@ class DocumentFileServiceImplTest {
     @Test
     @DisplayName("S13/S14 同名 failed → 复用旧行重置 uploading，不插新行")
     void upload_reusesFailedRecord() throws Exception {
-        givenOwnedDatasetAndTxtAllowed();
+        givenOwnedDatasetAndPdfAllowed();
         DocumentFileDTO dto = documentFileService.upload(100L, 200L, validFile(), false);
 
         assertThat(dto.getUploadStatus()).isEqualTo("UPLOADING");
@@ -238,7 +238,7 @@ class DocumentFileServiceImplTest {
     @Test
     @DisplayName("S15 同名且为 success/uploading → 400 拦截，不复用、不物化、不提交")
     void upload_rejectsDuplicateNonFailed() throws Exception {
-        givenOwnedDatasetAndTxtAllowed();
+        givenOwnedDatasetAndPdfAllowed();
         given(recordWriter.prepareRecord(any(), any(), any(), any(), any(Long.class), any()))
             .willThrow(new BusinessException(400, "当前数据集下已存在同名原文件，请先重命名后再上传", 400));
 
@@ -252,13 +252,13 @@ class DocumentFileServiceImplTest {
     }
 
     private MockMultipartFile validFile() {
-        return new MockMultipartFile("file", "test.txt", "text/plain", "hello".getBytes());
+        return new MockMultipartFile("file", "test.pdf", "application/pdf", "hello".getBytes());
     }
 
-    private void givenOwnedDatasetAndTxtAllowed() {
+    private void givenOwnedDatasetAndPdfAllowed() {
         given(datasetMapper.selectOne(any())).willReturn(new Dataset());
         DocumentFileRuntimeConfig rc = mock(DocumentFileRuntimeConfig.class);
-        given(rc.getAllowedSuffixes()).willReturn(Set.of("txt"));
+        given(rc.getAllowedSuffixes()).willReturn(Set.of("pdf"));
         given(rc.getMaxSizeBytes()).willReturn(10L * 1024 * 1024);
         given(documentFileRuntimeConfigService.getCurrent()).willReturn(rc);
         ManagedBundle managed = new ManagedBundle(

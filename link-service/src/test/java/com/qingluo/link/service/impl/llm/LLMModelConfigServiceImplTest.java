@@ -35,6 +35,7 @@ import com.qingluo.link.service.cache.LLMRuntimeCacheReadiness;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -174,11 +175,14 @@ class LLMModelConfigServiceImplTest {
     }
 
     @Test
-    void adminCanCreatePlatformConfigWithoutAnyDefaultMutation() {
+    void adminCreatesPlatformConfigUnderLinkRagWhileCopyingSourceModelFacts() {
         ProviderModel catalog = model(30L, 20L, "gpt-4o", "CHAT");
-        SystemProvider provider = provider(20L, "openai");
+        SystemProvider sourceProvider = provider(20L, "openai");
+        SystemProvider linkRagProvider = provider(99L, "linkrag");
         given(providerModelMapper.selectById(30L)).willReturn(catalog);
-        given(systemProviderMapper.selectById(20L)).willReturn(provider);
+        given(systemProviderMapper.selectById(20L)).willReturn(sourceProvider);
+        given(systemProviderService.getByProviderType("linkrag")).willReturn(linkRagProvider);
+        given(systemProviderMapper.selectById(99L)).willReturn(linkRagProvider);
         given(configMapper.selectOne(any())).willReturn(null);
         given(apiKeyEncryptService.encrypt("platform-key")).willReturn("cipher");
         given(configMapper.insert(any(LLMModelConfig.class))).willAnswer(invocation -> {
@@ -193,8 +197,46 @@ class LLMModelConfigServiceImplTest {
         AdminPlatformConfigSaveResult result = service.saveSystemConfig(null, request);
 
         assertThat(result.getConfig().getConfigId()).isEqualTo(200L);
+        assertThat(result.getConfig().getProviderId()).isEqualTo(99L);
+        assertThat(result.getConfig().getProviderType()).isEqualTo("linkrag");
+        assertThat(result.getConfig().getProviderName()).isEqualTo("LinkRag");
+        assertThat(result.getConfig().getModelName()).isEqualTo("gpt-4o");
         assertThat(result.getConfig().getEditable()).isTrue();
+        ArgumentCaptor<LLMModelConfig> configCaptor = ArgumentCaptor.forClass(LLMModelConfig.class);
+        verify(configMapper).insert(configCaptor.capture());
+        assertThat(configCaptor.getValue()).satisfies(saved -> {
+            assertThat(saved.getProviderId()).isEqualTo(99L);
+            assertThat(saved.getProviderType()).isEqualTo("linkrag");
+            assertThat(saved.getModelName()).isEqualTo("gpt-4o");
+            assertThat(saved.getProtocol()).isEqualTo("openai");
+            assertThat(saved.getApiBaseUrl()).isEqualTo("https://example.com/v1");
+        });
         verify(defaultService, never()).listDefaults(anyLong());
+    }
+
+    @Test
+    void adminEditRepairsLegacyPlatformConfigProviderIdentity() {
+        LLMModelConfig existing = config(200L, LLMConfigScope.SYSTEM, 0L, "CHAT", true);
+        existing.setProviderId(20L);
+        existing.setProviderType("deepseek");
+        existing.setModelName("deepseek-v4-flash");
+        existing.setDisplayName("DeepSeek V4 Flash");
+        existing.setSnapshotVersion(4L);
+        SystemProvider linkRagProvider = provider(99L, "linkrag");
+        given(configMapper.selectById(200L)).willReturn(existing);
+        given(systemProviderService.getByProviderType("linkrag")).willReturn(linkRagProvider);
+        given(systemProviderMapper.selectById(99L)).willReturn(linkRagProvider);
+
+        AdminPlatformConfigSaveResult result = service.saveSystemConfig(
+            200L, new AdminPlatformConfigSaveRequest());
+
+        assertThat(existing.getProviderId()).isEqualTo(99L);
+        assertThat(existing.getProviderType()).isEqualTo("linkrag");
+        assertThat(existing.getModelName()).isEqualTo("deepseek-v4-flash");
+        assertThat(existing.getDisplayName()).isEqualTo("DeepSeek V4 Flash");
+        assertThat(existing.getSnapshotVersion()).isEqualTo(5L);
+        assertThat(result.getConfig().getProviderName()).isEqualTo("LinkRag");
+        verify(configMapper).updateById(existing);
     }
 
     @Test
@@ -207,6 +249,8 @@ class LLMModelConfigServiceImplTest {
         given(configMapper.selectById(200L)).willReturn(existing);
         given(providerModelMapper.selectById(31L)).willReturn(embedding);
         given(systemProviderMapper.selectById(20L)).willReturn(provider(20L, "openai"));
+        given(systemProviderService.getByProviderType("linkrag"))
+            .willReturn(provider(99L, "linkrag"));
 
         AdminPlatformConfigSaveRequest request = new AdminPlatformConfigSaveRequest();
         request.setSourceProviderModelId(31L);
@@ -251,7 +295,7 @@ class LLMModelConfigServiceImplTest {
         SystemProvider provider = new SystemProvider();
         provider.setId(id);
         provider.setProviderType(providerType);
-        provider.setProviderName("OpenAI");
+        provider.setProviderName("linkrag".equals(providerType) ? "LinkRag" : "OpenAI");
         return provider;
     }
 }

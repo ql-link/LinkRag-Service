@@ -294,22 +294,31 @@ public class LLMModelConfigServiceImpl implements LLMModelConfigService {
                 mutation.getProviderId(), mutation.getModelName(), mutation.getDisplayName(),
                 mutation.getCapability(), mutation.getProtocol(), mutation.getApiBaseUrl());
         }
+        ProviderFacts runtimeFacts;
         if (model == null) {
             if (existing == null) {
                 throw new BusinessException(400, "创建平台配置必须提供模型目录事实", 400);
             }
-            return new ProviderFacts(existing.getProviderId(), existing.getProviderType(),
-                existing.getModelName(), existing.getDisplayName(), existing.getCapability(),
+            runtimeFacts = new ProviderFacts(null, null, existing.getModelName(),
+                existing.getDisplayName(), existing.getCapability(),
                 existing.getProtocol(), existing.getApiBaseUrl());
+        } else {
+            requireModelFacts(model);
+            if (systemProviderMapper.selectById(model.getProviderId()) == null) {
+                throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND);
+            }
+            runtimeFacts = new ProviderFacts(null, null, model.getModelName(),
+                model.getDisplayName(), normalizeCapability(model.getCapability()),
+                model.getProtocol(), model.getApiBaseUrl());
         }
-        requireModelFacts(model);
-        SystemProvider provider = systemProviderMapper.selectById(model.getProviderId());
-        if (provider == null) {
-            throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND);
-        }
-        return new ProviderFacts(provider.getId(), provider.getProviderType(), model.getModelName(),
-            model.getDisplayName(), normalizeCapability(model.getCapability()),
-            model.getProtocol(), model.getApiBaseUrl());
+
+        // sourceProviderModelId/catalogMutation 只提供模型运行事实。SYSTEM 平台配置对外统一归属
+        // LinkRag，不能把 DeepSeek、SiliconFlow 等源目录厂商复制成配置厂商，否则用户侧会
+        // 把同一组 LinkRag 平台配置拆成多个厂商展示。
+        SystemProvider linkRagProvider = systemProviderService.getByProviderType(LINKRAG_PROVIDER_TYPE);
+        return new ProviderFacts(linkRagProvider.getId(), LINKRAG_PROVIDER_TYPE,
+            runtimeFacts.modelName(), runtimeFacts.displayName(), runtimeFacts.capability(),
+            runtimeFacts.protocol(), runtimeFacts.apiBaseUrl());
     }
 
     private void applyFacts(LLMModelConfig config, ProviderFacts facts) {

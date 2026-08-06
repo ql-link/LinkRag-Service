@@ -94,7 +94,8 @@ class DocumentParseTaskServiceImplTest {
     @Test
     void Should_NotIncludePdfParserBackend_When_FileIsNotPdf() {
         DocumentOriginalFile file = ownedFile();
-        file.setFileSuffix("txt");
+        file.setFileSuffix("html");
+        file.setOriginalFilename("a.html");
         given(documentOriginalFileMapper.selectOne(any())).willReturn(file);
         given(documentParseFileMapper.selectOne(any())).willReturn(parseFile(null));
         given(documentParseFileMapper.update(any(), any())).willReturn(1);
@@ -105,6 +106,22 @@ class DocumentParseTaskServiceImplTest {
         JSONObject msg = capturedTask();
         assertThat(msg.getString("pdf_parser_backend")).isNull();
         verify(datasetParseConfigMapper, never()).selectOne(any());
+    }
+
+    @Test
+    void Should_RejectLegacyTxtBeforeCreatingParseTask() {
+        DocumentOriginalFile file = ownedFile();
+        file.setFileSuffix("txt");
+        file.setOriginalFilename("legacy.txt");
+        given(documentOriginalFileMapper.selectOne(any())).willReturn(file);
+
+        assertThatThrownBy(() -> service.submitManualParse(401L, 101L))
+            .isInstanceOf(BusinessException.class)
+            .hasMessage("当前文件格式暂不支持解析");
+
+        verify(documentParseFileMapper, never()).selectOne(any());
+        verify(documentParseFileMapper, never()).update(any(), any());
+        verify(mqSend, never()).send(any());
     }
 
     @Test

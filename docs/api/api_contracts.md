@@ -66,7 +66,7 @@
 }
 ```
 
-请求是完整替换，不支持部分更新；历史 `PATCH` 继续返回 405。`maxSizeBytes` 必须大于 0 且不超过部署硬上限 `tolink.document-file.hard-max-size-bytes`，后缀必须属于部署 `allowed-suffixes` 声明的全集。成功响应包含 `maxSizeBytes`、规范化后的 `allowedSuffixes`、`updatedBy`、`updatedAt`。Redis 写失败返回 `50003/503`，不得让单实例内存状态提前生效。
+请求是完整替换，不支持部分更新；历史 `PATCH` 继续返回 405。Python 当前真实解析能力是文件类型事实来源，Java 镜像的硬契约为 `md, markdown, pdf, docx, html, htm`，不包含 `txt` 和传统二进制 `doc`。`maxSizeBytes` 必须大于 0 且不超过部署硬上限 `tolink.document-file.hard-max-size-bytes`；后缀必须同时属于该硬契约和部署 `allowed-suffixes` 声明的全集，管理员仍可配置其非空子集。成功响应包含 `maxSizeBytes`、规范化后的 `allowedSuffixes`、`updatedBy`、`updatedAt`。Redis 写失败返回 `50003/503`，不得让单实例内存状态提前生效。
 
 `GET /api/v1/admin/users/dashboard` 仅允许 ADMIN 访问。统计包含 USER 和 ADMIN，按 `Asia/Shanghai` 自然日计算；活跃用户为周期内至少有一次成功登录事件的去重用户，注册自动登录计入，失败登录不计入。响应包含 `rangeDays`、`totalUsers`、`breakdown{user,admin,enabled,disabled}`、`newUsers{current,previous,growthRate}`、`activeUsers{current,previous,growthRate}`、`trend[{date,newUsers,activeUsers}]`。上一等长周期为零时增长率为 `null`；无数据日期补零。`days` 非 7/30/90 返回 `20008/400`。
 
@@ -138,7 +138,7 @@
 >
 > 精确配置校验固定顺序为：物理存在 → `is_active` → USER owner/SYSTEM 共享 → capability。配置不存在、停用、越权和能力不匹配分别返回 `10020/404`、`10021/409`、`10022/403`、`10023/400`，不回落默认配置或环境变量。
 >
-> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。请求不携带默认设置字段，响应 `AdminPlatformConfigSaveResult` 只返回保存后的 `config`。已存在配置不能原地改变 capability，避免数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
+> 管理端创建/更新请求 `AdminPlatformConfigSaveRequest` 的事实来源二选一：`sourceProviderModelId` 复制正式目录，或 `catalogMutation` 在同一事务更新目录再生成运行快照。源目录只提供模型名、展示名、能力、协议和调用入口；所有 SYSTEM 平台配置的 `providerId/providerType` 固定为 LinkRag 厂商身份，不复制 DeepSeek、SiliconFlow 等源厂商身份。请求不携带默认设置字段，响应 `AdminPlatformConfigSaveResult` 只返回保存后的 `config`。已存在配置不能原地改变 capability，避免数据集字段的能力语义失效；需要改能力时创建新配置。API Key 仅加密存储和脱敏输出，禁止进入日志。
 >
 > 用户 `setup-provider` 按 `(scope,owner_user_id,provider_id,model_name,capability)` upsert，刷新凭据复用原 `configId`，保留已有启用和默认状态。标准删除/停用保护 Dataset 引用；紧急停用保留绑定，使后续精确执行明确返回配置已停用。
 
@@ -215,11 +215,11 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 | POST | `/api/v1/files/{fileId}/parse` | 提交解析 |
 | GET | `/api/v1/datasets/{datasetId}/files/parse-results` | 解析结果列表 |
 
-> 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
+> 文档上传异步化：`POST .../files` 在同步校验（鉴权/数据集归属/格式/大小/文件名/同名）通过后立即返回 `uploadStatus=UPLOADING`；OSS 上传与终态回写（`UPLOAD_SUCCESS`/`UPLOAD_FAILED`）在后台线程池异步完成。同步校验失败仍即时返回 4xx（未登录/无权 401-404、格式/大小/文件名/同名 400）。当前默认且最大可支持后缀为 `md, markdown, pdf, docx, html, htm`；TXT 在文件记录和解析记录创建前返回 400，历史 TXT/二进制 DOC 记录在手动解析入口也会在 MQ 任务创建前返回 400。前端需按 `uploadStatus` 轮询 list/detail 获取终态。同名重试：撞到 `UPLOAD_FAILED` 同名文件会复用原记录重传，撞到 `UPLOADING`/`UPLOAD_SUCCESS` 返回 400。
 
 > Markdown 本地图片资源包：上传仍为 `multipart/form-data`。普通文件只传 `file`、`parseImmediately`；Markdown 资源包另传 `matchMode`（`FULL_PATH` 或 `SHALLOW_BASENAME`）、`documentPath`、同序的 `assets[]` / `assetRelativePaths[]` 与 `assetInventoryPaths[]`。ZIP 只在浏览器受限解压，Java 不接收原始 ZIP；文件夹使用完整相对路径，单文件补图只使用所选文件夹直接子级 basename。Java 识别标准 Markdown（含引用式）、HTML `<img>` 与 Obsidian 图片语法，按大小写敏感、NFC 和有限 percent-decode 候选重算；命中引用改写为 `tolink-raw://raw/...`。`DocumentFileDTO`、详情和解析结果可返回 `assetSummary`。缺失、歧义或不支持图片属于软问题：文件仍上传成功但不自动解析；`POST .../parse` 默认返回 `30020/409` 和 `data.assetSummary`，用户确认后以 `ignoreMissingAssets=true` 继续。并发重复提交解析会返回同一 `taskId`，`alreadyRunning=true`，不重复发 MQ。v1 manifest 不可读取时返回 `50004/503` 并停止解析。
 
-> `GET /api/v1/document-file-capabilities` 返回 `featureEnabled`、动态文档后缀/大小、图片扩展名/MIME/数量/字节/路径限制、ZIP 压缩大小/条目/展开大小/压缩比/深度限制，以及合法 `matchModes`。Web 必须在导入前读取该接口，但其预检不是信任边界，Java 仍会权威复核。
+> `GET /api/v1/document-file-capabilities` 返回 `featureEnabled`、当前有效文档后缀/大小、图片扩展名/MIME/数量/字节/路径限制、ZIP 压缩大小/条目/展开大小/压缩比/深度限制，以及合法 `matchModes`。默认 `document.allowedSuffixes` 为 `md, markdown, pdf, docx, html, htm`（响应按字典序输出）；运行时配置只能收窄为其非空子集。Web 的直接文件、文件夹和 ZIP 筛选必须在导入前统一使用该字段，不得维护独立格式清单；其预检不是信任边界，Java 仍会权威复核。
 
 > 创建数据集：`POST /api/v1/datasets` 请求体除 `name`/`description` 外，必须提供 `sparse_embedding_config_id` 与 `dense_embedding_config_id`。两个字段均直接引用全局 `llm_model_config.id`，不再携带 `source` 或其它身份别名；能力必须分别为 `SPARSE_EMBEDDING` / `EMBEDDING`。Java 内部按“配置不存在 → 已停用 → 越权 → 能力不匹配”的固定顺序校验，Dataset 写接口统一包装为 `INVALID_DATASET_MODEL_BINDING(10028)`，并在 `data.field` 返回失败字段。创建成功时同步写入 `dataset_parse_config` 默认行并固化这两个绑定，后续解析构建向量与召回均以数据集绑定为准，不跟随用户默认选择漂移。
 

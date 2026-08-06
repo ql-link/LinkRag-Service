@@ -73,7 +73,7 @@ tolink:
   document-file:
     max-size-bytes: ${TOLINK_DOCUMENT_FILE_MAX_SIZE_BYTES:20971520}
     hard-max-size-bytes: ${TOLINK_DOCUMENT_FILE_HARD_MAX_SIZE_BYTES:104857600}
-    allowed-suffixes: ${TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES:md,markdown,pdf,docx,txt}
+    allowed-suffixes: ${TOLINK_DOCUMENT_FILE_ALLOWED_SUFFIXES:md,markdown,pdf,docx,html,htm}
     markdown-assets-enabled: ${TOLINK_MARKDOWN_ASSETS_ENABLED:true}
     markdown-asset-max-bytes: ${TOLINK_MARKDOWN_ASSET_MAX_BYTES:20971520}
     markdown-asset-max-count: ${TOLINK_MARKDOWN_ASSET_MAX_COUNT:200}
