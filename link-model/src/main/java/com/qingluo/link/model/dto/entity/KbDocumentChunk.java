@@ -30,9 +30,6 @@ public class KbDocumentChunk {
     @TableField("user_id")
     private Long userId;
 
-    @TableField("bucket_id")
-    private Integer bucketId;
-
     private String content;
 
     @TableField("content_hash")
