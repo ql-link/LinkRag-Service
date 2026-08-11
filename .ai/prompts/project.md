@@ -121,25 +121,24 @@ toLink-Service/
 | 跑全量测试 | `run-all-tests` |
 | 检查中间件 / 跨模块契约 | `contract-guard` |
 | 提交前 review / 质量门禁 | `code-review-and-quality` |
-| 从 dev 创建分支并发 PR | `branch-pr-workflow` |
+| 从 master 创建分支，经 dev 验证后发布 | `branch-pr-workflow` |
 | 提 bug issue 或新需求 issue | `cowork-issue-sync` |
 
 ---
 
 ## 三、分支与发布管理
 
-- `dev`：日常集成分支，承接日常开发 PR。
-- `master`：稳定发布分支。本仓库真实默认分支为 `master`，不要写作 `main`。
-- `feature/`、`refactor/`、`chore/`、`fix/`、`docs/`：日常开发分支，默认从 `dev` 拉出并 PR 合入 `dev`。
-- `release/<version>`：每周发布准备分支，从 `dev` 拉出，最终通过 release PR 合入 `master`。
-- `hotfix/<topic>`：从 `master` 拉出，修复后 PR 合入 `master`；发布后必须 merge 或 cherry-pick 回 `dev`。
+- `master`：稳定发布分支，也是所有新开发分支的唯一基线。本仓库真实默认分支为 `master`，不要写作 `main`。
+- `dev`：开发环境集成与验收分支，只用于合入候选分支后触发构建和真实环境测试，不再作为新分支基线或整体发布源。
+- `feature/`、`refactor/`、`chore/`、`fix/`、`docs/`、`hotfix/`：统一从最新 `master` 拉出。实现完成后先用同一分支 PR 合入 `dev`，开发环境构建和验收通过后，保持分支不变，再用该分支 PR 合入 `master` 发布。
 
 发布合并规则：
 
-- `master` 不接受日常 `feature/`、`refactor/`、`chore/` 直接合入。
-- `dev` / `release/<version>` 到 `master` 的发布合并必须使用普通 merge commit，禁止 squash merge。
-- release PR 描述必须列出包含的业务 PR、数据库/配置/契约变更、测试结果和风险。
-- release PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
+- 禁止将 `dev` 整体 PR 合入 `master`，避免把尚未批准发布的其他集成改动带入生产。
+- 合入 `dev` 后不得删除候选分支。开发环境验收必须记录候选分支 HEAD SHA；提 `master` PR 时必须使用同一分支、同一 SHA。
+- 开发环境验收后若又产生新提交，必须先重新合入 `dev` 并完成新一轮构建与验收，不得直接更新 `master` PR。
+- 候选分支到 `master` 的发布 PR 必须使用普通 merge commit，禁止 squash merge；PR 描述必须列出开发环境构建、验收证据、数据库/配置/契约变更与风险。
+- 发布 PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
 
 ---
 

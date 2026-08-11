@@ -17,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -100,6 +101,20 @@ class KnowledgeChunkControllerTest {
             .andExpect(jsonPath("$.data[1].documentId").value(firstFileId))
             .andExpect(jsonPath("$.data[1].fileName").value("rag-intro.pdf"))
             .andExpect(jsonPath("$.data[1].content").value("RAG 是检索增强生成。"));
+    }
+
+    @Test
+    @DisplayName("Chunk 表镜像：不再声明已废弃的 bucket_id")
+    void Should_NotDeclareBucketId_When_UsingCurrentRagSchema() {
+        Integer bucketIdColumns = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'KB_DOCUMENT_CHUNK'
+                  AND COLUMN_NAME = 'BUCKET_ID'
+                """,
+            Integer.class);
+
+        assertEquals(0, bucketIdColumns);
     }
 
     @Test

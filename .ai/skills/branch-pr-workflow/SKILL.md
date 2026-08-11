@@ -11,7 +11,7 @@ when_to_use: "创建分支、提交、发 PR、把当前修改提 PR。"
 执行前必须确认：
 
 1. 运行 `git branch --show-current` 检查当前分支。
-2. 若当前分支不是预期的基础分支（通常为 `dev`），停止并告知用户，不自动切换分支。
+2. 新任务必须以最新 `origin/master` 为基线；若当前分支的基线不是 `master`，停止并告知用户，不自动改写已发布分支历史。只有用户明确要求把现有分支迁移到新流程时，才可在确认 `dev` 与 `master` 差异后执行，并使用 `--force-with-lease` 安全更新远程分支。
 3. 运行 `git status --short` 确认工作区状态，识别无关改动。
 
 ## 分支命名
@@ -29,14 +29,13 @@ when_to_use: "创建分支、提交、发 PR、把当前修改提 PR。"
 
 ## 分支模型
 
-- `dev` 是日常集成分支；`master` 是稳定发布分支。
-- 日常 `feature/`、`refactor/`、`chore/`、`fix/`、`docs/` 分支默认从 `dev` 拉出并 PR 回 `dev`。
-- `master` 不接受日常 `feature/`、`refactor/`、`chore/` 直接合入。
-- 每周发布从 `dev` 拉出 `release/<version>`，通过 release PR 合入 `master`。
-- `dev` / `release/<version>` 到 `master` 的发布合并必须使用普通 merge commit，禁止 squash merge。
-- release PR 描述必须列出包含的业务 PR、数据库/配置/契约变更、测试结果和风险。
-- release PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
-- `hotfix/<topic>` 从 `master` 拉出，PR 合入 `master` 后必须 merge 或 cherry-pick 回 `dev`。
+- `master` 是稳定发布分支和所有新分支的唯一基线；`dev` 只用于开发环境集成、构建和验收。
+- 所有 `feature/`、`refactor/`、`chore/`、`fix/`、`docs/`、`hotfix/` 分支都从最新 `origin/master` 拉出。
+- 同一候选分支先 PR 合入 `dev`；开发环境构建和真实验收通过后，保持 HEAD SHA 不变，再 PR 合入 `master` 发布。
+- 禁止将 `dev` 整体合入 `master`，也不再以 `release/<version>` 承载日常发布，避免带入其他尚未批准的集成改动。
+- 候选分支合入 `dev` 后必须保留远程分支。开发环境验收后若又产生新提交，必须重新合入 `dev` 并重跑构建与验收。
+- 候选分支到 `master` 的发布 PR 必须使用普通 merge commit，禁止 squash merge，并记录开发环境构建、验收证据、契约变更和风险。
+- 发布 PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
 
 ## 工作流程
 
@@ -58,9 +57,12 @@ python3 scripts/check_docs_sync.py --working
 
 若测试或校验失败，停止并报告，不继续提交。
 
-### 步骤 3：创建分支
+### 步骤 3：从 master 创建分支
 
 ```bash
+git fetch origin master --prune
+git switch master
+git pull --ff-only origin master
 git switch -c <branch-name>
 ```
 
@@ -85,13 +87,13 @@ feat(模块): 简短描述（不超过 70 字符）
 
 提 PR 前将 `.specs/<需求名>/feature_info.md` 状态更新为 `PR 待合并`，并将本次提交纳入暂存，一并提交或单独提交均可。这样 feature 状态变更才能随分支推上去。
 
-### 步骤 6：推送并创建 PR
+### 步骤 6：推送并创建 dev 集成 PR
 
 ```bash
 git push -u origin <branch-name>
 ```
 
-PR base 默认 `dev`。仅 release PR 使用 `master` 作为 base；hotfix PR 先合入 `master`，发布后必须回合 `dev`。
+PR base 显式指定为 `dev`。该 PR 只用于触发开发环境集成和验收；合入后不得删除当前远程分支。
 
 **关联 Issue**：检查 `.specs/<需求名>/feature_info.md` 和当前对话上下文中是否有 GitHub issue 号。有则在 PR 正文开头加 `Closes #<issue号>`，没有则跳过，不追问用户。
 
@@ -107,7 +109,27 @@ EOF
 )"
 ```
 
-### 步骤 7：在 Issue 下回复解决思路
+### 步骤 7：开发环境构建与验收
+
+1. 等待 `dev` 构建完成，记录构建编号、结果和部署镜像/提交。
+2. 在开发环境运行与改动风险相匹配的真实验收，不得只以本地单测代替。
+3. 记录候选分支 `git rev-parse HEAD` 的完整 SHA。
+4. 若构建或验收失败，在同一分支修复，重新 PR 合入 `dev`，然后重跑本步骤。
+
+### 步骤 8：用同一分支创建 master 发布 PR
+
+只有开发环境构建和验收通过后才可执行。创建前必须确认本地、远程分支与验收记录中的 HEAD SHA 完全一致：
+
+```bash
+git fetch origin master --prune
+git rev-parse HEAD
+git rev-parse origin/<branch-name>
+gh pr create --base master --head <branch-name> --title "..." --body-file <release-pr-body.md>
+```
+
+发布 PR 必须保持 Draft，直到发布检查完成；合并时使用普通 merge commit，禁止 squash merge。
+
+### 步骤 9：在 Issue 下回复解决思路
 
 PR 创建成功后，若有关联 issue，在该 issue 下发一条评论，说明解决思路：
 
@@ -149,12 +171,21 @@ Closes #<issue号>      ← 若有关联 issue；无则省略
 
 涉及 DB、MQ、Redis、OSS 或 Java/Python 跨端协作时，必须在 Risks 中说明运行时前提和影响。
 
+`master` 发布 PR 还必须增加：
+
+```markdown
+## Dev Validation
+- Candidate SHA: <已验收的完整 SHA>
+- Build: <开发环境构建链接/编号与结果>
+- Environment checks: <真实环境验收命令与结果>
+```
+
 ## 最终回复
 
 必须包含：
 
 - 创建的分支名
 - 提交哈希和提交信息
-- PR URL；若无法创建，给出可手动使用的标题和描述
+- `dev` 集成 PR 与 `master` 发布 PR URL；未达到开发环境门禁时明确说明发布 PR 尚未创建
 - 已运行的测试命令和结果
 - 是否有未纳入本次提交的本地改动

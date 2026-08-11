@@ -12,14 +12,13 @@
 
 ## 分支与发布
 
-- `dev` 是日常集成分支；`master` 是稳定发布分支。本仓库默认分支为 `master`，文档和 CI 不使用 `main`。
-- 日常开发分支使用 `feature/`、`refactor/`、`chore/`、`fix/`、`docs/` + 英文 kebab-case，PR 默认合入 `dev`。
-- `master` 不接受日常 `feature/`、`refactor/`、`chore/` 直接合入。
-- 每周发布从 `dev` 拉出 `release/<version>` 发布准备分支，通过 release PR 合入 `master`。
-- `dev` / `release/<version>` 到 `master` 的发布合并必须使用普通 merge commit，禁止 squash merge。
-- release PR 描述必须列出包含的业务 PR、数据库/配置/契约变更、测试结果和风险。
-- release PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
-- `hotfix/<topic>` 必须从 `master` 拉出，修复后 PR 合入 `master`；发布后必须 merge 或 cherry-pick 回 `dev`，避免修复只存在于发布线。
+- `master` 是稳定发布分支，也是所有新开发分支的唯一基线；`dev` 只承担开发环境集成、构建和验收。本仓库默认分支为 `master`，文档和 CI 不使用 `main`。
+- 日常开发分支使用 `feature/`、`refactor/`、`chore/`、`fix/`、`docs/`、`hotfix/` + 英文 kebab-case，统一从最新 `master` 拉出。
+- 实现完成后，先以当前分支提 PR 合入 `dev`；等待开发环境构建完成并通过真实环境验收。
+- 验收通过后保留当前分支，以同一分支、同一 HEAD SHA 再提 PR 合入 `master` 发布；禁止将 `dev` 整体合入 `master`。
+- 开发环境验收后若新增提交，必须重新走 `分支 → dev → 构建/验收` 门禁，再更新或创建 `master` PR。
+- 当前分支到 `master` 的发布 PR 必须使用普通 merge commit，禁止 squash merge；PR 描述必须列出开发环境构建、验收证据、数据库/配置/契约变更和风险。
+- 发布 PR 合入 `master` 后，在 `master` 的发布 merge commit 上打版本 tag。
 - 提交信息用 Conventional Commits（`feat` / `fix` / `refactor` / `docs` / `chore`）
 - 发 PR 用 `branch-pr-workflow` skill（含分支命名约定与 PR 描述模板）
 
