@@ -1,6 +1,6 @@
 # MySQL Schema
 
-生产共享库的结构和初始化数据以 Python 仓库 Alembic migration 为唯一权威；本次统一 LLM 配置对应 migration `0036`。`scripts/db/init.sql` 与 `link-api/src/main/resources/schema.sql` 仅是 Java 本地 MySQL/H2 镜像，必须与 Python migration 保持字段、默认值、索引和删除语义一致。Java Entity 位于 `link-model/src/main/java/com/qingluo/link/model/dto/entity`。
+生产共享库的结构和初始化数据以 Python 仓库 Alembic migration 为唯一权威；当前 Chunk 表结构已包含 migration `0039` 删除 `kb_document_chunk.bucket_id` 的变更。`scripts/db/init.sql` 与 `link-api/src/main/resources/schema.sql` 仅是 Java 本地 MySQL/H2 镜像，必须与 Python migration 保持字段、默认值、索引和删除语义一致。Java Entity 位于 `link-model/src/main/java/com/qingluo/link/model/dto/entity`。
 
 ## 核心表
 
@@ -100,7 +100,7 @@ SYSTEM 配置仅管理员可写、对所有用户可执行；USER 配置仅所�
 - `dataset`、`document_original_file`、`blog_post` 使用软删并令 `deleted_seq=id`，使死行退出活跃唯一键；`chat_conversation`、`chat_message` 物理删除。
 - `document_original_file` 只保存上传事实。端到端解析终态权威源为 `document_parse_pipeline.pipeline_status`：`PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`。
 - `document_parsed_log.retry_of_task_id` 指向上一轮；`document_parse_pipeline.superseded_by_task_id` 指向接班任务，均由 Python 写、Java 只读。
-- `kb_document_chunk.chunk_id` 是业务唯一键，对应 `chat_message.references`；Java 仅按当前用户读取 active 且正文非空的记录。
+- `kb_document_chunk.chunk_id` 是业务唯一键，对应 `chat_message.references`；Java 仅按当前用户读取 active 且正文非空的记录。单 collection 架构不再使用 `bucket_id`，Java Entity 和本地 Schema 镜像不得重新声明该字段。
 - 文档上传配置不存 MySQL。部署默认来自 `tolink.document-file.*`，管理员覆盖保存在 Redis `runtime:document-file:upload-config`。
 - `blog_post.content_object_key` 指向 PUBLIC OSS Markdown；正文不存 MySQL。`blog_asset` 保存封面与正文图片资源。
 - `user_feedback` 不保存用户身份；`attachment_object_key` 只保存公开桶 object key，访问 URL 由 Java 拼装。

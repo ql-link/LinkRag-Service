@@ -19,6 +19,7 @@ mvn -pl link-service test
 
 ## 执行约定
 
+- Chunk 共享表契约由 `KnowledgeChunkControllerTest` 的 H2 真实查询链路守护：测试 Schema 必须与 Python migration `0039` 一致，不存在已废弃的 `bucket_id`；批量详情查询必须在该结构上成功。
 - 根 `pom.xml` 固定 Maven Surefire `2.22.2`，确保各模块的 JUnit 5 测试都会执行。
 - 提交前使用 `mvn clean test`；删除或移动 Java 类后，干净构建可避免旧 `target/classes` 影响结果。
 - Profile 中可提交的非密钥默认值发生变更时，使用纯资源契约测试锁定目标环境；例如

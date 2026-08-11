@@ -314,7 +314,6 @@ CREATE TABLE IF NOT EXISTS kb_document_chunk (
     doc_id                      BIGINT NOT NULL,
     set_id                      BIGINT NOT NULL,
     user_id                     BIGINT NOT NULL,
-    bucket_id                   INT,
     content                     TEXT NOT NULL,
     content_hash                VARCHAR(64) NOT NULL,
     chunk_type                  VARCHAR(32) NOT NULL DEFAULT 'text',
