@@ -56,11 +56,6 @@ tolink:
     sync-delete-required: false
     cdc:
       enabled: false
-  recall:
-    session-jwt-secret: test-session-recall-secret-1111111111111111
-    session-jwt-exp-seconds: 30
-    session-stream-base-url: http://localhost:8000
-
 logging:
   level:
     com.qingluo.link: debug

@@ -249,22 +249,19 @@ Kafka 账号或密码。
 
 **审计日志**：`AuditLog`（专用 logger 名 `AUDIT`，统一 `action=` 前缀，复用 `trace_id`）为安全/高危动作留痕——登录成功/失败（`LOGIN_SUCCESS`/`LOGIN_FAIL`）、注册（`REGISTER`）、登出（`LOGOUT`）、改用户状态/角色（`USER_STATUS_CHANGE`/`USER_ROLE_CHANGE`，记操作人+目标+前后值）、配置厂商 Key（`LLM_PROVIDER_SETUP`）、删配置（`LLM_CONFIG_DELETE`）、厂商增删（`PROVIDER_CREATE`/`PROVIDER_DELETE`）。**仅记标识与结果，严禁记录明文密码、API Key、token**。可经 `logging.level.AUDIT` 单独调级或拆独立 appender。
 
-### 4.14 召回 session 签发（RECALL_SESSION_*）
+### 4.14 Java/Python 共用 access token
 
-前端直连 Python 召回的 session token 签发配置，前缀 `tolink.recall`（`RecallProperties`）：
+Java 登录 token 使用 RS256，并显式注册为 Sa-Token 登录凭证：
 
 | 名称 | 用途 | 是否必需 | 默认值 |
 |------|------|----------|--------|
-| `RECALL_SESSION_JWT_SECRET` | 前端直连召回 session token 的 HS256 **独立密钥**（LINK-104；须与 Python `RECALL_SESSION_JWT_SECRET` 一致） | 是 | 空 |
-| `RECALL_SESSION_JWT_EXP_SECONDS` | session token 有效期（秒），Python 强制校验 `exp` | 否 | `30` |
-| `RECALL_SESSION_STREAM_BASE_URL` | 前端可见的 Python RAG 流式问答地址（公网/网关），用于拼接响应 `streamUrl = base + /api/v1/rag/stream`（LINK-138：Python 端点由 `/api/v1/recall/stream` 改名） | 否 | 本地 `http://localhost:8000`；生产 `https://linkrag.cn` |
+| `JAVA_ACCESS_JWT_ENABLED` | 是否装配 RS256 登录 token 签发器；关闭时登录失败，不回退旧 token | 是 | `false` |
+| `JAVA_ACCESS_JWT_PRIVATE_KEY_PATH` | PKCS#8 PEM RSA 私钥文件路径 | 启用时是 | 空 |
+| `JAVA_ACCESS_JWT_ISSUER` | JWT issuer | 否 | `tolink-java` |
+| `JAVA_ACCESS_JWT_AUDIENCES` | Java/Python audience 列表 | 否 | `tolink-java-api,tolink-rag-api` |
+| `JAVA_ACCESS_JWT_TTL_SECONDS` | JWT 与 Sa-Token 登录态有效期 | 否 | `7200` |
 
-> `session-jwt-secret`（`RECALL_SESSION_JWT_SECRET`）由 `RecallExecutorConfig` 在**启动期强校验**：为空时直接 fail-fast，因此启用本服务必须配置一个非空 session 密钥。
->
-> **变更（LINK-122）**：旧召回网关链路（Java 中转代理 `/api/v1/recall/stream` → Python 内部端点）已废弃移除，其专属配置
-> `RAG_PYTHON_BASE_URL`、`RECALL_INTERNAL_JWT_SECRET`、`RECALL_JWT_EXP_SECONDS`、`RECALL_STREAM_TIMEOUT_MS`、
-> `RECALL_EMITTER_TIMEOUT_BUFFER_MS`、`RECALL_CONNECT_TIMEOUT_MS`、`RECALL_READ_TIMEOUT_MS`、
-> `RECALL_RATE_LIMIT_PER_MINUTE`、`RECALL_EXECUTOR_*` 一并删除，部署时可移除这些环境变量。
+> 私钥只部署在 Java；Python 只部署对应公钥。启用但私钥缺失、不可读或不是 PKCS#8 RSA 时启动失败。
 
 ## 4.15 缓存一致性（tolink.cache-consistency.*）
 

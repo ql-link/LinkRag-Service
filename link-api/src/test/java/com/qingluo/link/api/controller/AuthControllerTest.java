@@ -3,6 +3,7 @@ package com.qingluo.link.api.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qingluo.link.api.TestSecurityConfig;
+import com.qingluo.link.core.security.AccessTokenJwtSigner;
 import com.qingluo.link.mapper.SysUserMapper;
 import com.qingluo.link.model.dto.entity.SysUser;
 import com.qingluo.link.model.dto.request.LoginRequest;
@@ -64,6 +65,10 @@ class AuthControllerTest {
     @Autowired
     private SysUserMapper sysUserMapper;
 
+    /** 测试环境固定注入新体系签发器，禁止回退旧 UUID token。 */
+    @MockBean
+    private AccessTokenJwtSigner accessTokenJwtSigner;
+
     /**
      * 测试用户名 - 使用时间戳保证唯一，避免与数据库已有数据冲突
      */
@@ -73,6 +78,15 @@ class AuthControllerTest {
      * 测试密码 - 符合系统密码复杂度要求
      */
     private static final String TEST_PASSWORD = "password123";
+
+    @BeforeEach
+    void setUpAccessTokenSigner() {
+        org.mockito.Mockito.when(accessTokenJwtSigner.sign(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+            .thenReturn("header.payload.signature");
+    }
 
     /**
      * 测试用例 1：用户注册成功

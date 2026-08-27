@@ -8,6 +8,8 @@ import cn.dev33.satoken.context.model.SaRequest;
 import cn.dev33.satoken.context.model.SaResponse;
 import cn.dev33.satoken.context.model.SaStorage;
 import cn.dev33.satoken.dao.SaTokenDaoDefaultImpl;
+import cn.dev33.satoken.stp.StpUtil;
+import com.qingluo.link.core.security.AccessTokenJwtSigner;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.core.exception.ConflictException;
 import com.qingluo.link.mapper.SysUserMapper;
@@ -21,6 +23,7 @@ import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.UserLoginEventRecorder;
 import com.qingluo.link.service.oss.UploadResult;
 import com.qingluo.link.service.cache.UserProfileCache;
+import com.qingluo.link.service.config.AccessTokenProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +34,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.HashMap;
@@ -59,11 +63,24 @@ class AuthServiceImplTest {
     @Mock
     private UserProfileCache userProfileCache;
 
+    @Mock
+    private AccessTokenProperties accessTokenProperties;
+
+    @Mock
+    private ObjectProvider<AccessTokenJwtSigner> accessTokenSignerProvider;
+
+    @Mock
+    private AccessTokenJwtSigner accessTokenJwtSigner;
+
     @InjectMocks
     private AuthServiceImpl authService;
 
     @BeforeEach
     void setUpSaToken() {
+        lenient().when(accessTokenProperties.getTtlSeconds()).thenReturn(7200L);
+        lenient().when(accessTokenSignerProvider.getIfAvailable()).thenReturn(accessTokenJwtSigner);
+        lenient().when(accessTokenJwtSigner.sign(anyLong(), anyString(), any()))
+            .thenReturn("header.payload.signature");
         lenient().when(userProfileCache.get(anyLong(), any())).thenAnswer(invocation -> {
             java.util.function.Supplier<UserProfileDTO> loader = invocation.getArgument(1);
             return loader.get();
@@ -81,6 +98,47 @@ class AuthServiceImplTest {
         SaRequest request = mock(SaRequest.class);
         SaResponse response = mock(SaResponse.class);
         SaTokenContextForThreadLocalStorage.setBox(request, response, new MapBackedSaStorage());
+    }
+
+    @Test
+    @DisplayName("Should_RegisterSameAccessJwtAsSaToken_When_FeatureEnabled")
+    void Should_RegisterSameAccessJwtAsSaToken_When_FeatureEnabled() {
+        SysUser user = buildUser(1L, "alice", UserRole.USER);
+        user.setPasswordHash("encoded-password");
+        given(sysUserMapper.selectByAccount("alice")).willReturn(user);
+        given(passwordEncoder.matches("password123", "encoded-password")).willReturn(true);
+        given(accessTokenProperties.getTtlSeconds()).willReturn(7200L);
+        AccessTokenJwtSigner signer = mock(AccessTokenJwtSigner.class);
+        given(accessTokenSignerProvider.getIfAvailable()).willReturn(signer);
+        given(signer.sign(eq(1L), eq("USER"), any())).willReturn("header.payload.signature");
+
+        LoginRequest request = new LoginRequest();
+        request.setAccount("alice");
+        request.setPassword("password123");
+
+        var result = authService.login(request);
+
+        assertThat(result.getAccessToken()).isEqualTo("header.payload.signature");
+        assertThat(result.getExpiresIn()).isEqualTo(7200L);
+        assertThat(StpUtil.getLoginIdByToken("header.payload.signature")).isEqualTo("1");
+    }
+
+    @Test
+    @DisplayName("Should_RejectLoginInsteadOfFallingBack_When_AccessJwtSignerMissing")
+    void Should_RejectLoginInsteadOfFallingBack_When_AccessJwtSignerMissing() {
+        SysUser user = buildUser(1L, "alice", UserRole.USER);
+        user.setPasswordHash("encoded-password");
+        given(sysUserMapper.selectByAccount("alice")).willReturn(user);
+        given(passwordEncoder.matches("password123", "encoded-password")).willReturn(true);
+        given(accessTokenSignerProvider.getIfAvailable()).willReturn(null);
+
+        LoginRequest request = new LoginRequest();
+        request.setAccount("alice");
+        request.setPassword("password123");
+
+        assertThatThrownBy(() -> authService.login(request))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("禁止回退签发旧 token");
     }
 
     @AfterEach

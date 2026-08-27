@@ -279,20 +279,6 @@ LLM 调用拆成两个正交维度：**`protocol`（API 家族或专用 adapter�
 
 ## Recall
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| POST | `/api/v1/recall/sessions` | 签发前端直连 Python 召回的短期 session token（普通 JSON） |
-
-> **历史链路已下线（LINK-122）**：Java 曾提供 `POST /api/v1/recall/stream` 中转代理（同步转发 Python 内部端点 `/api/v1/internal/recall/stream`），现已废弃移除。聊天召回统一走「前端直连 Python」：前端凭下方接口签发的 session token 直连 `streamUrl`（即 `<rag-host>/api/v1/rag/stream`，由 Python 提供——**LINK-138**：Python LINK-131 已将该对外端点由 `/api/v1/recall/stream` 改名、语义升级为 RAG 流式问答），Java **不在**召回/生成请求路径上。
-
-### POST /api/v1/recall/sessions（前端直连签发）
-
-> 「前端直连 Python 召回 SSE」链路（LINK-104）：Java 只做 Sa-Token 鉴权 + 用户状态（`status==1`）+ `datasetIds` 归属校验 + 数据集稀疏/稠密向量模型绑定校验，签发短期 HS256 session token；**不代理/中转 SSE 流内容**，资源滥用由 Python「按用户并发上限」兜底。历史数据集若缺少任一绑定，或绑定的用户配置已停用/删除/能力不匹配，拒绝签发。
->
-> **请求体**（camelCase）：`{ "datasetIds": [1,2] }`。`datasetIds` **必须显式非空**（每个 id 为当前用户有权访问的库）；空列表/缺省返回 400——避免下发空 `dataset_ids` claim 被 Python 误判为全库授权造成越权放大。本接口只签发，**不接收 query**（query 在前端直连 Python 时随 stream 请求体提交）。
->
-> **响应**：`{ "token": "...", "expiresIn": 30, "streamUrl": "<前端可见的 Python 直连地址>" }`。`streamUrl = RECALL_SESSION_STREAM_BASE_URL + /api/v1/rag/stream`（该路径由 Python 提供，**非** Java 路由）。前端凭 `token`（`Authorization: Bearer`）`POST` 直连 `streamUrl`，请求体为 `{ "query": "...", "config_id": <CHAT 模型配置 id>, "dataset_ids"?: [..] }`（`config_id` 必填）；Python 完成召回融合后流式生成答案：逐 token `event: answer_delta` → 终态 `event: answer_done`，**空命中**走 `event: recall_done`，失败 `event: error`。
->
-> **session token claims**（HS256，**独立密钥** `RECALL_SESSION_JWT_SECRET`；与 Python 配置逐字一致）：`iss=tolink-java`、`aud=tolink-rag-frontend`、`scope=recall:stream`、`sub=<user_id 正整数字符串>`、`dataset_ids=<已校验的显式授权范围>`、`iat`、`exp`（默认 30s）。token **短期可复用**，不做 `jti`/一次性/防重放/撤销。
->
-> **错误**：未登录 401；`datasetIds` 为空 400；`datasetIds` 越权 `RECALL_SCOPE_FORBIDDEN`（30002，403）；用户禁用 `AUTH_DISABLED`（20003，403）。Python 侧验签失败返回 `401 RECALL_SESSION_UNAUTHORIZED`、越权返回 `403 RECALL_SCOPE_FORBIDDEN`。
+Java 不再提供召回 session 换票或召回中转接口。登录/注册响应中的 `accessToken` 是 RS256 JWT，
+同时作为 Java Sa-Token 登录凭证；前端使用同一枚 token 以 `Authorization: Bearer` 直连 Python
+`/api/v1/rag/stream`。Python 使用 Java 公钥独立验签，Java 不在召回/生成请求路径上。
