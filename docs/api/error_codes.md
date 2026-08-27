@@ -71,9 +71,5 @@
 > `RECALL_ALL_SOURCES_FAILED(30005)`、`RECALL_TIMEOUT(30006)`、`RECALL_UPSTREAM_ERROR(30007)` 与英文串码枚举
 > `RecallSseError` 一并删除（这些码仅由该链路的建流前 HTTP / 建流后 SSE 表达使用）。建流后 SSE 错误码现由 Python 直连链路负责。
 
-召回 session 签发链路（`POST /api/v1/recall/sessions`，前端直连 Python，LINK-104）只保留归属校验相关 HTTP 错误：
-
-- `RECALL_SCOPE_FORBIDDEN(30002/403)`：`datasetIds` 含非本人/已软删的数据集。
-- 用户禁用复用 `AUTH_DISABLED(20003/403)`；`datasetIds` 为空或缺省由 DTO 校验返回 400。
-
-详见 `docs/api/api_contracts.md` 的 Recall 章节。
+Java 已删除 `/api/v1/recall/sessions`，不再签发专用 recall token；Python 直连接口的鉴权与 scope
+错误码由 Python 契约维护。

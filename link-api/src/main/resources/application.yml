@@ -13,7 +13,7 @@ server:
 
 sa-token:
   token-name: satoken
-  timeout: 604800
+  timeout: ${JAVA_ACCESS_JWT_TTL_SECONDS:7200}
   token-style: uuid
   is-concurrent: true
   is-share: false
@@ -46,6 +46,13 @@ management:
 # CDC 缓存补偿（Canal -> Kafka -> 本服务消费）：cdc.enabled 为总开关，true 开启 / false 关闭。
 # CDC 依赖 Kafka，仅当 tolink.mq.vender=kafka 时才真正生效；开启时必须配置 cdc.source-topic。
 tolink:
+  auth:
+    access-token:
+      enabled: ${JAVA_ACCESS_JWT_ENABLED:false}
+      private-key-path: ${JAVA_ACCESS_JWT_PRIVATE_KEY_PATH:}
+      issuer: ${JAVA_ACCESS_JWT_ISSUER:tolink-java}
+      audiences: ${JAVA_ACCESS_JWT_AUDIENCES:tolink-java-api,tolink-rag-api}
+      ttl-seconds: ${JAVA_ACCESS_JWT_TTL_SECONDS:7200}
   cache-consistency:
     enabled: false
     null-cache-ttl-seconds: 60

@@ -1,6 +1,8 @@
 package com.qingluo.link.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.stp.SaLoginModel;
+import com.qingluo.link.core.security.AccessTokenJwtSigner;
 import com.qingluo.link.core.exception.AuthException;
 import com.qingluo.link.core.exception.ConflictException;
 import com.qingluo.link.observability.log.AuditLog;
@@ -18,14 +20,17 @@ import com.qingluo.link.service.OssApplicationService;
 import com.qingluo.link.service.UserLoginEventRecorder;
 import com.qingluo.link.service.cache.UserProfileCache;
 import com.qingluo.link.service.oss.UploadResult;
+import com.qingluo.link.service.config.AccessTokenProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -42,6 +47,8 @@ public class AuthServiceImpl implements AuthService {
     private final OssApplicationService ossApplicationService;
     private final UserLoginEventRecorder userLoginEventRecorder;
     private final UserProfileCache userProfileCache;
+    private final AccessTokenProperties accessTokenProperties;
+    private final ObjectProvider<AccessTokenJwtSigner> accessTokenSignerProvider;
 
     /**
      * 校验账号密码并创建登录态，成功后同步刷新最后登录时间。
@@ -64,13 +71,13 @@ public class AuthServiceImpl implements AuthService {
             throw AuthException.accountDisabled();
         }
 
-        StpUtil.login(user.getId());
+        AuthResult authResult = createLogin(user);
         user.setLastLoginAt(LocalDateTime.now());
         sysUserMapper.updateById(user);
         userLoginEventRecorder.record(user.getId(), UserLoginEventRecorder.SOURCE_LOGIN);
 
         AuditLog.event("LOGIN_SUCCESS", "userId={}, account={}", user.getId(), account);
-        return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
+        return authResult;
     }
 
     /**
@@ -102,11 +109,23 @@ public class AuthServiceImpl implements AuthService {
 
         sysUserMapper.insert(user);
         userProfileCache.evict(user.getId());
-        StpUtil.login(user.getId());
+        AuthResult authResult = createLogin(user);
         userLoginEventRecorder.record(user.getId(), UserLoginEventRecorder.SOURCE_REGISTER);
 
         AuditLog.event("REGISTER", "userId={}, username={}", user.getId(), username);
-        return new AuthResult(StpUtil.getTokenValue(), "Bearer", StpUtil.getTokenTimeout(), user.getId());
+        return authResult;
+    }
+
+    /** 把同一 RS256 access JWT 字符串显式注册为 Sa-Token 登录 token。 */
+    private AuthResult createLogin(SysUser user) {
+        AccessTokenJwtSigner signer = accessTokenSignerProvider.getIfAvailable();
+        if (signer == null) {
+            throw new IllegalStateException("access JWT 签发器未装配，禁止回退签发旧 token");
+        }
+        long ttlSeconds = accessTokenProperties.getTtlSeconds();
+        String token = signer.sign(user.getId(), user.getRole(), Instant.now());
+        StpUtil.login(user.getId(), new SaLoginModel().setToken(token).setTimeout(ttlSeconds));
+        return new AuthResult(token, "Bearer", ttlSeconds, user.getId());
     }
 
     /**
